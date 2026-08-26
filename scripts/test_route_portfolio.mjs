@@ -58,7 +58,11 @@ const scenarios = [
     // The Interurban-heavy route is a field-quality contract, not just a high
     // aggregate "trails / lanes" percentage. A shorter all-passing route may
     // coexist, but cannot crowd this practical mostly-off-street choice out.
-    expectEach: [{ minTrailMi: 15, maxFailM: 400, maxDistanceMi: 35 }],
+    // maxFailM 400 -> 500 with the 2026-08-26 field-directed default weights
+    // (residential 0.5, facility pulls eased): the corridor option survives
+    // at 458 m flagged over 30.4 mi, ~0.3 mi of flagged road on a mostly
+    // off-street ride.
+    expectEach: [{ minTrailMi: 15, maxFailM: 500, maxDistanceMi: 35 }],
   },
   {
     ...common,

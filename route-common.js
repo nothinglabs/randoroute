@@ -31,7 +31,7 @@ const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
 const ROUTE_CATEGORY_LABELS = [
   ['trail', 'Trails'],
   ['bike', 'Trusted Bike Lane'],
-  ['pass', 'Passes Rules'],
+  ['pass', 'Road meets rules'],
   ['caution', 'Needs Caution'],
   ['fail', 'Fails Rules'],
 ];

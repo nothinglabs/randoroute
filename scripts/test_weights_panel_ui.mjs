@@ -86,7 +86,9 @@ check('clicking it opens the weights pane and keeps the Settings tabs',
     && document.getElementById('settingsTabs').getBoundingClientRect().height > 0));
 
 const advancedOptions = await pg.evaluate(() => {
-  const ids = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
+  // prefDesig / prefResidential rows are gone: both preferences are always on
+  // (2026-08-26 field direction), so only permission switches remain.
+  const ids = ['r-alwaysPreferBikeRoutes', 'r-allowSidewalkFallback',
     'r-allowMtbTrails', 'r-allowFerries'];
   const routeOptions = document.getElementById('advancedRoutingOptions');
   const descriptions = document.querySelector('.weights-key');
@@ -99,7 +101,8 @@ const advancedOptions = await pg.evaluate(() => {
       !document.getElementById(id)?.closest('#settings-options')),
     readingOrder: routeOptions.compareDocumentPosition(descriptions) & Node.DOCUMENT_POSITION_FOLLOWING
       && descriptions.compareDocumentPosition(sliders) & Node.DOCUMENT_POSITION_FOLLOWING,
-    designatedLabel: document.querySelector('label[for="r-prefDesig"] span')?.textContent,
+    removedTogglesGone: !document.getElementById('r-prefDesig')
+      && !document.getElementById('r-prefResidential'),
     note: routeOptions.querySelector('p')?.textContent,
     preferredWeightLabel: document.querySelector('input[data-weight="preferredRoute"]')
       ?.closest('.weight-cost')?.querySelector('h4')?.textContent,
@@ -114,7 +117,7 @@ const advancedOptions = await pg.evaluate(() => {
 check('expert route switches sit above the weights in Advanced routing',
   advancedOptions.allPresent && advancedOptions.allInAdvanced
     && advancedOptions.absentFromEveryday && advancedOptions.readingOrder
-    && advancedOptions.designatedLabel === 'Heavily prefer designated bike routes'
+    && advancedOptions.removedTogglesGone
     && advancedOptions.preferredWeightLabel === 'Strong Preferred-route pull'
     && /moderate and neutral alternatives/.test(advancedOptions.preferredWeightHint)
     && /never compounds/.test(advancedOptions.preferredWeightHint)
@@ -125,7 +128,7 @@ check('expert route switches sit above the weights in Advanced routing',
   JSON.stringify(advancedOptions));
 
 const optionState = await pg.evaluate(() => {
-  const input = document.getElementById('r-prefDesig');
+  const input = document.getElementById('r-allowMtbTrails');
   input.click();
   const card = input.closest('.weights-route-option');
   const afterChange = {

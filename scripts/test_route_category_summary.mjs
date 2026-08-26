@@ -95,7 +95,7 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1
 // question and is measured in test_route_card_labels.mjs -- searching the
 // source for the string only proves someone typed it, which is what let
 // "Trusted Bike Lanes" ship truncated to "Trusted Bike La...".
-const labels = ['Trails', 'Trusted Bike Lane', 'Passes Rules', 'Needs Caution', 'Fails Rules'];
+const labels = ['Trails', 'Trusted Bike Lane', 'Road meets rules', 'Needs Caution', 'Fails Rules'];
 const appCard = functionSource(app, 'renderRouteCard');
 // Both category lists render from the shared ROUTE_CATEGORY_LABELS table in
 // route-common.js -- assert the table carries the five labels and that both

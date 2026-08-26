@@ -90,6 +90,32 @@ try {
   check('geojson rewrites (route switches) never summon the bar',
     afterSwitch === true);
 
+  // Render catch-up: a fast zoom-out can leave the renderer behind with every
+  // byte already fetched — no requests, no arrivals, just parse and paint.
+  // Field, 2026-08-26: the bar stayed hidden through exactly that. Drive the
+  // real handlers: hold map.loaded() false while firing a gesture and frames,
+  // and the bar must arm; release it and go idle, and the bar must leave.
+  const catchup = await page.evaluate(async () => {
+    const realLoaded = map.loaded.bind(map);
+    map.loaded = () => false;
+    map.fire('zoomstart');
+    const until = Date.now() + 3500;
+    while (Date.now() < until && document.getElementById('mapLoadingBar').hidden) {
+      map.fire('render');
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    const shownDuringCatchup = !document.getElementById('mapLoadingBar').hidden;
+    map.loaded = realLoaded;
+    map.fire('idle');
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    return { shownDuringCatchup,
+      hiddenAfter: document.getElementById('mapLoadingBar').hidden };
+  });
+  check('render catch-up after a gesture surfaces the bar',
+    catchup.shownDuringCatchup === true, JSON.stringify(catchup));
+  check('and the bar leaves when the renderer catches up',
+    catchup.hiddenAfter === true, JSON.stringify(catchup));
+
   const banner = await page.evaluate(() => {
     hideRouteCalculationStatus();
     showRouteCalculationStatus('Calculating route options', 'Testing route profiles… (1 of 3)');

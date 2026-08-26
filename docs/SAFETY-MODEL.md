@@ -621,8 +621,9 @@ the road, and the rules below measure the road. A route drawn along a highway
 does not change what the highway is.
 
 Designation still *does* something: it earns a routing preference
-(`designated` ×0.94, `strongDesignated` ×0.5 under *Heavily prefer designated
-bike routes*), which makes a qualifying road cheaper to route over. That bonus is
+(`strongDesignated` ×0.5, always on since 2026-08-26 — the weaker `designated`
+off-state and its *Heavily prefer designated bike routes* switch are gone),
+which makes a qualifying road cheaper to route over. That bonus is
 gated on the edge passing, so it can never pull a rider onto a failing road.
 Preference, never permission.
 
@@ -979,9 +980,7 @@ even the urban/rural split, is still honoured behind both.
 | `allowFerries` | Allow routes with ferries (Advanced routing) | none | traversable at all |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
-| `prefDesig` | Heavily prefer designated bike routes | none | designation bonus |
 | `alwaysPreferBikeRoutes` / Preferred route selection | Follow designated routes / Prefer route | none | `preferredRoute` bonus, applied once |
-| `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
 The first seven are named objectively and change the verdict. The rest are
 named as permissions or preferences and change only where you are sent — which

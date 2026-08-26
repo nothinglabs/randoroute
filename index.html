@@ -540,9 +540,7 @@
       <li><b>Show advanced options and routing weights</b> — reveals the ⚖ Settings tab and its expert route switches. Leave it off unless you want to tune how the router searches.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
     <section><h3>Advanced routing</h3><ul class="help-list">
-      <li><b>Heavily prefer designated bike routes</b> — favors signed bike-route corridors. Trails and physical bike infrastructure have their own independent routing preferences.</li>
       <li><b>Follow designated bike routes even if they fail safety rules <span class="rule-caution-copy">(use with caution)</span></b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
-      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided.</li>
       <li><b>Allow routes with ferries</b> — includes ferry itineraries in route searches.</li>
@@ -681,7 +679,7 @@
       <section><h3>Safety ratings &amp; map colors</h3><ul>
         <li><b>Lime</b> — Trusted bike lane: a bike facility we would send you down without a caveat. Separated lanes and shared-use paths always qualify. A painted lane on a road the state rates worst-on-scale for traffic stress does not — that road still <b>passes</b>, and draws blue.</li>
         <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
-        <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
+        <li><b>Blue</b> — road that meets rules (speed and shoulder requirements).</li>
         <li><b>Red dashed</b> — a routed segment that fails your rules, such as a known safety conflict, a bike-legal freeway used as a last resort, or a walk-your-bike stretch longer than about 100 m. Permanent bicycle restrictions use the separate pale prohibited overlay and are never routed.</li>
         <li><b>Amber</b> — Caution. Several different things put a road here; <b>Settings Help</b> lists every one of them, generated from the safety model itself. A verdict outranks the facility: a road that cautions or fails draws amber or red even where it has a bike lane.</li>
         <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws as a band beneath the road and does not change the road’s verdict. Where your route follows one, the band widens.</li>

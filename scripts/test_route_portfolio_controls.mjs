@@ -207,7 +207,7 @@ const ui = await page.evaluate(() => {
   openRoutingWeights();
   const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
   const toggle = document.getElementById('r-allowFerries');
-  const advancedIds = ['r-prefDesig', 'r-alwaysPreferBikeRoutes', 'r-prefResidential',
+  const advancedIds = ['r-alwaysPreferBikeRoutes',
     'r-allowSidewalkFallback', 'r-allowMtbTrails', 'r-allowFerries'];
   const out = {
     oldButtonGone: !document.getElementById('routeRemixBtn'),

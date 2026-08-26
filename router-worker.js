@@ -1200,10 +1200,10 @@ function escalateLongDismounts(segs, levelM) {
 }
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
-// Worst case: V_MAX 12 / (0.30 path facility x 0.78 residential x 0.9
-// low-stress comfort bonus) = 57.0 m/s. Keep ample headroom so the heuristic
-// remains admissible; the facility sliders bottom out at 0.20, which would be
-// 12 / (0.20 x 0.78 x 0.9) = 85.5 m/s and still clears 160.
+// Example at the 2026-08-26 defaults: V_MAX 12 / (0.25 path facility x 0.5
+// residential x 0.9 low-stress comfort bonus) = 106.7 m/s; at the slider
+// minimums (path 0.1, residential 0.4) the requirement is far higher, which
+// is why the bound below is derived from the live weights per search.
 // A* heuristic speed. h(n) = distance / V_HEUR, so this must not undershoot the
 // effective speed of ANY edge -- speed divided by whatever multipliers shrink
 // its cost -- or A* stops returning the cheapest route.
@@ -1280,10 +1280,13 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
   const onStreetBonus = Math.min(1,
     activeWeights.facilityShared, activeWeights.facilityLane,
     activeWeights.facilityBuffered, activeWeights.facilitySeparated,
-    activeWeights.strongDesignated, activeWeights.designated,
+    activeWeights.strongDesignated,
     (rules?.alwaysPreferBikeRoutes || preferredRoutesActive(rules))
       ? preferredSignedRouteMult() : 1);
-  const residential = prefResidential ? Math.min(1, activeWeights.residential) : 1;
+  // The residential bonus is always on (2026-08-26); the prefResidential
+  // parameter survives in signatures for profile bookkeeping but no longer
+  // gates any cost, so the heuristic must assume the bonus everywhere.
+  const residential = Math.min(1, activeWeights.residential);
   const onStreet = SPEED_STRESS_FLOOR * onStreetBonus * residential * level;
   // Off-street: no speedStress, no residential, but the path bonus is available.
   const offStreet = Math.min(1, activeWeights.facilityPath) * level;
@@ -1302,9 +1305,12 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
 const DEFAULT_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
-  designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
-  facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
-  facilitySeparated: 0.29, facilityPath: 0.20,
+  // Field-tuned 2026-08-26 (rider's settled values became the defaults). The
+  // old `designated` off-state weight is gone: the signed-route preference is
+  // always on, so strongDesignated is THE designation bonus.
+  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.5,
+  facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
+  facilitySeparated: 0.32, facilityPath: 0.25,
   mtbTrail: 6,
   // Per-metre freeway surcharge, on top of the level-4 multiplier. Calibrated
   // WITH FREEWAY_ENTRY_PENALTY_S against six trips whose right answer is known
@@ -2020,7 +2026,7 @@ function useEdgeCostFloors(rules, searchRules, mode) {
   const limitedFloor = Math.min(1, modeWeights(mode).limitedAccess);
   const freewayFloor = Math.min(1, activeWeights.freeway);
   const mtbFloor = Math.min(1, activeWeights.mtbTrail);
-  const designatedFloor = Math.min(1, activeWeights.strongDesignated, activeWeights.designated);
+  const designatedFloor = Math.min(1, activeWeights.strongDesignated);
   const residentialFloor = Math.min(1, activeWeights.residential);
   const facility = [1, activeWeights.facilityShared, activeWeights.facilityLane,
     activeWeights.facilityBuffered, activeWeights.facilitySeparated, activeWeights.facilityPath]
@@ -2170,9 +2176,9 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
     const signed = designatedEdge(ei, fl);
     cost *= ridingFacility
       ? facilityPrefMult(ridingFacility)
-      : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
+      : (signed ? activeWeights.strongDesignated : 1);
   }
-  if (!trustSignedRoute && prefResidential && !(fl & (8 | 32 | 4))
+  if (!trustSignedRoute && !(fl & (8 | 32 | 4))
       && !edgeLimited(ei, forward) && isResidential(ei)) {
     cost *= activeWeights.residential;
   }

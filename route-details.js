@@ -49,7 +49,7 @@ function isMountainBikeTrail(seg) {
 
 // A stored segment does not always carry a level: an older release wrote none,
 // and level 0 means "not scored", not "fine". Trusting it printed a FREEWAY as
-// "Passes Rules" on this page while the map and the route card, which re-score,
+// "Road meets rules" on this page while the map and the route card, which re-score,
 // drew it failing. Score it here the same way rather than believing the zero.
 // test_route_category_agreement.mjs holds the two classifiers together.
 // `details` is a const declared further down and read only at call time. The

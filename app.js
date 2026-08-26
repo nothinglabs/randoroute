@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.842';
+const APP_VERSION = '2026-08-26.843';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -159,13 +159,12 @@ const RULE_NUMBER_LIMITS = {
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
-  designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
-  // Regraded from field riding: full separation pulls hardest
-  // (path 0.20, separated 0.29) while paint alone pulls
-  // less (buffered 0.32 -> 0.36, lane 0.36 -> 0.40) -- the rider's tuned
-  // values applied as shipped defaults.
-  facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
-  facilitySeparated: 0.29, facilityPath: 0.20,
+  // Field-tuned 2026-08-26: the rider's settled values applied as shipped
+  // defaults. The `designated` off-state weight is gone — the signed-route
+  // preference is always on, so strongDesignated is THE designation bonus.
+  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.5,
+  facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
+  facilitySeparated: 0.32, facilityPath: 0.25,
   mtbTrail: 6,
   freeway: 12,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -1442,6 +1441,25 @@ map.on('sourcedataloading', (event) => {
 map.on('sourcedata', (event) => {
   if (event?.sourceDataType && event.sourceDataType !== 'content') return;
   if (vectorSourceOf(event)) mapLoadingLastEventAt = Date.now();
+});
+// A fast zoom-out can outrun the renderer with every byte already fetched:
+// tiles sit parsing and painting, no request ever starts, and the flow clock
+// never arms (field, 2026-08-26 — "zoom out faster than the map can render,
+// progress indicator isn't showing"). While the map is behind within a short
+// window of the rider's own gesture, each rendered-but-not-loaded frame
+// counts as flow. The window is what keeps the zombie-tile poison out: a
+// hung tile holds map.loaded() false forever, but only frames near a real
+// interaction feed the clock, so the bar still settles moments after the
+// catch-up ends — or the window closes.
+const MAP_RENDER_CATCHUP_WINDOW_MS = 10000;
+let mapInteractionAt = 0;
+for (const gesture of ['movestart', 'zoomstart', 'move', 'zoom']) {
+  map.on(gesture, () => { mapInteractionAt = Date.now(); });
+}
+map.on('render', () => {
+  if (map.loaded()) return;
+  if (Date.now() - mapInteractionAt > MAP_RENDER_CATCHUP_WINDOW_MS) return;
+  armMapLoadingBar();
 });
 map.on('idle', settleMapLoadingBar);
 const finishAppLaunch = () => {
@@ -4468,10 +4486,9 @@ function optimizationMethodDescription(optimization) {
     : optimization.mode === 'low'
       ? 'Strongly avoids roads that fail your rules.'
       : 'Balances travel time against roads that fail your rules.';
-  const preferences = [];
-  if (optimization.prefDesignated) preferences.push('bike routes & trails');
-  if (optimization.prefResidential) preferences.push('residential streets');
-  return preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
+  // Bike-route and residential preferences are always on, so they no longer
+  // distinguish one option from another and are not repeated per card.
+  return base;
 }
 function routeDetailsOptimizationDescription(optimization) {
   if (!optimization) return '';
@@ -15539,10 +15556,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Paint in the traffic lane. Gives a modest route preference—even when the road still fails your rules.' },
     { key: 'residential', label: 'Residential street', min: .4, max: 1.1, step: .01,
       hint: 'Applies to the OSM residential and living-street classes, not to anything merely signed 25 mph.' },
-    { key: 'designated', label: 'Signed bike route, no infrastructure', min: .25, max: 1.2, step: .01,
-      hint: 'A route number on a sign. Deliberately a small bonus: signage is context, not protection.' },
-    { key: 'strongDesignated', label: 'Signed bike route, when you asked to prefer them', min: .2, max: 1, step: .01,
-      hint: 'Replaces the value above while "Heavily prefer designated bike routes" is on.' },
+    { key: 'strongDesignated', label: 'Signed bike route, no infrastructure', min: .2, max: 1, step: .01,
+      hint: 'A route number on a sign, without physical infrastructure. Always applied to qualifying road; a recorded facility uses its own weight instead.' },
     { key: 'preferredRoute', label: 'Strong Preferred-route pull', min: .05, max: 1, step: .01,
       hint: 'Controls the strongest candidate for routes you mark Preferred. The router also generates moderate and neutral alternatives. Applied once instead of the ordinary facility or designation bonus; it never compounds with a trail or bike-lane weight.' },
     { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
@@ -15767,14 +15782,15 @@ function buildAdvancedRoutingOptions() {
     grid.append(card);
   };
   const updatePreference = scheduleReroute;
-  add('prefDesig', 'Heavily prefer designated bike routes', routing, updatePreference);
+  // The designated-route and residential-street preferences are always on
+  // (2026-08-26 field direction); their switches are gone and the router
+  // applies both bonuses unconditionally.
   // The strongest override in the app, so it lives with the expert switches
   // rather than on the everyday Options page (field direction): it changes
   // route CHOICE only, and a signed road that fails the rules stays red.
   add('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
     + '<span class="rule-caution-copy">(use with caution — not generally recommended)</span>',
   rules, updatePreference);
-  add('prefResidential', 'Prefer residential streets', routing, updatePreference);
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
