@@ -1,12 +1,42 @@
 #!/usr/bin/env node
-// Waiting must be visible. Two rules from the 2026-08-25 field day, where
-// the app repeatedly looked dead while it was working:
-//   1. A map stuck filling tiles shows the "Loading map…" pill after a
-//      continuous stretch, and drops it the moment the map goes idle.
-//   2. A route compute that runs long carries a climbing elapsed marker on
+// Waiting must be visible — and only real waiting. From the 2026-08-25/26
+// field days:
+//   1. While map tiles are actively flowing (a slow fill), the top-edge
+//      loading bar shows; it leaves within a beat of the last arrival.
+//   2. A burst that already finished (a cached pan) and geojson rewrites
+//      (route switches) never summon it — the old indicator showed for
+//      work that was already done and lingered after rendering finished.
+//   3. A route compute that runs long carries a climbing elapsed marker on
 //      the calculation banner, even when the phase message stops changing.
-import { appPage, check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT, appPage, check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
+// The real archive, served correctly but SLOWLY: every response (ranges
+// included) waits before answering, so tile arrivals trickle the way they
+// do on a phone mid-fill.
+function slowArchive(path, delayMs) {
+  const bytes = readFileSync(join(ROOT, path));
+  return (req, res) => {
+    const range = req.headers.range && /^bytes=(\d+)-(\d*)$/.exec(req.headers.range);
+    setTimeout(() => {
+      if (range) {
+        const from = +range[1];
+        const to = Math.min(range[2] ? +range[2] : bytes.length - 1, bytes.length - 1);
+        res.writeHead(206, { 'content-type': 'application/octet-stream',
+          'accept-ranges': 'bytes', 'content-length': to - from + 1,
+          'content-range': `bytes ${from}-${to}/${bytes.length}` });
+        res.end(bytes.subarray(from, to + 1));
+      } else {
+        res.writeHead(200, { 'content-type': 'application/octet-stream',
+          'accept-ranges': 'bytes', 'content-length': bytes.length });
+        res.end(bytes);
+      }
+    }, delayMs);
+  };
+}
+
+const ARCHIVES = ['roads.pmtiles', 'basemap.pmtiles', 'overlays.pmtiles'];
 const site = await serveRepo();
 const browser = await launchBrowser();
 try {
@@ -20,54 +50,44 @@ try {
   }));
 
   const atRest = await page.evaluate(() =>
-    document.getElementById('mapLoadingPill').hidden);
-  check('the pill stays away from a settled map', atRest === true);
+    document.getElementById('mapLoadingBar').hidden);
+  check('the bar stays away from a settled map', atRest === true);
 
-  // Hang every archive the next view needs; the tiles then load forever.
-  for (const file of ['roads.pmtiles', 'basemap.pmtiles', 'overlays.pmtiles']) {
-    site.publish(`/maps/washington/${file}`, () => { /* never responds */ });
+  // A slow fill: archives answer, but every range takes 600 ms.
+  for (const file of ARCHIVES) {
+    site.publish(`/maps/washington/${file}`, slowArchive(`maps/washington/${file}`, 600));
   }
   await page.evaluate(() => {
     map.jumpTo({ center: [-117.426, 47.658], zoom: 14.2 });
   });
   const shown = await page.waitForFunction(
-    () => !document.getElementById('mapLoadingPill').hidden,
-    null, { timeout: 15000 }).then(() => true).catch(() => false);
-  check('a stalled tile fill surfaces the loading pill', shown);
+    () => !document.getElementById('mapLoadingBar').hidden,
+    null, { timeout: 20000 }).then(() => true).catch(() => false);
+  check('a slow tile fill surfaces the loading bar', shown);
 
-  // Let the archives answer again: the view completes and the pill leaves.
-  for (const file of ['roads.pmtiles', 'basemap.pmtiles', 'overlays.pmtiles']) {
-    site.unpublish(`/maps/washington/${file}`);
-  }
-  await page.evaluate(() => {
-    map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 });
-  });
+  // Arrivals finish; the bar must leave promptly.
+  for (const file of ARCHIVES) site.unpublish(`/maps/washington/${file}`);
   const settled = await page.waitForFunction(
-    () => document.getElementById('mapLoadingPill').hidden,
-    null, { timeout: 30000 }).then(() => true).catch(() => false);
-  check('and leaves when the map settles again', settled);
+    () => document.getElementById('mapLoadingBar').hidden,
+    null, { timeout: 45000 }).then(() => true).catch(() => false);
+  check('and leaves once the arrivals stop', settled);
 
-  // The stall above left zombie 'loading' tiles behind (hung fetches never
-  // resolve), which is exactly the chronic state a phone lives in — and in
-  // that state a route switch used to summon the spinner AFTER its own
-  // render, because geojson setData fires the same loading events as tile
-  // fetching. Expire the hide cooldown, then storm a geojson source: the
-  // spinner must not appear.
-  await page.waitForTimeout(11000);
+  // Route switches rewrite geojson sources; those events never count as
+  // tile traffic, so the bar stays away however many land.
   const afterSwitch = await page.evaluate(async () => {
-    map.addSource('__pill-probe', { type: 'geojson',
+    map.addSource('__bar-probe', { type: 'geojson',
       data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: '__pill-probe', type: 'circle', source: '__pill-probe' });
+    map.addLayer({ id: '__bar-probe', type: 'circle', source: '__bar-probe' });
     for (let i = 0; i < 6; i++) {
-      map.getSource('__pill-probe').setData({ type: 'FeatureCollection',
+      map.getSource('__bar-probe').setData({ type: 'FeatureCollection',
         features: [{ type: 'Feature', geometry: { type: 'Point',
-          coordinates: [-122.33 + i * 0.001, 47.6] }, properties: {} }] });
+          coordinates: [-117.42 + i * 0.001, 47.65] }, properties: {} }] });
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    await new Promise((resolve) => setTimeout(resolve, 3400));
-    return document.getElementById('mapLoadingPill').hidden;
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return document.getElementById('mapLoadingBar').hidden;
   });
-  check('a route-switch style geojson update never summons the spinner',
+  check('geojson rewrites (route switches) never summon the bar',
     afterSwitch === true);
 
   const banner = await page.evaluate(() => {

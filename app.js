@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.832';
+const APP_VERSION = '2026-08-26.833';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1375,72 +1375,75 @@ map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails
 // in"). The pill appears only after the renderer has been waiting on tiles
 // for a continuous stretch, and leaves the moment the map goes idle. The
 // launch screen narrates its own phase, so the pill stays out of boot.
-const MAP_LOADING_PILL_DELAY_MS = 2500;
-const MAP_LOADING_PILL_QUIET_MS = 5000;
-// One loading episode gets ONE steady spinner. The app attaches sources in
-// stages and each stage ends in a brief 'idle', so a per-stage show/hide
-// flickered — the field called it a weird dance. Once shown it stays at
-// least MIN_ON; once hidden it stays away for COOLDOWN.
-const MAP_LOADING_PILL_MIN_ON_MS = 1500;
-const MAP_LOADING_PILL_COOLDOWN_MS = 10000;
-let mapLoadingPillTimer = null;
-let mapLoadingPillRecheck = null;
-let mapLoadingPillHideTimer = null;
+// The top-edge loading bar means one thing: MAP TILES ARE ACTIVELY FLOWING
+// — requests going out, tiles arriving. It is deliberately NOT built on
+// areTilesLoaded()/idle: a request that hangs (rather than failing) leaves
+// its tile 'loading' forever, and one such zombie made the old indicator
+// show for work that was already done and linger after rendering finished
+// (field, 2026-08-25/26). Traffic is tracked directly instead: request
+// starts and tile arrivals on vector (archive) sources refresh the flow
+// clock; the bar shows only when the flow has lasted the arm delay and is
+// still fresh, and leaves within a beat of the last arrival. GeoJSON
+// sources rewrite on every route switch and never count. The trade, made
+// knowingly: a world where NOTHING ever arrives shows no bar — silence is
+// indistinguishable from done, and the map's holes say the rest there.
+const MAP_LOADING_BAR_ARM_MS = 2000;
+const MAP_LOADING_BAR_FRESH_MS = 1100;
+const MAP_LOADING_BAR_MIN_ON_MS = 700;
+let mapLoadingBarArmTimer = null;
+let mapLoadingBarRecheck = null;
+let mapLoadingBarHideTimer = null;
+let mapLoadingBarShownAt = 0;
 let mapLoadingLastEventAt = 0;
-let mapLoadingPillShownAt = 0;
-let mapLoadingPillCooldownUntil = 0;
-function armMapLoadingPill() {
+function armMapLoadingBar() {
   mapLoadingLastEventAt = Date.now();
-  if (mapLoadingPillTimer != null || mapLoadingPillRecheck != null) return;
-  if (Date.now() < mapLoadingPillCooldownUntil) return;
-  mapLoadingPillTimer = setTimeout(() => {
-    mapLoadingPillTimer = null;
-    const pill = document.getElementById('mapLoadingPill');
-    if (!pill || !document.documentElement.classList.contains('app-ready')) return;
-    if (map.areTilesLoaded?.() !== false && map.loaded()) return;
-    clearTimeout(mapLoadingPillHideTimer);
-    mapLoadingPillHideTimer = null;
-    pill.hidden = false;
-    mapLoadingPillShownAt = Date.now();
-    // 'idle' is not a reliable exit: a request that hangs (rather than
-    // failing) leaves its tile 'loading' forever, so neither idle nor
-    // areTilesLoaded ever recovers in that world. The pill therefore means
-    // "map data is actively being fetched": it stays while loading events
-    // keep arriving and leaves once the stream has been quiet for a beat.
-    mapLoadingPillRecheck = setInterval(() => {
-      const tilesDone = map.areTilesLoaded?.() !== false && map.loaded();
-      const quiet = Date.now() - mapLoadingLastEventAt > MAP_LOADING_PILL_QUIET_MS;
-      if (tilesDone || quiet) settleMapLoadingPill();
-    }, 1500);
-  }, MAP_LOADING_PILL_DELAY_MS);
+  if (mapLoadingBarArmTimer != null || mapLoadingBarRecheck != null) return;
+  mapLoadingBarArmTimer = setTimeout(() => {
+    mapLoadingBarArmTimer = null;
+    const bar = document.getElementById('mapLoadingBar');
+    if (!bar || !document.documentElement.classList.contains('app-ready')) return;
+    // A burst that already ended (a cached pan) never shows.
+    if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS) return;
+    clearTimeout(mapLoadingBarHideTimer);
+    mapLoadingBarHideTimer = null;
+    bar.hidden = false;
+    mapLoadingBarShownAt = Date.now();
+    mapLoadingBarRecheck = setInterval(() => {
+      if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS) {
+        settleMapLoadingBar();
+      }
+    }, 350);
+  }, MAP_LOADING_BAR_ARM_MS);
 }
-function settleMapLoadingPill() {
-  clearTimeout(mapLoadingPillTimer);
-  mapLoadingPillTimer = null;
-  clearInterval(mapLoadingPillRecheck);
-  mapLoadingPillRecheck = null;
-  const pill = document.getElementById('mapLoadingPill');
-  if (!pill || pill.hidden || mapLoadingPillHideTimer != null) return;
+function settleMapLoadingBar() {
+  clearTimeout(mapLoadingBarArmTimer);
+  mapLoadingBarArmTimer = null;
+  clearInterval(mapLoadingBarRecheck);
+  mapLoadingBarRecheck = null;
+  const bar = document.getElementById('mapLoadingBar');
+  if (!bar || bar.hidden || mapLoadingBarHideTimer != null) return;
   const hide = () => {
-    mapLoadingPillHideTimer = null;
-    pill.hidden = true;
-    mapLoadingPillCooldownUntil = Date.now() + MAP_LOADING_PILL_COOLDOWN_MS;
+    mapLoadingBarHideTimer = null;
+    bar.hidden = true;
   };
-  const shownFor = Date.now() - mapLoadingPillShownAt;
-  if (shownFor >= MAP_LOADING_PILL_MIN_ON_MS) hide();
-  else mapLoadingPillHideTimer = setTimeout(hide, MAP_LOADING_PILL_MIN_ON_MS - shownFor);
+  const shownFor = Date.now() - mapLoadingBarShownAt;
+  if (shownFor >= MAP_LOADING_BAR_MIN_ON_MS) hide();
+  else mapLoadingBarHideTimer = setTimeout(hide, MAP_LOADING_BAR_MIN_ON_MS - shownFor);
 }
-// Only archive (vector tile) sources count as "the map is fetching tiles".
-// GeoJSON sources rewrite on every route switch or marker move and finish
-// within the frame — counting them summoned the spinner right AFTER a route
-// switch had rendered, because a chronically pending tile elsewhere keeps
-// areTilesLoaded false and any armed check then shows (field, 2026-08-25).
-map.on('sourcedataloading', (event) => {
+function vectorSourceOf(event) {
   const source = event?.sourceId ? map.getSource(event.sourceId) : null;
-  if (source?.type !== 'vector') return;
-  armMapLoadingPill();
+  return source?.type === 'vector' ? source : null;
+}
+map.on('sourcedataloading', (event) => {
+  if (vectorSourceOf(event)) armMapLoadingBar();
 });
-map.on('idle', settleMapLoadingPill);
+// Arrivals keep the flow clock fresh through a slow fill, where requests
+// all start up front and only the landings trickle.
+map.on('sourcedata', (event) => {
+  if (event?.sourceDataType && event.sourceDataType !== 'content') return;
+  if (vectorSourceOf(event)) mapLoadingLastEventAt = Date.now();
+});
+map.on('idle', settleMapLoadingBar);
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);
   window.__dismissAppLaunchScreen?.();

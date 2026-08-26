@@ -1275,12 +1275,16 @@ body.route-more-open #topToolbar { z-index: 25; }
    stretch (see armMapLoadingPill). A bare spinner, not a labelled pill: it
    says "still working, not hung" without sitting on the map's content
    (field ask, 2026-08-25). Sits mid-map, below the toast band. */
-/* Docked under the right toolbar column as UI chrome — never over the map
-   content, where it read as a stray location puck beside the real one. */
-#mapLoadingPill { position: absolute; z-index: 18; top: max(calc(env(safe-area-inset-top) + 208px), 208px); right: 22px; width: 22px; height: 22px; box-sizing: border-box; border: 3px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; background: rgba(247,252,255,.9); box-shadow: 0 2px 8px rgba(0,0,0,.14); pointer-events: none; animation: route-options-spin .8s linear infinite; }
-#mapLoadingPill[hidden] { display: none; }
+/* Browser-style refresh indicator: two thin lines sweeping along the very
+   top edge while map tiles are actively arriving, gone within a beat of the
+   last arrival. Never over the map content. */
+#mapLoadingBar { position: fixed; z-index: 60; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 5px; overflow: hidden; pointer-events: none; }
+#mapLoadingBar > span { position: absolute; left: 0; top: 0; height: 2px; width: 30%; border-radius: 2px; background: #0a66c2; animation: map-loading-sweep 1.3s ease-in-out infinite; }
+#mapLoadingBar > span:last-child { top: 3px; animation-delay: .45s; opacity: .55; }
+@keyframes map-loading-sweep { from { transform: translateX(-32vw); } to { transform: translateX(104vw); } }
+#mapLoadingBar[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  #mapLoadingPill { animation: none; }
+  #mapLoadingBar > span { animation: none; width: 100%; opacity: .45; }
 }
 .route-action-toast { position: absolute; z-index: 19; top: max(calc(env(safe-area-inset-top) + 190px), 30vh); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.98); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; pointer-events: none; }
 .route-action-toast[hidden] { display: none; }
