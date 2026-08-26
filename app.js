@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.848';
+const APP_VERSION = '2026-08-26.849';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5348,13 +5348,14 @@ function buildTurnInstructions(m) {
       stateId: exitSeg?.stateId || null,
       text: navCircleText(delta, road, undefined),
       heading: compassWord(along),
+      delta,
     });
   }
   for (const seg of segs) {
     if (seg.hazard) {
       const at = Math.max(0, seg.hazC0 ?? seg.c0);
       instructions.push({ distanceM: cumulative[at] || 0, coordIndex: at,
-        stateId: seg.stateId || null,
+        stateId: seg.stateId || null, kind: 'caution',
         text: 'Caution: possible limited-visibility uphill curve ahead' });
     }
   }
@@ -5569,6 +5570,9 @@ function buildTurnInstructions(m) {
       segmentIndex: destination?.index ?? i + 1,
       stateId: destination?.seg?.stateId || next.stateId || null,
       text,
+      // The signed junction angle the banner's arrow and headline derive
+      // from; a straight crossing is a zero-degree "maneuver" on purpose.
+      delta: straightCrossing ? 0 : effectiveDelta,
       // Report the heading of the road being named, not the bearing through the
       // junction itself. Where the two differ the junction reading is the one
       // that misleads: it describes a connector the rider is passing through
@@ -6138,7 +6142,7 @@ function navigationBannerInfo() {
   const projectedS = remainingNavigationTimeS();
   const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} to go${
     projectedS >= 45 ? ` · ~${fmtDur(projectedS)}` : ''}`;
-  if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
+  if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached', arrow: 'arrive' };
   if (turnNav.newRouteRequestId != null) return {
     headline: 'Finding a new route from your current location…',
     meta: 'Your current route stays active unless a replacement is found',
@@ -6182,16 +6186,61 @@ function navigationBannerInfo() {
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   const remaining = next.distanceM - turnNav.routeM;
+  // The headline is the glance: WHAT the rider does and HOW FAR, in the
+  // largest type on the banner (field direction, 2026-08-26). The complete
+  // sentence — road name, heading, dogleg — moves to the detail line below.
+  const word = next.kind === 'caution' ? 'Caution ahead' : navManeuverWord(next.delta);
   // Passed maneuvers are advanced by updateTurnNavigation after a short GPS
   // jitter buffer. While still inside that buffer, say "Now" rather than
   // inventing a minimum "In 25 feet" distance to a turn already reached.
   return {
-    headline: remaining <= 5
-      ? `Now · ${navInstructionText(next)}`
-      : `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
+    headline: remaining <= 5 ? `Now: ${word}` : `${word} in ${navDistanceText(remaining)}`,
+    detail: navInstructionText(next),
+    arrow: next.kind === 'caution' ? 'caution' : navArrowId(next.delta),
     meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
     kicker: turnNav.followingConnector ? 'To your route' : 'Next maneuver',
   };
+}
+
+// The banner headline's maneuver word and its arrow share navTurnText's
+// thresholds exactly, so the big type never disagrees with the sentence
+// under it: >=150 hairpin, >=55 turn, >=20 bear/slight, else straight.
+function navManeuverWord(delta) {
+  if (!Number.isFinite(delta)) return 'Continue';
+  const abs = Math.abs(delta);
+  if (abs >= 150) return 'Hairpin turn';
+  if (abs >= 55) return delta > 0 ? 'Right turn' : 'Left turn';
+  if (abs >= 20) return delta > 0 ? 'Slight right' : 'Slight left';
+  return 'Straight ahead';
+}
+
+function navArrowId(delta) {
+  if (!Number.isFinite(delta)) return 'straight';
+  const abs = Math.abs(delta);
+  if (abs >= 150) return delta > 0 ? 'hairpin-right' : 'hairpin-left';
+  if (abs >= 55) return delta > 0 ? 'right' : 'left';
+  if (abs >= 20) return delta > 0 ? 'slight-right' : 'slight-left';
+  return 'straight';
+}
+
+// Hand-drawn maneuver arrows: stroke-only, currentColor, one glance shape
+// each. Inline SVG so the banner needs no icon fetch and inherits color.
+const NAV_ARROW_PATHS = Object.freeze({
+  straight: 'M12 20 V7 M6.5 11.5 12 5.5 17.5 11.5',
+  left: 'M18 20 V14 A4 4 0 0 0 14 10 H6.5 M11 5.5 6 10 11 14.5',
+  right: 'M6 20 V14 A4 4 0 0 1 10 10 H17.5 M13 5.5 18 10 13 14.5',
+  'slight-left': 'M15.5 20 V13.5 L8.5 6.5 M8 12.5 V6 H14.5',
+  'slight-right': 'M8.5 20 V13.5 L15.5 6.5 M16 12.5 V6 H9.5',
+  'hairpin-left': 'M16.5 20 V11 A4.5 4.5 0 0 0 7.5 11 V15.5 M3.8 12.2 7.5 16.4 11.2 12.2',
+  'hairpin-right': 'M7.5 20 V11 A4.5 4.5 0 0 1 16.5 11 V15.5 M12.8 12.2 16.5 16.4 20.2 12.2',
+  arrive: 'M8 20 V4.5 M8 5 H17 L14.5 8.25 17 11.5 H8',
+  caution: 'M12 4.5 L20.5 19 H3.5 Z M12 10 V14.5 M12 16.8 V16.9',
+});
+function navArrowSvg(id) {
+  const path = NAV_ARROW_PATHS[id];
+  if (!path) return '';
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
 }
 
 
@@ -6649,6 +6698,20 @@ function refreshNavigationUI() {
   if (offRouteButton) offRouteButton.hidden = !showOffRouteAction;
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
+  const bannerDetail = document.getElementById('navBannerDetail');
+  if (bannerDetail) {
+    bannerDetail.textContent = info.detail || '';
+    bannerDetail.hidden = !info.detail;
+  }
+  const bannerArrow = document.getElementById('navBannerArrow');
+  if (bannerArrow) {
+    const svg = navArrowSvg(info.arrow);
+    if (bannerArrow.dataset.arrow !== (info.arrow || '')) {
+      bannerArrow.innerHTML = svg;
+      bannerArrow.dataset.arrow = info.arrow || '';
+    }
+    bannerArrow.hidden = !svg;
+  }
   if (bannerMeta) bannerMeta.textContent = info.meta;
   updateNavCard();
   syncRoutePaneVisibility();
@@ -11675,12 +11738,17 @@ function candidateRouteDescriptions(all) {
       out.push(`Follows signed bike routes for ${Math.round(f.desigMi)} miles`);
     }
     // Significant flagged or caution mileage is a route-defining fact
-    // (field ask, 2026-08-26): say it ahead of composition when present.
+    // (field ask, 2026-08-26): say it ahead of composition when present —
+    // and a clean or nearly clean route says THAT (same field ask).
     if (f.failMi >= 2 || f.failPct >= 0.08) {
       out.push(`Rides ${Math.max(1, Math.round(f.failMi))} flagged miles your rules reject`);
     }
     if (f.cautionMi >= 3 || f.cautionPct >= 0.15) {
       out.push(`${Math.max(1, Math.round(f.cautionMi))} caution miles need extra care here`);
+    }
+    if (f.failMi === 0) out.push('Every mile of this meets your rules');
+    else if (f.failMi <= 0.5) {
+      out.push('Only one short flagged stretch, otherwise clean');
     }
     if (f.ferry) out.push('Includes a ferry crossing along the way');
     if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
@@ -11698,7 +11766,7 @@ function candidateRouteDescriptions(all) {
     }
     if (f.desigMi >= 3) out.push(`Signed bike routes for ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
     if (f.resPct >= 0.15) out.push('Quiet residential streets shape much of this');
-    if (f.lanePct >= 0.15) out.push('Painted bike lanes for good stretches here');
+    if (f.lanePct >= 0.15) out.push('Bike lanes along good stretches of this');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
       out.push('Among the flatter choices this search found');
     }

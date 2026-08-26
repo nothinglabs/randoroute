@@ -204,8 +204,8 @@ const banner = await page.evaluate(() => {
   turnNav.route = {
     totalM: 500,
     instructions: [
-      { distanceM: 100, text: 'Turn left onto First Avenue' },
-      { distanceM: 150, text: 'Turn right onto Pine Street' },
+      { distanceM: 100, text: 'Turn left onto First Avenue', delta: -90 },
+      { distanceM: 150, text: 'Turn right onto Pine Street', delta: 90 },
     ],
   };
   turnNav.next = 0;
@@ -220,19 +220,23 @@ const banner = await page.evaluate(() => {
   turnNav.next = advancePassedNavigationManeuvers(
     turnNav.route.instructions, turnNav.next, turnNav.routeM);
   out.after = navigationBannerInfo().headline;
+  out.afterDetail = navigationBannerInfo().detail;
   out.index = turnNav.next;
   turnNav.active = false;
   return out;
 });
+// The 2026-08-26 banner redesign: the headline is the glance (direction and
+// distance in the biggest type); the full sentence moved to the detail line.
 check('a maneuver still ahead reports the distance to it',
-  /^In [\d.]+ (feet|miles) · /.test(banner.ahead), JSON.stringify(banner));
+  /^Left turn in [\d.]+ (feet|miles)$/.test(banner.ahead), JSON.stringify(banner));
 check('one the rider has reached says so instead of "In 25 feet"',
-  banner.at.startsWith('Now · '), JSON.stringify(banner));
+  banner.at.startsWith('Now: Left turn'), JSON.stringify(banner));
 check('a few metres of GPS jitter does not drop the active turn',
-  banner.jitter.startsWith('Now · '),
+  banner.jitter.startsWith('Now: Left turn'),
   JSON.stringify(banner));
 check('a completed turn promptly gives way to the following maneuver',
-  banner.index === 1 && /Turn right onto Pine Street/.test(banner.after),
+  banner.index === 1 && /^Right turn in /.test(banner.after)
+    && /Turn right onto Pine Street/.test(banner.afterDetail),
   JSON.stringify(banner));
 
 check('no page errors', errors.length === 0, errors.join(' | '));

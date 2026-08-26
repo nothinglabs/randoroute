@@ -67,7 +67,7 @@ try {
     /screen may sleep/i.test(early)
       // The 8 s window can already have passed on a slow boot; guidance
       // showing instead is the fixed behavior, not a failure.
-      || /^(In |Now|Continue)/.test(early), early);
+      || /^(Left turn|Right turn|Slight |Straight|Hairpin|Continue|Now:|Caution)/.test(early), early);
 
   // Within the notice's hand-back window, guidance owns the banner again.
   await page.waitForFunction(() => {
@@ -79,7 +79,7 @@ try {
     active: turnNav.active,
   }));
   check('and the banner hands back to turn guidance within seconds',
-    later.active && /^(In |Now|Continue|Off route|You have arrived)/.test(later.banner),
+    later.active && /^(Left turn|Right turn|Slight |Straight|Hairpin|Continue|Now:|Caution|Off route|You have arrived)/.test(later.banner),
     JSON.stringify(later));
 } finally {
   await browser.close();

@@ -194,14 +194,16 @@ check('every candidate renders a row', rows.length === state.all,
 check('every row explains why it was built',
   rows.every((r) => r.hasWhy && r.whyLen > 25),
   rows.filter((r) => !r.hasWhy || r.whyLen <= 25).map((r) => r.label).join(', '));
-// The character line (field ask, 2026-08-26): 6-8 words per route, usually
-// unique. "Usually" is the contract - collisions fall through to a shared
-// fallback rather than forcing awkward one-offs - so the floor is 70%.
+// The character line (field ask, 2026-08-26): a short glanceable phrase per
+// route, usually unique. The ceiling moved 8 -> 10 words the same day ("ok
+// to use a few more words"). "Usually" is the contract - collisions fall
+// through to a shared fallback rather than forcing awkward one-offs - so
+// the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-check('every row carries a 6-8 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 8),
+check('every row carries a 6-10 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 10),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 8).join(' | '));
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 10).join(' | '));
 check('character lines are usually unique across the set',
   new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
   `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
