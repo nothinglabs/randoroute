@@ -28,7 +28,10 @@ const PROBES = [
   ['sea-saratoga', -122.480, 48.100, 'sea'],
   ['sea-possession-sound', -122.3446, 47.930, 'sea'],
   ['sea-south-whidbey', -122.500, 47.880, 'sea'],
-  ['land-whidbey-center', -122.520, 48.000, 'land'],
+  // Nudged off [-122.520, 48.000]: the retiled water geometry moved a
+  // water-body label's glyphs onto that exact pixel at z9.2 (same caveat as
+  // Green Lake's floating label). The land was intact; the pixel was text.
+  ['land-whidbey-center', -122.500, 48.020, 'land'],
   // Nudged off [-122.130, 48.070]: at z13.5 that exact point sits on a
   // local-road casing (roads keep serving in the fallback world), whose
   // grey reads water-leaning to the color heuristic. The stand-in was

@@ -1771,8 +1771,8 @@
    "graphRawBytes": 145828781,
    "versions": {
     "graph": "sha-c043f268453b",
-    "roads": "sha-dd29b387e828",
-    "basemap": "sha-77136fe2672a",
+    "roads": "sha-04504493c386",
+    "basemap": "sha-4d65ff4e15ee",
     "overlays": "sha-04c278da789b",
     "regional": "sha-9f06ff02c8f1"
    },
@@ -1827,7 +1827,7 @@
     {
      "dataset": "roads",
      "path": "roads.pmtiles",
-     "bytes": 46615046
+     "bytes": 36643612
     },
     {
      "dataset": "regional",
@@ -1837,7 +1837,7 @@
     {
      "dataset": "basemap",
      "path": "basemap.pmtiles",
-     "bytes": 45854524
+     "bytes": 37987091
     },
     {
      "dataset": "overlays",
@@ -1858,12 +1858,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-washington-d2fe119eb3a03078",
+     "id": "map-washington-63f7c98af005d2d0",
      "kind": "state-map",
      "stateIds": [
       "washington"
      ],
-     "totalBytes": 167468845,
+     "totalBytes": 149629978,
      "files": [
       {
        "dataset": "ferries",
@@ -1888,7 +1888,7 @@
       {
        "dataset": "roads",
        "path": "roads.pmtiles",
-       "bytes": 46615046
+       "bytes": 36643612
       },
       {
        "dataset": "regional",
@@ -1898,7 +1898,7 @@
       {
        "dataset": "basemap",
        "path": "basemap.pmtiles",
-       "bytes": 45854524
+       "bytes": 37987091
       },
       {
        "dataset": "overlays",

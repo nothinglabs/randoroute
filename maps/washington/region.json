@@ -68,8 +68,8 @@
   "graphRawBytes": 145828781,
   "versions": {
     "graph": "sha-c043f268453b",
-    "roads": "sha-dd29b387e828",
-    "basemap": "sha-77136fe2672a",
+    "roads": "sha-04504493c386",
+    "basemap": "sha-4d65ff4e15ee",
     "overlays": "sha-04c278da789b",
     "regional": "sha-9f06ff02c8f1"
   },
