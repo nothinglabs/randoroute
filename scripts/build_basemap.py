@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import subprocess
 import tempfile
@@ -54,6 +55,45 @@ def write_record(handle, feature: dict) -> None:
 
 def is_area(props: dict) -> bool:
     return any(props.get(key) in values for key, values in AREA_FILTERS.items())
+
+
+def _coords_iter(coords):
+    if coords and isinstance(coords[0], (int, float)):
+        yield coords
+    else:
+        for sub in coords or []:
+            yield from _coords_iter(sub)
+
+
+def context_minzoom(layer: str, geometry: dict) -> int:
+    """The zoom where this feature first paints enough pixels to matter.
+
+    A single z7 Puget Sound tile carried 22,860 green polygons and 10,241
+    streams whose painted size was a fraction of a pixel — parse cost with
+    no pixels, and most of the phone's slow square-at-a-time fill in the
+    z5-10 band. A feature now waits until it covers ~3 px² (areas, by
+    bounding box — generous, so things appear a touch early rather than
+    late) or ~4 px of length (waterways). Everything still ships by z13,
+    so street zoom is unchanged; land and coastline never come through
+    this path.
+    """
+    xs, ys = [], []
+    for x, y in _coords_iter(geometry.get("coordinates") or []):
+        xs.append(x)
+        ys.append(y)
+    if not xs:
+        return 4
+    w = max(xs) - min(xs)
+    h = max(ys) - min(ys)
+    coslat = max(0.2, math.cos(math.radians((max(ys) + min(ys)) / 2)))
+    for z in range(4, 14):
+        px_per_deg = 256 * (2 ** z) / 360
+        if layer == "waterway":
+            if math.hypot(w * coslat, h) * px_per_deg >= 4:
+                return z
+        elif (w * coslat) * h * px_per_deg * px_per_deg >= 3:
+            return z
+    return 13
 
 
 def context_kind(props: dict) -> tuple[str | None, str | None]:
@@ -145,6 +185,7 @@ def export_osm_context(source: Path, work: Path) -> dict[str, Path]:
                     compact["n"] = name
                 out_feature = {
                     "type": "Feature",
+                    "tippecanoe": {"minzoom": context_minzoom(layer, geometry)},
                     "properties": compact,
                     "geometry": geometry,
                 }
