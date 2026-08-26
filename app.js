@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.836';
+const APP_VERSION = '2026-08-26.837';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9504,9 +9504,57 @@ function buildRouteMarkerData(sdata) {
     }
   });
   if (failStart >= 0) placeFailMarks(failStart, feats.length - 1, failKind);
+  thinFailMarkers(other.filter((point) => point.properties.slot === -1));
   return { walk: { type: 'FeatureCollection', features: walk },
     other: { type: 'FeatureCollection', features: other } };
 }
+
+// Fail badges are promises, and on a 200-mile corridor the promises stack:
+// dozens of short failed runs each post an always-drawn badge, and overview
+// zoom shows a solid column of them (field, 2026-08-26). Thin by DISTANCE,
+// never by count: each cluster's first badge shows at every zoom (mz 0);
+// followers within 4 km surface from z10, and followers within 1 km from
+// z12 — every visual region keeps at least one badge, and zooming in only
+// ever adds detail. Assigns properties.mz in place; syncRouteMarkerTier
+// swaps the source data as the camera crosses the tier zooms.
+const FAIL_THIN_TIERS = [[4000, 10], [1000, 12]];
+function thinFailMarkers(failPoints) {
+  let prevReveal = 0;
+  for (const [radiusM, revealZoom] of FAIL_THIN_TIERS) {
+    let lastKept = null;
+    for (const point of failPoints) {
+      const mz = point.properties.mz || 0;
+      if (mz > prevReveal) continue;
+      const at = point.geometry.coordinates;
+      // A badge kept by an earlier (coarser) tier is immutable — bumping it
+      // would blank its region at overview — and it resets the spacing
+      // reference for the badges being considered around it.
+      if (mz < prevReveal) { lastKept = at; continue; }
+      if (lastKept && markerSpanM(lastKept, at) < radiusM) {
+        point.properties.mz = revealZoom;
+      } else {
+        lastKept = at;
+      }
+    }
+    prevReveal = revealZoom;
+  }
+  return failPoints;
+}
+
+let routeMarkerFullOther = null;
+let routeMarkerTier = null;
+function routeMarkerTierFor(zoom) { return zoom < 10 ? 0 : zoom < 12 ? 10 : 12; }
+function syncRouteMarkerTier(force = false) {
+  if (!routeMarkerFullOther || !map.getSource?.('route-marker')) return;
+  const tier = routeMarkerTierFor(map.getZoom());
+  if (!force && tier === routeMarkerTier) return;
+  routeMarkerTier = tier;
+  map.getSource('route-marker').setData(tier >= 12 ? routeMarkerFullOther
+    : { type: 'FeatureCollection',
+      features: routeMarkerFullOther.features.filter((point) =>
+        (point.properties.mz || 0) <= tier) });
+}
+map.on('zoomend', () => syncRouteMarkerTier());
 
 // A hill is worth flagging for two different reasons, and one threshold cannot
 // express both: a short wall, and a long grind that never gets steep. Measured
@@ -9889,6 +9937,8 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-unpaved').setData(emptyLine);
     map.getSource('route-designated').setData(emptyLine);
     map.getSource('route-dismount').setData(emptyHighlights);
+    routeMarkerFullOther = null;
+    routeMarkerTier = null;
     map.getSource('route-marker').setData(emptyHighlights);
     map.getSource('route-ferry-marker').setData(emptyHighlights);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
@@ -9906,7 +9956,8 @@ function drawRoute(coords, ferrySegs, segs) {
       map.getSource('route-unpaved').setData(buildRouteUnpavedData(sdata));
       map.getSource('route-designated').setData(buildRouteDesignatedData(sdata));
       map.getSource('route-dismount').setData(routeMarkers.walk);
-      map.getSource('route-marker').setData(routeMarkers.other);
+      routeMarkerFullOther = routeMarkers.other;
+      syncRouteMarkerTier(true);
       map.getSource('route-ferry-marker').setData(ferryMarkerData);
     });
     return;
@@ -9927,6 +9978,9 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-designated', routeLineSource(designatedData));
   map.addSource('route-dismount', { type: 'geojson', data: routeMarkers.walk });
   map.addSource('route-marker', { type: 'geojson', data: routeMarkers.other });
+  routeMarkerFullOther = routeMarkers.other;
+  routeMarkerTier = null;
+  syncRouteMarkerTier(true);
   map.addSource('route-ferry-marker', { type: 'geojson', data: ferryMarkerData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
