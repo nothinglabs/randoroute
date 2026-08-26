@@ -11504,7 +11504,12 @@ function candidateStatLine(c) {
   const ridingM = Math.max(1, c.distM - (c.ferryM || 0));
   const levels = c.levelM || [];
   const pct = (m) => Math.round((m || 0) / ridingM * 100);
-  const pass = pct((levels[1] || 0) + (levels[2] || 0));
+  // Ferry legs ride in levelM as level 2 by design, but these percentages
+  // describe riding distance only — subtract them exactly as the worker's
+  // outcomeSnapshot does, or a long crossing reports "137% pass" (field
+  // screenshot, 2026-08-26).
+  const pass = pct(Math.min(ridingM,
+    Math.max(0, (levels[1] || 0) + (levels[2] || 0) - (c.ferryM || 0))));
   const caution = pct(levels[3] || 0);
   const fail = pct(levels[4] || 0);
   const facility = pct(c.facilityM);

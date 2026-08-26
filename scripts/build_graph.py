@@ -499,7 +499,17 @@ def structure_climb(coords, way_coords, ele_at):
 
 def edge_climb(coords, ele_at, step_m=60.0):
     """(ascent, descent) in meters going a->b, sampled every ~step_m with a
-    2 m deadband to suppress DEM noise on flats."""
+    2 m deadband to suppress DEM noise on flats.
+
+    The samples are median-of-3 smoothed before accumulation. The DEM reads
+    the terrain surface, but a graded road bridges and fills the gullies the
+    terrain has: every ravine a highway crosses on fill read as a dip-and-
+    climb, and over a long corridor those invented climbs summed to
+    thousands of feet a barometer would never record (field, 2026-08-26 —
+    Seattle→Portland options reporting 8,600+ ft). A single-sample dip or
+    spike is at most ~120 m wide at this spacing — the scale of a culvert or
+    creek crossing, not of a real hill — so the median drops it while a
+    sustained grade (three rising samples) passes through untouched."""
     # densify: walk the polyline, sampling elevation every step_m
     samples = [ele_at(coords[0][0], coords[0][1])]
     carry = 0.0
@@ -515,6 +525,10 @@ def edge_climb(coords, ele_at, step_m=60.0):
             d += step_m
         carry = (carry + seg) % step_m
     samples.append(ele_at(coords[-1][0], coords[-1][1]))
+    if len(samples) >= 3:
+        samples = [samples[0]] + [
+            sorted(samples[i - 1:i + 2])[1] for i in range(1, len(samples) - 1)
+        ] + [samples[-1]]
     asc = des = 0.0
     ref = samples[0]
     for e in samples[1:]:

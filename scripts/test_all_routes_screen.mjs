@@ -205,6 +205,15 @@ check('every row carries a 6-8 word character line',
 check('character lines are usually unique across the set',
   new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
   `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
+// Ferry legs sit in levelM as level 2 by design; the stat line must subtract
+// them or a half-ferry trip reports "180% pass" (field: 137%, 2026-08-26).
+const ferryStats = await pg.evaluate(() => candidateStatLine({
+  distM: 10000, ferryM: 5000, timeS: 3600, facilityM: 0,
+  levelM: [0, 0, 9000, 500, 500],
+}));
+check('a ferry-heavy candidate reports riding-only percentages, never over 100',
+  ferryStats.pass === 80 && ferryStats.caution === 10 && ferryStats.fail === 10,
+  JSON.stringify(ferryStats));
 check('every discarded row explains what dropped it',
   rows.filter((r) => !r.offered).every((r) => r.hasStageWhy),
   rows.filter((r) => !r.offered && !r.hasStageWhy).map((r) => r.label).join(', '));
