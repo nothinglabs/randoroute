@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.847';
+const APP_VERSION = '2026-08-26.848';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10285,6 +10285,21 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 18, 12, 20, 16, 26] },
   });
   attachHover(ROUTESEG_SRC, 'route-seg-hit');
+  // Street names stay readable over the route: the safety-colored route
+  // paint appended above the whole style covered the basemap's road-name
+  // labels (field, 2026-08-26). Slide the LINE layers beneath the first
+  // road-label symbol layer, preserving their relative order; markers,
+  // unpaved slats, dismount walkers and the selection highlights stay on
+  // top, where taps and emphasis need them.
+  if (map.getLayer('basemap-major-labels')) {
+    for (const id of ['route-connector-casing', 'route-connector', 'route-shadow',
+      'route-designated-band', 'route-casing', 'route-pass', 'route-bike',
+      'route-bike-trail', 'route-bike-trail-dots', 'route-caution-glow',
+      'route-caution-casing', 'route-caution', 'route-unknown',
+      'route-fail-casing', 'route-fail', 'route-ferry', 'route-progress']) {
+      if (map.getLayer(id)) map.moveLayer(id, 'basemap-major-labels');
+    }
+  }
   applyDisplayModeAll();
 }
 
@@ -11622,6 +11637,8 @@ function candidateRouteDescriptions(all) {
       desigMi: (c.desigM || 0) / 1609.344,
       failMi: (c.failM || 0) / 1609.344,
       failPct: (c.failM || 0) / ridingM,
+      cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
+      cautionPct: ((c.levelM || [])[3] || 0) / ridingM,
       unpavedMi: (c.unpavedM || 0) / 1609.344,
       ferry: (c.ferryM || 0) > 0,
       ascentFt: (c.ascentM || 0) * 3.28084,
@@ -11657,13 +11674,20 @@ function candidateRouteDescriptions(all) {
     if (holds(f, 'desigMi', max, 2)) {
       out.push(`Follows signed bike routes for ${Math.round(f.desigMi)} miles`);
     }
+    // Significant flagged or caution mileage is a route-defining fact
+    // (field ask, 2026-08-26): say it ahead of composition when present.
+    if (f.failMi >= 2 || f.failPct >= 0.08) {
+      out.push(`Rides ${Math.max(1, Math.round(f.failMi))} flagged miles your rules reject`);
+    }
+    if (f.cautionMi >= 3 || f.cautionPct >= 0.15) {
+      out.push(`${Math.max(1, Math.round(f.cautionMi))} caution miles need extra care here`);
+    }
     if (f.ferry) out.push('Includes a ferry crossing along the way');
     if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
     else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary street riding');
     if (f.lanePct >= 0.3) out.push('Bike lanes carry much of this route');
     if (f.resPct >= 0.3) out.push('Mostly quiet residential streets the whole way');
     if (f.unpavedMi >= 0.5) out.push(`About ${Math.round(f.unpavedMi)} unpaved miles; otherwise paved riding`);
-    if (f.failPct >= 0.05) out.push(`Rides ${Math.max(1, Math.round(f.failMi))} flagged miles your rules reject`);
     if (holds(f, 'ftPerMi', max, 20)) {
       out.push(`The hilliest option, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
     }
