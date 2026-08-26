@@ -139,6 +139,10 @@
   // holds the nearest road; without the margin the snap fails point-too-far
   // with no frontier hit, and nothing can widen the corridor.
   const POINT_SNAP_MARGIN_M = 2000;
+  // The router's full A–F offer (MAX_OFFERED in router-worker.js). A
+  // route-options attempt that returns this many options has nothing left
+  // for a wider corridor to add that the rider would see.
+  const FULL_PORTFOLIO_OPTIONS = 6;
 
   function pointInBounds(point, bounds, marginLonDeg = 0, marginLatDeg = 0) {
     return point[0] >= bounds.minLon - marginLonDeg && point[0] <= bounds.maxLon + marginLonDeg
@@ -416,6 +420,19 @@
         const stalled = !!result.ok && !!lastSuccess
           && bestTime >= lastSuccess.bestTime * 0.99
           && optionCount <= lastSuccess.optionCount;
+        // Success-driven expansion must also be NEEDED, not merely
+        // affordable. The frontier lower bounds are straight lines at the
+        // search's most optimistic speed, so on a long bike trip every
+        // portal formally "beats" a 17-hour worst option, and a complete
+        // portfolio still re-ran end to end: profiled 2026-08-26, the
+        // Seattle→Portland widening retry was 111 s of a 232 s compute and
+        // returned a lineup whose best option was 27 minutes SLOWER, which
+        // the stall rule then kept. A first attempt that comes back ok with
+        // the full offer is final. Underfilled portfolios keep the
+        // paid-discovery expansion, and failed attempts still widen until
+        // the network connects.
+        const portfolioFull = !!result.ok && request.type === 'route-options'
+          && optionCount >= FULL_PORTFOLIO_OPTIONS;
         if (result.ok) lastSuccess = { bestTime, optionCount };
         const expansionCandidates = partitionRuntime.selectFrontierExpansion({
           loadedPartitionIds: composite.loadedPartitionIds,
@@ -436,7 +453,7 @@
           selectedBytes += partition.rawBytes;
           if (expansion.length >= 2) break;
         }
-        if (!expansion.length || stalled) {
+        if (!expansion.length || stalled || portfolioFull) {
           if (!result.ok && expansionCandidates.length) {
             throw new RouteCoordinatorError('graph-input-budget',
               'The detailed routing maps required for this trip do not fit this device’s routing-memory limit.',

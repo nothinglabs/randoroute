@@ -63,8 +63,8 @@
     "roads": "sha-2a9ec0dbb5bf",
     "basemap": "sha-24def659819d",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-8ae4d0b5e2d3",
-    "regional": "sha-a6e61cdab1f5"
+    "graph": "sha-6a87400cf1b5",
+    "regional": "sha-fa4293d054c7"
   },
   "attribution": {
     "extractName": "Oregon",

@@ -377,16 +377,31 @@ def build_portals(states: list[BuiltState]) -> list[dict]:
     for coordinate, by_state in sorted(by_coordinate.items()):
         if len(by_state) < 2:
             continue
+        ambiguous = False
         for state_id, nodes in list(by_state.items()):
             if len(nodes) != 1:
                 built = next(item for item in states
                              if item.catalogue_entry["id"] == state_id)
                 canonical = built.canonical_cross_state_node.get(coordinate)
                 if canonical is None:
-                    raise ValueError(
-                        f"ambiguous exact cross-state node {coordinate}: {state_id} has "
-                        f"{len(nodes)} source nodes at the same encoded coordinate")
+                    # Two source nodes share this Float32 coordinate and no
+                    # seam edge proves them equivalent (a 120 m path-snap
+                    # node landing on a junction does this; so would a true
+                    # grade separation). Either way a portal here would
+                    # invent connectivity, so decline this one coordinate --
+                    # loudly, never fatally: the buffered extracts overlap by
+                    # kilometres, so every real crossing carries many other
+                    # shared nodes, and the cross-state corridor tests are
+                    # the net if that assumption ever breaks.
+                    print(f"  WARNING: skipping cross-state portal at {coordinate}: "
+                          f"{state_id} has {len(nodes)} source nodes at the same "
+                          f"encoded coordinate and no seam edge joins them",
+                          flush=True)
+                    ambiguous = True
+                    break
                 by_state[state_id] = {canonical: nodes[canonical]}
+        if ambiguous:
+            continue
         for left_state, right_state in itertools.combinations(sorted(by_state), 2):
             left_placements = next(iter(by_state[left_state].values()))
             right_placements = next(iter(by_state[right_state].values()))

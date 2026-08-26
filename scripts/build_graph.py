@@ -1444,9 +1444,18 @@ def stamp_graph_version(graph_path):
         f.write('\n')
     # The app reads the generated index, not the folders, so a stamp that
     # stopped here would never reach a browser.
-    subprocess.run(['node', os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), 'build_map_registry.mjs')], check=True)
     print(f'  stamped {os.path.basename(folder)} graph version = {version}', flush=True)
+    try:
+        subprocess.run(['node', os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'build_map_registry.mjs')], check=True)
+    except subprocess.CalledProcessError:
+        # A fresh graph always precedes the partition rebuild, and the registry
+        # refuses to publish a partition catalogue built from the old graph --
+        # correctly. The stamp above already landed; finish the build and leave
+        # the registry to the post-partition regeneration.
+        print('  registry regeneration failed (partition catalogue is stale '
+              'mid-rebuild); rerun `npm run maps:registry` after '
+              '`npm run maps:partitions`.', flush=True)
 
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,

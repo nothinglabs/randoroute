@@ -135,16 +135,14 @@ from the committed shared snapshot. It adds the ordinary designated-route bit,
 not a safety exemption, and records only newly set edges in the sidecar so a
 later refresh can remove stale matches without disturbing OSM designations.
 
-Optional patches, each rewriting the graph in place:
+The three `scripts/patch_graph_*.py` scripts are historical: their jobs moved
+into `build_graph.py` itself (`--restrictions` drops WSDOT-prohibited edges,
+`hw in LIMITED` sets the limited-access flag, private ferries are dropped at
+classification), and their layout parser stops at BGR8 — they refuse the BGRC
+graphs this builder writes. Do not run them on a fresh graph.
 
-```bash
-python3 scripts/patch_graph_prohibited.py
-python3 scripts/patch_graph_limited_access.py
-python3 scripts/patch_graph_ferry_access.py
-```
-
-After the graph builder and any optional patch above, regenerate the small
-always-on ferry overlay from the final graph:
+After the graph builder, regenerate the small always-on ferry overlay from the
+final graph:
 
 ```bash
 node scripts/build_ferries.mjs washington

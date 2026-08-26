@@ -156,19 +156,32 @@ try {
   checkEqual('a legal sub-metre source seam selects one canonical node and all its partition placements',
     connectedCross.length, 2);
 
+  // An ambiguous duplicate coordinate must never fail the whole build: for a
+  // true grade separation at one Float32 coordinate there is nothing to fix
+  // in the source, and a portal there would join separated levels. The build
+  // declines that one coordinate with a warning and keeps every other portal
+  // (a real border crossing spans many shared nodes across the buffered
+  // extract overlap, so one declined coordinate cannot sever it alone).
   const ambiguousMaps = join(temp, 'ambiguous-maps');
   execFileSync(python, [fixture, ambiguousMaps, '--ambiguous'], { cwd: ROOT });
   const ambiguousOutput = join(temp, 'ambiguous-out');
+  const ambiguousCatalogue = join(ambiguousOutput, 'catalogue.json');
   const ambiguousRun = spawnSync(python, [builder, '--maps-root', ambiguousMaps,
-    '--output-root', ambiguousOutput, '--catalogue', join(ambiguousOutput, 'catalogue.json'),
+    '--output-root', ambiguousOutput, '--catalogue', ambiguousCatalogue,
     '--state', 'state-a', '--state', 'state-b'], { cwd: ROOT, encoding: 'utf8' });
-  check('an ambiguous duplicate-coordinate cross-state join fails the build',
-    ambiguousRun.status !== 0 && /ambiguous exact cross-state node/.test(ambiguousRun.stderr),
-    `${ambiguousRun.status}: ${ambiguousRun.stderr}`);
-  check('a failed portal build publishes no partial catalogue or partition acquisition',
-    !existsSync(join(ambiguousOutput, 'catalogue.json'))
-      && (!existsSync(ambiguousOutput) || filesBelow(ambiguousOutput).length === 0),
-    existsSync(ambiguousOutput) ? filesBelow(ambiguousOutput).join(', ') : 'no output root');
+  check('an ambiguous duplicate-coordinate join warns and completes the build',
+    ambiguousRun.status === 0
+      && /skipping cross-state portal/.test(ambiguousRun.stdout + ambiguousRun.stderr)
+      && existsSync(ambiguousCatalogue),
+    `${ambiguousRun.status}: ${ambiguousRun.stderr || ambiguousRun.stdout}`);
+  const ambiguousValue = JSON.parse(readFileSync(ambiguousCatalogue, 'utf8'));
+  const ambiguousCross = ambiguousValue.portals.filter((portal) => {
+    const owners = portal.endpoints.map((endpoint) =>
+      ambiguousValue.partitions.find((part) => part.id === endpoint.partitionId).stateId);
+    return owners[0] !== owners[1];
+  });
+  checkEqual('the declined coordinate creates no cross-state portal',
+    ambiguousCross.length, 0);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

@@ -67,11 +67,11 @@
   },
   "graphRawBytes": 145828781,
   "versions": {
-    "graph": "sha-c043f268453b",
+    "graph": "sha-0cc9d29f58ba",
     "roads": "sha-04504493c386",
     "basemap": "sha-4d65ff4e15ee",
     "overlays": "sha-04c278da789b",
-    "regional": "sha-9f06ff02c8f1"
+    "regional": "sha-4733ea11d53e"
   },
   "attribution": {
     "extractName": "Washington",
