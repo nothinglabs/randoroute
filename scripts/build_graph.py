@@ -499,17 +499,22 @@ def structure_climb(coords, way_coords, ele_at):
 
 def edge_climb(coords, ele_at, step_m=60.0):
     """(ascent, descent) in meters going a->b, sampled every ~step_m with a
-    2 m deadband to suppress DEM noise on flats.
+    4 m deadband to suppress DEM noise and cut-and-fill offsets.
 
-    The samples are median-of-3 smoothed before accumulation. The DEM reads
+    The samples are median-of-5 smoothed before accumulation. The DEM reads
     the terrain surface, but a graded road bridges and fills the gullies the
     terrain has: every ravine a highway crosses on fill read as a dip-and-
     climb, and over a long corridor those invented climbs summed to
     thousands of feet a barometer would never record (field, 2026-08-26 —
-    Seattle→Portland options reporting 8,600+ ft). A single-sample dip or
-    spike is at most ~120 m wide at this spacing — the scale of a culvert or
-    creek crossing, not of a real hill — so the median drops it while a
-    sustained grade (three rising samples) passes through untouched."""
+    Seattle→Portland options reporting 8,600+ ft against Cascade's published
+    STP figure of 5,100 ft over 207 mi). The window drops features up to two
+    samples (~120 m) wide — culverts and creek crossings, not hills — and
+    the deadband absorbs the 2-4 m the road's own grading sits above or
+    below the terrain. Calibrated 2026-08-26 against that STP reference:
+    these parameters read our own Seattle→Portland corridor option at
+    ~27 ft/mi vs Cascade's 24.6, while a real 1 km 6% hill still counts 84%
+    of its rise (the crest hysteresis is the loss, by design). Raising
+    either parameter further starts deleting genuine sub-200 m climbs."""
     # densify: walk the polyline, sampling elevation every step_m
     samples = [ele_at(coords[0][0], coords[0][1])]
     carry = 0.0
@@ -525,7 +530,11 @@ def edge_climb(coords, ele_at, step_m=60.0):
             d += step_m
         carry = (carry + seg) % step_m
     samples.append(ele_at(coords[-1][0], coords[-1][1]))
-    if len(samples) >= 3:
+    if len(samples) >= 5:
+        samples = samples[:2] + [
+            sorted(samples[i - 2:i + 3])[2] for i in range(2, len(samples) - 2)
+        ] + samples[-2:]
+    elif len(samples) >= 3:
         samples = [samples[0]] + [
             sorted(samples[i - 1:i + 2])[1] for i in range(1, len(samples) - 1)
         ] + [samples[-1]]
@@ -533,9 +542,9 @@ def edge_climb(coords, ele_at, step_m=60.0):
     ref = samples[0]
     for e in samples[1:]:
         delta = e - ref
-        if delta > 2:
+        if delta > 4:
             asc += delta; ref = e
-        elif delta < -2:
+        elif delta < -4:
             des += -delta; ref = e
     return asc, des
 

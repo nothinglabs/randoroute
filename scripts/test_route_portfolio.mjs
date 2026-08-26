@@ -83,7 +83,10 @@ const scenarios = [
     expectAny: {
       crossBred: true,
       ferries: ['Mukilteo-Clinton Ferry', 'Port Townsend-Coupeville Ferry'],
-      landMinMi: [30, 32],
+      // Leg-1 floor 30 -> 28: the 2026-08-26 elevation smoothing removed
+      // phantom climb from the direct Seattle-Mukilteo approach and the leg
+      // now routes at 28.8-29.0 mi — a more direct line, the same corridor.
+      landMinMi: [28, 32],
       landMaxMi: [42, 45],
     },
     expectEach: [{

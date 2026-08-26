@@ -3328,13 +3328,22 @@ function materialTradeoff(a, b) {
     || Math.abs(a.residentialM - b.residentialM) >= routeScale;
 }
 
+// Distinctness is measured in ROAD, not percentage alone. The old flat 4%
+// floor meant a real road choice on a 200-mile trip (8 mi of different
+// riding) but one street on a 20-mile trip (0.8 mi) — offered options read
+// as the same ride (field, 2026-08-26). Distinct now requires at least
+// ~2 miles of different riding on the shorter route, as a fraction capped
+// at 25% so short urban trips can still offer genuinely close variants.
+// Trips of 50 miles and up keep the old 4% behaviour exactly.
+const TWIN_MIN_DISTINCT_M = 3200;
+function twinOverlapLimit(a, b) {
+  const shorterM = Math.max(1, Math.min(a.distM, b.distM));
+  return 1 - Math.min(0.25, Math.max(0.04, TWIN_MIN_DISTINCT_M / shorterM));
+}
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);
-  // Retain a corridor once at least ~4% of the shorter route changes. That is
-  // enough to represent a real neighborhood/road choice on ordinary trips,
-  // while still collapsing paths that differ by only a block-end connector.
   // Very-close paths survive only when their safety/facility outcome changes.
-  return overlap < 0.96 || (overlap < 0.99 && materialTradeoff(a, b));
+  return overlap < twinOverlapLimit(a, b) || (overlap < 0.99 && materialTradeoff(a, b));
 }
 
 function routeAggression(r) {
