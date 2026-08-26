@@ -214,6 +214,28 @@ const ferryStats = await pg.evaluate(() => candidateStatLine({
 check('a ferry-heavy candidate reports riding-only percentages, never over 100',
   ferryStats.pass === 80 && ferryStats.caution === 10 && ferryStats.fail === 10,
   JSON.stringify(ferryStats));
+// Phone-width geometry: inserting the character line once knocked the stats
+// into the thumbnail grid column, blowing every row wider than the screen
+// (field screenshot, 2026-08-26). Title and stats must share the content
+// column, clear of the sketch, with no horizontal overflow.
+await pg.setViewportSize({ width: 390, height: 840 });
+const phoneLayout = await pg.evaluate(() => {
+  const row = document.querySelector('.all-route-row');
+  const head = row.querySelector('.all-route-head');
+  const stats = row.querySelector('.all-route-stats');
+  const thumb = row.querySelector('.all-route-thumb');
+  const body = document.querySelector('.all-routes-body');
+  return {
+    bodyOverflow: body.scrollWidth - body.clientWidth,
+    headLeft: Math.round(head.getBoundingClientRect().left),
+    statsLeft: Math.round(stats.getBoundingClientRect().left),
+    thumbRight: Math.round(thumb.getBoundingClientRect().right),
+  };
+});
+check('phone width keeps rows column-aligned with no horizontal overflow',
+  phoneLayout.bodyOverflow <= 0 && phoneLayout.headLeft === phoneLayout.statsLeft
+    && phoneLayout.headLeft >= phoneLayout.thumbRight, JSON.stringify(phoneLayout));
+await pg.setViewportSize({ width: 1280, height: 900 });
 check('every discarded row explains what dropped it',
   rows.filter((r) => !r.offered).every((r) => r.hasStageWhy),
   rows.filter((r) => !r.offered && !r.hasStageWhy).map((r) => r.label).join(', '));
