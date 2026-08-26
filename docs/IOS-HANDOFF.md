@@ -238,6 +238,50 @@ same treatment there; the payload is already carrying what it would need.
 
 ---
 
+## 3c. Live Activity: next maneuver on the lock screen
+
+Written 2026-08-26, never yet compiled — this container has no Swift
+toolchain, so the first Xcode build is the first real test. The code shows
+the next maneuver on the lock screen and in the Dynamic Island while
+navigating: a maneuver arrow, "Left turn in 0.2 miles" as the headline, the
+full instruction sentence, and remaining trip distance. It is driven by
+`BridgeViewController`'s existing background location stream (the same one
+that speaks while locked), updates only when the headline text changes
+(the 25-foot distance rounding is the throttle), ends with a two-minute
+"You have arrived" card on arrival, and disappears immediately on Stop.
+The glance line and arrow arrive pre-resolved from the web layer with the
+in-app banner's exact thresholds, so locked and unlocked guidance cannot
+disagree.
+
+**One-time Xcode setup (the extension target cannot be created from a text
+editor):**
+
+1. File → New → Target… → **Widget Extension**. Name it exactly
+   `RandoRouteActivity`, uncheck "Include Configuration App Intent", check
+   "Include Live Activity" if offered. Do NOT activate its scheme when
+   prompted (Cancel is fine — the App scheme builds it).
+2. Delete every Swift file the template generated inside the new
+   `RandoRouteActivity` group (Move to Trash), then File → Add Files… and
+   add the two committed files in `ios/App/RandoRouteActivity/`
+   (`NavigationLiveActivity.swift`, `RandoRouteActivityBundle.swift`) with
+   target membership **RandoRouteActivity only**.
+3. Select `App/NavigationActivityAttributes.swift` and give it target
+   membership in **both** App and RandoRouteActivity (File Inspector →
+   Target Membership). Without this the widget renders nothing: ActivityKit
+   matches activities by type identity.
+4. Set the extension's minimum deployment to **iOS 16.2**.
+5. `App/Info.plist` already carries `NSSupportsLiveActivities` (committed).
+
+**Device checks (all physical-iPhone-only):** the card appears when
+Navigate starts and the phone locks; the arrow and headline track turns and
+match what the unlocked banner showed; the Dynamic Island compact view
+shows arrow + distance; off-route flips the card to the warning state;
+arrival shows the checkered flag and the card dismisses itself within two
+minutes; Stop removes it immediately; and Settings → RandoRoute → Live
+Activities off degrades silently (guidance and voice unaffected).
+`scripts/test_native_lock_screen_activity.mjs` is only a source-text
+tripwire for all of this.
+
 ## 4. Still device-only
 
 Not because they are fine — because reading them without running them tells you

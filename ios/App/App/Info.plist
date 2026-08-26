@@ -28,6 +28,8 @@
 	<string>Your location is used to position you on the map and provide turn-by-turn bicycle navigation, including while the screen is locked.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>While navigation is active, your location is used to keep bicycle directions and voice prompts working when the screen is locked.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

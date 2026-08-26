@@ -8,6 +8,9 @@ import AVFoundation
 import Capacitor
 import CoreLocation
 import UIKit
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 
 @objc(BridgeViewController)
 final class BridgeViewController: CAPBridgeViewController {
@@ -47,6 +50,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private struct RouteInstruction {
         let distanceM: Double
         let text: String
+        // The lock-screen Live Activity's glance line and arrow, resolved by
+        // the web layer with the same thresholds as the in-app banner so the
+        // two can never disagree. Empty on payloads from an older web build.
+        let headline: String
+        let arrow: String
         var approachHandled = false
         var aheadHandled = false
         var immediateHandled = false
@@ -88,6 +96,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var pendingPositionRetry: DispatchWorkItem?
     private var route: [RoutePoint] = []
     private var instructions: [RouteInstruction] = []
+    private var destinationName = "your destination"
+    // Held as Any so the plugin class stays valid below iOS 16.2; only the
+    // @available helpers below ever touch it.
+    private var navigationActivity: Any?
+    private var lastActivityHeadline = ""
     private var nearestRouteSegment: Int?
     private var lastFullRouteSearchAt = Date.distantPast
     private var offRouteFixes = 0
@@ -383,6 +396,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         locationManager.showsBackgroundLocationIndicator = true
         locationManager.startUpdatingLocation()
         refreshStatusUpdateTimer()
+        startNavigationActivity()
         if locationManager.authorizationStatus == .authorizedWhenInUse {
             locationManager.requestAlwaysAuthorization()
         }
@@ -470,8 +484,14 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             guard let distanceM = item["distanceM"] as? Double,
                   let text = item["text"] as? String,
                   !text.isEmpty else { return nil }
-            return RouteInstruction(distanceM: distanceM, text: text)
+            return RouteInstruction(
+                distanceM: distanceM,
+                text: text,
+                headline: item["headline"] as? String ?? "",
+                arrow: item["arrow"] as? String ?? ""
+            )
         }
+        destinationName = call.getString("destinationName") ?? "your destination"
         nearestRouteSegment = nil
         lastFullRouteSearchAt = .distantPast
         offRouteFixes = 0
@@ -495,6 +515,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     private func clearRouteGuidance() {
+        endNavigationActivity(arrived: arrived)
         route.removeAll(keepingCapacity: false)
         instructions.removeAll(keepingCapacity: false)
         nearestRouteSegment = nil
@@ -507,6 +528,109 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         latestLocation = nil
         routeTotalTimeS = 0
         arrived = false
+    }
+
+    // ------------------------------------------------ lock-screen activity
+    // The Live Activity mirrors the in-app banner while the phone is locked:
+    // maneuver arrow, "Left turn in 0.2 miles", the full sentence, and the
+    // remaining trip distance. It is driven from the same background
+    // location stream as spoken guidance — no push tokens — and an update is
+    // sent only when the headline text actually changes, so the 25-foot
+    // rounding built into the distance text is also the update throttle.
+    // Requires the RandoRouteActivity widget extension target; see
+    // docs/IOS-HANDOFF.md §Live Activity for the one-time Xcode setup.
+    private func startNavigationActivity() {
+        guard #available(iOS 16.2, *) else { return }
+        endNavigationActivity(arrived: false)
+        guard tracking, route.count >= 2,
+              ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let state = NavigationActivityAttributes.ContentState(
+            headline: "Starting navigation",
+            detail: "To \(destinationName)",
+            arrowSymbol: "location.fill",
+            meta: "",
+            arrived: false
+        )
+        navigationActivity = try? Activity.request(
+            attributes: NavigationActivityAttributes(destinationName: destinationName),
+            content: ActivityContent(state: state, staleDate: nil)
+        )
+        lastActivityHeadline = state.headline
+    }
+
+    private func syncNavigationActivity(nearestRouteM: Double) {
+        guard #available(iOS 16.2, *),
+              let activity = navigationActivity as? Activity<NavigationActivityAttributes>
+        else { return }
+        let remainingTripM = max(0, (route.last?.distanceM ?? 0) - nearestRouteM)
+        let meta = "\(activityDistanceText(remainingTripM)) to \(destinationName)"
+        let state: NavigationActivityAttributes.ContentState
+        if offRoute {
+            state = .init(headline: "Off route",
+                          detail: "Guidance resumes when you rejoin the route",
+                          arrowSymbol: "exclamationmark.triangle.fill",
+                          meta: meta, arrived: false)
+        } else if let next = instructions.first {
+            let remainingToTurnM = max(0, next.distanceM - nearestRouteM)
+            let word = next.headline.isEmpty ? "Continue" : next.headline
+            let headline = remainingToTurnM <= 5
+                ? "Now: \(word)"
+                : "\(word) in \(activityDistanceText(remainingToTurnM))"
+            state = .init(headline: headline, detail: next.text,
+                          arrowSymbol: activityArrowSymbol(next.arrow),
+                          meta: meta, arrived: false)
+        } else {
+            state = .init(headline: "Continue to your destination",
+                          detail: "To \(destinationName)",
+                          arrowSymbol: "arrow.up", meta: meta, arrived: false)
+        }
+        guard state.headline != lastActivityHeadline else { return }
+        lastActivityHeadline = state.headline
+        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+    }
+
+    private func endNavigationActivity(arrived: Bool) {
+        guard #available(iOS 16.2, *),
+              let activity = navigationActivity as? Activity<NavigationActivityAttributes>
+        else {
+            navigationActivity = nil
+            return
+        }
+        navigationActivity = nil
+        lastActivityHeadline = ""
+        let finalState = NavigationActivityAttributes.ContentState(
+            headline: arrived ? "You have arrived" : "Navigation ended",
+            detail: arrived ? destinationName : "",
+            arrowSymbol: arrived ? "flag.checkered" : "location.slash",
+            meta: "", arrived: arrived)
+        Task {
+            await activity.end(ActivityContent(state: finalState, staleDate: nil),
+                               dismissalPolicy: arrived ? .after(.now + 120) : .immediate)
+        }
+    }
+
+    private func activityArrowSymbol(_ arrow: String) -> String {
+        switch arrow {
+        case "left": return "arrow.turn.up.left"
+        case "right": return "arrow.turn.up.right"
+        case "slight-left": return "arrow.up.left"
+        case "slight-right": return "arrow.up.right"
+        case "hairpin-left": return "arrow.uturn.left"
+        case "hairpin-right": return "arrow.uturn.right"
+        case "caution": return "exclamationmark.triangle.fill"
+        case "arrive": return "flag.checkered"
+        default: return "arrow.up"
+        }
+    }
+
+    /// navDistanceText's port: feet under a tenth of a mile (rounded to 25),
+    /// miles at one decimal above.
+    private func activityDistanceText(_ meters: Double) -> String {
+        if meters < 160.934 {
+            let feet = max(25, Int((meters * 3.28084 / 25).rounded()) * 25)
+            return "\(feet) feet"
+        }
+        return String(format: "%.1f miles", meters / 1609.34)
     }
 
     // A distance-filtered CLLocationManager may deliver few fixes while a
@@ -534,6 +658,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
               let location = latestLocation,
               let nearest = nearestRoutePosition(to: location) else { return }
         discardPassedInstructions(at: nearest.routeM)
+        syncNavigationActivity(nearestRouteM: nearest.routeM)
         let background = UIApplication.shared.applicationState != .active
         let remainingToTurnM = instructions.first.map {
             $0.distanceM - nearest.routeM
@@ -644,6 +769,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRouteCandidateStartedAt = nil
 
         discardPassedInstructions(at: nearest.routeM)
+        syncNavigationActivity(nearestRouteM: nearest.routeM)
         guard !instructions.isEmpty else {
             if background, !arrived,
                let destination = route.last,

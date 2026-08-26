@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.849';
+const APP_VERSION = '2026-08-26.850';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7319,7 +7319,13 @@ function nativeNavigationRoutePayload() {
     instructions: route.instructions.map((instruction) => ({
       distanceM: Number(instruction.distanceM) || 0,
       text: navInstructionText(instruction),
+      // The lock-screen Live Activity's glance line and arrow, resolved here
+      // with the exact banner thresholds so locked and unlocked guidance can
+      // never disagree.
+      headline: instruction.kind === 'caution' ? 'Caution ahead' : navManeuverWord(instruction.delta),
+      arrow: instruction.kind === 'caution' ? 'caution' : navArrowId(instruction.delta),
     })),
+    destinationName: (routing.endName && routing.endName.trim()) || 'your destination',
     // The web layer speaks these itself, on the same GPS path as the turn
     // prompts. They are sent so the native guide can too, for the case the web
     // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
