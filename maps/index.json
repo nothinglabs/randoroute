@@ -63,8 +63,8 @@
    },
    "graphRawBytes": 91457588,
    "versions": {
-    "roads": "sha-2bd3d7bced02",
-    "basemap": "sha-4c10a8764862",
+    "roads": "sha-2a9ec0dbb5bf",
+    "basemap": "sha-24def659819d",
     "overlays": "sha-0a5d52347b4c",
     "graph": "sha-8ae4d0b5e2d3",
     "regional": "sha-a6e61cdab1f5"
@@ -130,7 +130,7 @@
     {
      "dataset": "roads",
      "path": "roads.pmtiles",
-     "bytes": 32400799
+     "bytes": 26029913
     },
     {
      "dataset": "regional",
@@ -140,7 +140,7 @@
     {
      "dataset": "basemap",
      "path": "basemap.pmtiles",
-     "bytes": 41344874
+     "bytes": 35895104
     },
     {
      "dataset": "overlays",
@@ -161,12 +161,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-oregon-95b403931d57b16e",
+     "id": "map-oregon-43e6f97f3fe4ee73",
      "kind": "state-map",
      "stateIds": [
       "oregon"
      ],
-     "totalBytes": 127075914,
+     "totalBytes": 115255258,
      "files": [
       {
        "dataset": "ferries",
@@ -186,7 +186,7 @@
       {
        "dataset": "roads",
        "path": "roads.pmtiles",
-       "bytes": 32400799
+       "bytes": 26029913
       },
       {
        "dataset": "regional",
@@ -196,7 +196,7 @@
       {
        "dataset": "basemap",
        "path": "basemap.pmtiles",
-       "bytes": 41344874
+       "bytes": 35895104
       },
       {
        "dataset": "overlays",

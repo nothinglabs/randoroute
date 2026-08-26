@@ -60,8 +60,8 @@
   },
   "graphRawBytes": 91457588,
   "versions": {
-    "roads": "sha-2bd3d7bced02",
-    "basemap": "sha-4c10a8764862",
+    "roads": "sha-2a9ec0dbb5bf",
+    "basemap": "sha-24def659819d",
     "overlays": "sha-0a5d52347b4c",
     "graph": "sha-8ae4d0b5e2d3",
     "regional": "sha-a6e61cdab1f5"
