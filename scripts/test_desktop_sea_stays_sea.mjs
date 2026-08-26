@@ -12,7 +12,10 @@ const PROBES = [
   ['sea-admiralty-mid', -122.760, 48.100, 'sea'],
   ['sea-saratoga', -122.480, 48.100, 'sea'],
   ['sea-possession-sound', -122.3446, 47.930, 'sea'],
-  ['land-whidbey-center', -122.520, 48.000, 'land'],
+  // Nudged off [-122.520, 48.000]: the retiled water geometry moved a
+  // water-body label's glyphs onto that exact pixel at z9.2 (same finding as
+  // test_whidbey_stays_an_island). The land is intact; the pixel was text.
+  ['land-whidbey-center', -122.500, 48.020, 'land'],
   ['land-wedge-amboy', -122.250, 45.950, 'land'],
   ['lake-green-seattle', -122.339, 47.680, 'lake'],
 ];

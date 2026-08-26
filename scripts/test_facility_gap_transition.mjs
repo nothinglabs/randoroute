@@ -17,7 +17,7 @@ check('reported bridge transition is found', reported.edge >= 0 && reported.metr
 const facts = worker.run(`(() => {
   const i = ${reported.edge};
   return {
-    gap: isFacilityGapEdge(i), flags: eFlags[i], facility: eFacility[i],
+    gap: isFacilityGapEdge(i), flags: eFlags[i], facility: edgeFacilityBest(i),
     roadClass: eClass[i], lenM: eLen[i],
     distancePenalty: facilityGapDistancePenaltyS(i),
     entryPenalty: facilityGapEntryPenaltyS(-1, i),
@@ -26,6 +26,8 @@ const facts = worker.run(`(() => {
 })()`);
 checkEqual('reported transition is classified', facts.gap, true);
 checkEqual('classification requires a one-way road edge', !!(facts.flags & 16), true);
+// eFacility nibble-packs both directions (a two-way sharrow reads 0x11), so
+// assert the unpacked rung, never the raw byte.
 checkEqual('classification requires a sharrow, not a bike lane', facts.facility, 1);
 check('classification is limited to larger roads', facts.roadClass >= 4);
 check('classification is limited to a short connector', facts.lenM <= 40);
@@ -38,16 +40,21 @@ checkEqual('a contiguous run does not repeat the entry penalty', facts.continued
 // one-way shared lane, then used NE 40th/Cowlitz to regain protected space.
 // Pin the major-road fragment too: the original implementation marked a
 // nearby 16 m piece but assigned no cost to the route the rider actually saw.
+// 2026-08 OSM re-tagged the crossing fragment itself as a shared lane, so
+// anchor on the classified conflict as mapped today: the gap-marked fragment
+// spanning the major road, whatever its exact facility rung (as long as it is
+// not a real bike lane, which would be wrongly swept in).
 const roadwayCrossing = nearestEdge(worker, -122.31824, 47.65554,
-  'eFacility[i] === 0 && eClass[i] >= 6 && eLen[i] < 6');
+  'isFacilityGapEdge(i) && eClass[i] >= 6 && eLen[i] <= 16');
 const crossingFacts = worker.run(`(() => {
   const i = ${roadwayCrossing.edge};
-  return { gap: isFacilityGapEdge(i), facility: eFacility[i], roadClass: eClass[i], lenM: eLen[i] };
+  return { gap: isFacilityGapEdge(i), facility: edgeFacilityBest(i), roadClass: eClass[i], lenM: eLen[i] };
 })()`);
 check('the bridge traffic-crossing fragment is found',
   roadwayCrossing.edge >= 0 && roadwayCrossing.metres < 5, JSON.stringify(roadwayCrossing));
 checkEqual('the complete bridge traffic conflict is classified', crossingFacts.gap, true);
-checkEqual('the crossing fragment is not mistaken for a bike lane', crossingFacts.facility, 0);
+check('the crossing fragment is not mistaken for a bike lane', crossingFacts.facility <= 1,
+  JSON.stringify(crossingFacts));
 check('the extended movement crosses a major road', crossingFacts.roadClass >= 6,
   JSON.stringify(crossingFacts));
 
@@ -69,7 +76,7 @@ const coverage = worker.run(`(() => {
     if (!isFacilityGapEdge(i)) continue;
     gaps++; gapM += eLen[i];
     if (eFlags[i] & 8) infraMisclassified++;
-    if (eFacility[i] >= 2) bikeLaneMisclassified++;
+    if (edgeFacilityBest(i) >= 2) bikeLaneMisclassified++;
   }
   return { edges: E, gaps, gapM, infraMisclassified, bikeLaneMisclassified };
 })()`);

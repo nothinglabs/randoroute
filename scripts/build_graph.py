@@ -1435,10 +1435,20 @@ def stamp_graph_version(graph_path):
         raise SystemExit(f'{config_path} not found; a graph belongs in maps/<state>/')
     digest = hashlib.sha256(open(graph_path, 'rb').read()).hexdigest()[:12]
     version = f'sha-{digest}'
+    # The decompressed size gates monolith-vs-partition routing on device and
+    # must match what the partition catalogue records as sourceRawBytes.
+    raw_bytes = 0
+    with gzip.open(graph_path, 'rb') as f:
+        while True:
+            chunk = f.read(1 << 24)
+            if not chunk:
+                break
+            raw_bytes += len(chunk)
     with open(config_path) as f:
         config = json.load(f)
     config.setdefault('versions', {})['graph'] = version
     config.setdefault('datasets', {})['graph'] = True
+    config['graphRawBytes'] = raw_bytes
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
         f.write('\n')

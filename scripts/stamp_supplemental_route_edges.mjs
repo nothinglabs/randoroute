@@ -108,6 +108,9 @@ writeFileSync(sidecarPath, zlib.gzipSync(Buffer.from(`${JSON.stringify({
 
 const config = JSON.parse(readFileSync(regionPath, 'utf8'));
 config.versions.graph = `sha-${hash}`;
+// The decompressed size gates monolith-vs-partition routing on device; keep
+// it true to the graph this stamp describes.
+config.graphRawBytes = graphBuffer.byteLength;
 writeFileSync(regionPath, `${JSON.stringify(config, null, 1)}\n`);
 console.log(`${region}: ${routes.length} reviewed routes matched ${result.matchedEdges.toLocaleString()} edges`);
 console.log(`  ${result.addedEdges.length.toLocaleString()} newly designated beyond OSM`);
