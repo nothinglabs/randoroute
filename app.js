@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.852';
+const APP_VERSION = '2026-08-26.853';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -17504,6 +17504,19 @@ function syncSettingsPaneHeight() {
 }
 
 /* ------------------------------------------------------------- boot */
+// iOS may silently evict Cache API storage under disk pressure, and every
+// evicted archive degrades the map to per-range network reads plus a
+// multi-minute self-heal re-download — on a weak connection that reads as
+// "blocked on map load" with the maps supposedly installed (field,
+// 2026-08-26). Persistent storage exempts the origin from automatic
+// eviction; installed PWAs get it granted without a prompt. Best effort:
+// a refusal changes nothing about how the app behaves today.
+if (navigator.storage?.persist) {
+  Promise.resolve(navigator.storage.persisted?.() ?? false)
+    .then((persisted) => (persisted ? true : navigator.storage.persist()))
+    .then((granted) => console.debug(`[storage] persistent: ${granted}`))
+    .catch(() => { /* best effort */ });
+}
 // State polygons for tap resolution, from the shell cache — see
 // loadNationalBoundaries for why a tap must not wait for search or Maps.
 loadNationalBoundaries().catch(() => { /* bbox fallback remains */ });

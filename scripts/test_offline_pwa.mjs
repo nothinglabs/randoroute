@@ -32,6 +32,20 @@ page.setDefaultTimeout(180000);
 const pageErrors = [];
 page.on('pageerror', (error) => pageErrors.push(error.message));
 
+// Record whether boot asks the browser to persist storage. Without that
+// request iOS may silently evict the cached archives under disk pressure,
+// and an "installed" map degrades to per-range network reads plus a
+// multi-minute archive re-download (field, 2026-08-26). The recorder wraps
+// the real call so the assertion is on the app's behaviour, not on whether
+// this particular browser chooses to grant it.
+await page.addInitScript(() => {
+  window.__persistCalls = 0;
+  const storage = navigator.storage;
+  if (!storage?.persist) return;
+  const real = storage.persist.bind(storage);
+  storage.persist = () => { window.__persistCalls += 1; return real(); };
+});
+
 const SEATTLE = [-122.3321, 47.6062];
 const BELLEVUE = [-122.2015, 47.6101];
 let pass = 0;
@@ -59,6 +73,14 @@ await page.waitForFunction(async () => {
     keys.includes(`/maps/washington/${file}`)
       && keys.includes(`/maps/washington/.stamp/${file}`));
 }, null, { timeout: 900000 });
+// The install caches files one at a time, archives before the graph, so the
+// archive wait above can resolve while the 59 MB graph is still downloading.
+// Pulling the plug then fails the whole install and no worker ever activates.
+// A fresh context has no previous worker, so `active` here means this
+// install — every declared file included — finished.
+await page.waitForFunction(async () =>
+  !!(await navigator.serviceWorker.getRegistration())?.active,
+null, { timeout: 300000 });
 
 const cached = await page.evaluate(async () => {
   const cache = await caches.open('data-offline-map-v9');
@@ -100,6 +122,15 @@ check('the generated state index is cached with the shell, not with the data',
 check('the national orientation layer is resident in the shell cache',
   shellCached.some((path) => path.endsWith('/maps/national-states.geojson')),
   shellCached.filter((path) => path.includes('national-states')).join(' ') || 'missing');
+
+// Already-persisted counts too: the app skips the redundant request then,
+// which is the same promise kept by another road.
+const persist = await page.evaluate(async () => ({
+  requested: window.__persistCalls > 0,
+  granted: await (navigator.storage?.persisted?.() ?? false),
+}));
+check('boot asks the browser to persist the offline storage',
+  persist.requested || persist.granted, JSON.stringify(persist));
 
 /* ------------------------------------------------------- pull the plug */
 site.goOffline();
