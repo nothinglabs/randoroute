@@ -212,14 +212,21 @@ const descToast = await page.evaluate(() => {
   activateRouteOption(option);
   const nav = { visible: host.classList.contains('show') };
   turnNav.active = false;
+  // A tap on the pill dismisses it instantly so the covered card is usable.
+  activateRouteOption(option);
+  const beforeTap = host.classList.contains('show');
+  host.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 4, clientY: 4 }));
+  const tap = { beforeTap, afterTap: host.classList.contains('show') };
   routing.allCandidates = [];
-  return { shown, nav, expected: candidateRouteDescriptions([candidate]).get('p-toast') };
+  return { shown, nav, tap, expected: candidateRouteDescriptions([candidate]).get('p-toast') };
 });
 check('choosing a route shows its description pill',
   descToast.shown.visible && descToast.shown.text.length > 10
     && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
 check('the pill stays out of turn navigation', !descToast.nav.visible,
   JSON.stringify(descToast.nav));
+check('a tap dismisses the pill instantly',
+  descToast.tap.beforeTap && !descToast.tap.afterTap, JSON.stringify(descToast.tap));
 
 /* ------- everyday and advanced routing options live in deliberate homes */
 const ui = await page.evaluate(() => {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.871';
+const APP_VERSION = '2026-08-26.872';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12080,13 +12080,19 @@ function clearCandidatePortfolio() {
   syncConsideredRoutesButton();
 }
 
-/* The plain-language line for the chosen route, as a fading pill anchored
-   under the Choose Route bar (field ask, 2026-08-27). The text is the same
-   description the All Routes screen shows for this candidate — one source,
-   so the pill can never disagree with the list. Skipped during turn
-   navigation, where a floating line under the chooser would sit over the
-   guidance banner. */
+/* The plain-language line for the chosen route, as a fading pill laid OVER
+   the start/destination card for a few seconds (field ask, 2026-08-27 —
+   moved up from the chooser, where it covered the route stats). The text
+   is the same description the All Routes screen shows for this candidate —
+   one source, so the pill can never disagree with the list. Skipped during
+   turn navigation. A tap on the pill dismisses it instantly and replays
+   the tap on whatever it covered, so reaching for the start field works on
+   the first touch. */
 let routeDescToastTimer = null;
+function hideRouteDescriptionToast() {
+  clearTimeout(routeDescToastTimer);
+  document.getElementById('routeDescToast')?.classList.remove('show');
+}
 function showRouteDescriptionToast(option) {
   const host = document.getElementById('routeDescToast');
   if (!host || turnNav.active) return;
@@ -12094,17 +12100,31 @@ function showRouteDescriptionToast(option) {
   const all = routing.allCandidates || [];
   const text = profileId && all.length
     ? candidateRouteDescriptions(all).get(profileId) : null;
-  if (!text) { host.classList.remove('show'); return; }
-  const anchor = document.getElementById('routeOptions')?.getBoundingClientRect();
+  if (!text) { hideRouteDescriptionToast(); return; }
+  const anchor = document.getElementById('routeBar')?.getBoundingClientRect();
   if (anchor && anchor.width) {
-    host.style.top = `${Math.round(anchor.bottom + 8)}px`;
+    host.style.top = `${Math.round(anchor.top)}px`;
     host.style.left = `${Math.round(anchor.left)}px`;
+    host.style.width = `${Math.round(anchor.width)}px`;
+    host.style.minHeight = `${Math.round(anchor.height)}px`;
   }
   host.textContent = text;
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
-  routeDescToastTimer = setTimeout(() => host.classList.remove('show'), 4000);
+  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 4000);
 }
+document.getElementById('routeDescToast')?.addEventListener('click', (event) => {
+  const host = event.currentTarget;
+  hideRouteDescriptionToast();
+  // Replay the tap on what the pill covered: hide, hit-test, forward.
+  host.style.pointerEvents = 'none';
+  const below = document.elementFromPoint(event.clientX, event.clientY);
+  host.style.pointerEvents = '';
+  if (below && below !== host) {
+    below.click();
+    if (typeof below.focus === 'function') below.focus();
+  }
+});
 
 function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
