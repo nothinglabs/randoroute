@@ -93,8 +93,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .speed-limit-metric > b { overflow: hidden; color: #294655; font: 800 13px/1.1 system-ui; text-overflow: ellipsis; white-space: nowrap; }
 .speed-limit-metric > span { color: #607482; font: 650 9px/1.15 system-ui; letter-spacing: .025em; text-transform: uppercase; white-space: nowrap; }
 .speed-limit-metric > span strong { color: #294655; font-weight: 900; }
-.speed-shoulder-note { grid-column: 1 / -1; margin: 1px 0 0; padding-top: 7px; border-top: 1px solid #e1e9ed; color: #536974; font: 650 13px/1.35 system-ui; }
-.speed-shoulder-note b { color: #294655; font-weight: 800; }
 .speed-profile-preview { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2px; width: 100%; min-height: 86px; height: 100%; margin: 0; padding: 0 4px 3px; overflow: hidden; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; cursor: pointer; }
 .speed-profile-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .speed-profile-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }

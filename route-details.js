@@ -1034,7 +1034,6 @@ const summaryCard = document.getElementById('routeSummaryCard');
 const summarySub = document.getElementById('summarySub');
 const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
-const speedShoulderNote = document.getElementById('speedShoulderNote');
 const elevationSteepWarning = document.getElementById('elevationSteepWarning');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
@@ -1340,8 +1339,6 @@ if (!hasRoute) {
     document.getElementById('unpavedWarningText').textContent =
       `This route has ${fmtMiles(routeStats.unpavedM)} mi of unpaved surface.`;
   }
-  speedShoulderNote.hidden = false;
-  speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
   speedProfile.hidden = !speedSegments.length;

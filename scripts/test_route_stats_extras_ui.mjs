@@ -81,7 +81,7 @@ const rendered = await page.evaluate(() => ({
   speed: document.getElementById('summaryRoadSpeed').textContent.replace(/\s+/g, ' ').trim(),
   speedLabels: [...document.querySelectorAll('#summaryRoadSpeed .speed-limit-metric > span')]
     .map((label) => ({ text: label.textContent.trim(), bold: label.querySelector('strong')?.textContent })),
-  shoulder: document.getElementById('speedShoulderNote').textContent.replace(/\s+/g, ' ').trim(),
+  shoulderNoteGone: !document.getElementById('speedShoulderNote'),
   dismountConcern: document.getElementById('concern-dismount')?.textContent.replace(/\s+/g, ' ') || '',
 }));
 check('Stats summarizes ferry distance in miles', /Ferry 1\.0 mi/.test(rendered.summary), rendered.summary);
@@ -136,7 +136,10 @@ check('the threshold speeds are bold inside their labels',
     { text: 'At least 45 mph', bold: '45 mph' },
     { text: 'At least 55 mph', bold: '55 mph' },
   ]), JSON.stringify(rendered.speedLabels));
-check('the shoulder statistic omits “confirmed”', !/confirmed/i.test(rendered.shoulder), rendered.shoulder);
+// The bottom shoulder summary line is gone (field ask, 2026-08-27): the
+// Speed Limits card already carries the road-speed mileage.
+check('the shoulder summary line is retired', rendered.shoulderNoteGone,
+  'speedShoulderNote element still present');
 // A share alone does not tell a rider what they are in for: 10% caution is a
 // pleasant surprise on a four-mile ride and thirteen miles of it on a century.
 // Every mix row carries both, including Unpaved.
