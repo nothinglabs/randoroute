@@ -160,40 +160,23 @@ check('Reset all defaults restores route options as well as weights without clos
     && optionState.settingsStillOpen && optionState.weightsStillOpen,
   JSON.stringify(optionState));
 
-// The "Avoid uncontrolled crossings" switch (field, 2026-08-27: the charge
-// ships OFF) is pure UI over the three crossUncontrolled*Sec weights: on
-// writes 20/45/90 into the sliders, off zeroes them, and dragging a slider
-// flips the switch's reading.
-const crossToggle = await pg.evaluate(() => {
-  const keys = ['crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec',
-    'crossUncontrolledLowStressSec'];
-  const input = document.getElementById('r-avoidUncontrolledCrossings');
-  const before = keys.map((k) => routingWeights[k]);
-  input.click();
-  const onValues = keys.map((k) => routingWeights[k]);
-  const sliderShows = Number(document.querySelector(
-    'input[data-weight="crossUncontrolledBalancedSec"]')?.value);
-  const marked = input.closest('.weights-route-option').classList.contains('changed');
-  input.click();
-  const offValues = keys.map((k) => routingWeights[k]);
-  const unmarked = !input.closest('.weights-route-option').classList.contains('changed');
-  const slider = document.querySelector('input[data-weight="crossUncontrolledBalancedSec"]');
-  slider.value = '30';
-  slider.dispatchEvent(new Event('input', { bubbles: true }));
-  const readsOnAfterDrag = document.getElementById('r-avoidUncontrolledCrossings').checked;
-  document.getElementById('resetRoutingWeights').click();
-  const afterReset = keys.map((k) => routingWeights[k]);
-  return { before, onValues, sliderShows, marked, offValues, unmarked,
-    readsOnAfterDrag, afterReset };
-});
-check('the avoid-uncontrolled-crossings switch defaults off and drives its weights',
-  crossToggle.before.every((v) => v === 0)
-    && JSON.stringify(crossToggle.onValues) === '[20,45,90]'
-    && crossToggle.sliderShows === 45 && crossToggle.marked
-    && crossToggle.offValues.every((v) => v === 0) && crossToggle.unmarked
-    && crossToggle.readsOnAfterDrag
-    && crossToggle.afterReset.every((v) => v === 0),
-  JSON.stringify(crossToggle));
+// The uncontrolled-crossing charge ships always-on (rider-settled,
+// 2026-08-27): the on/off switch is gone, and the three sliders carry the
+// settled defaults with 0 as the per-mode escape.
+const crossDefaults = await pg.evaluate(() => ({
+  switchGone: !document.getElementById('r-avoidUncontrolledCrossings'),
+  values: ['crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec',
+    'crossUncontrolledLowStressSec'].map((k) => DEFAULT_ROUTING_WEIGHTS[k]),
+  sliderShows: Number(document.querySelector(
+    'input[data-weight="crossUncontrolledBalancedSec"]')?.value),
+  residentialDefault: DEFAULT_ROUTING_WEIGHTS.residential,
+}));
+check('the crossing charge is always-on at the settled defaults, switch gone',
+  crossDefaults.switchGone
+    && JSON.stringify(crossDefaults.values) === '[10,20,20]'
+    && crossDefaults.sliderShows === 20
+    && crossDefaults.residentialDefault === 0.6,
+  JSON.stringify(crossDefaults));
 
 const sharedWeightBounds = await pg.evaluate(() => {
   const decode = (value) => {

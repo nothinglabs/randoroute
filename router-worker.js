@@ -1394,7 +1394,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // Field-tuned 2026-08-26 (rider's settled values became the defaults). The
   // old `designated` off-state weight is gone: the signed-route preference is
   // always on, so strongDesignated is THE designation bonus.
-  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.5,
+  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.6,
   facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
   facilitySeparated: 0.32, facilityPath: 0.25,
   mtbTrail: 6,
@@ -1438,16 +1438,14 @@ const DEFAULT_WEIGHTS = Object.freeze({
   climbKneePct: 4, climbCostAt10Pct: 7.84,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
-  // Crossing a failing road with no signal or all-way stop (seconds, once per
-  // crossing; see uncontrolledCrossPenaltyS). OFF by default: the rider rode
-  // the first day of it and judged the reroutes not worth it (field,
-  // 2026-08-27), so the charge is opt-in via the app's "Avoid uncontrolled
-  // crossings" switch, which sends 20/45/90 — sized so a Seattle-grid signal
-  // two blocks over (~50 s round trip) is worth reaching in balanced mode and
-  // nearly twice that far in low-stress. Controlled crossings are free by
-  // design at any setting — the point is the difference, not a crossing tax.
-  crossUncontrolledDirectSec: 0, crossUncontrolledBalancedSec: 0,
-  crossUncontrolledLowStressSec: 0,
+  // Crossing a failing road with no signal or all-way stop (seconds, once
+  // per crossing; see uncontrolledCrossPenaltyS). Rider-settled after two
+  // field days of tuning (2026-08-27): strong enough to prefer a signal a
+  // block or so away, never enough to buy a bridge detour. Controlled
+  // crossings are free by design at any setting — the point is the
+  // difference, not a crossing tax. A slider at 0 silences that mode.
+  crossUncontrolledDirectSec: 10, crossUncontrolledBalancedSec: 20,
+  crossUncontrolledLowStressSec: 20,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 // One place decides how a mode names its weights. Everything that used to spell

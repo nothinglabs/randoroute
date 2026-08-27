@@ -27,8 +27,12 @@ const appSrc = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 function lift(marker, endMarker) {
   const i = appSrc.indexOf(marker);
   assert.notStrictEqual(i, -1, `app.js no longer contains ${marker}`);
-  const end = appSrc.indexOf(endMarker, i) + endMarker.length;
-  return appSrc.slice(i, end);
+  // An unmatched END marker must fail too: it used to slice to -1+length,
+  // which is an empty string, and the ZERO_ROUTING_WEIGHTS lift ran that way
+  // silently for six releases after the set gained a new last line.
+  const e = appSrc.indexOf(endMarker, i);
+  assert.notStrictEqual(e, -1, `app.js no longer ends ${marker} with ${endMarker}`);
+  return appSrc.slice(i, e + endMarker.length);
 }
 // The editor labels name the state's agencies through Region, the way every
 // other rider-facing string does. Lifting the constants into a bare sandbox
@@ -40,7 +44,7 @@ vm.runInContext([
   lift('const DEFAULT_ROUTING_WEIGHTS', '\n});'),
   lift('const RENAMED_ROUTING_WEIGHTS', '\n});'),
   lift('const ROUTING_WEIGHT_BOUNDS', '\n});'),
-  lift('const ZERO_ROUTING_WEIGHTS', '\n  \'turnDirectSec\', \'turnBalancedSec\', \'turnLowStressSec\', \'useMeasuredTraffic\']);'),
+  lift('const ZERO_ROUTING_WEIGHTS', '\'crossUncontrolledLowStressSec\']);'),
   lift('function validatedRoutingWeight', '\n}'),
   lift('function validRoutingWeights', '\n}'),
   lift('const WEIGHT_MODES', '\n];'),
@@ -125,11 +129,9 @@ for (const [title, blurb, items] of groups) {
         `${item.label}: default ${key}=${d} is outside the slider range ${item.min}-${item.max}`);
       // A default that IS an endpoint leaves the slider able to move only one
       // way, so the preference the control exists to strengthen cannot be
-      // strengthened. useMeasuredTraffic is a deliberate two-state control,
-      // and the crossUncontrolled triple deliberately defaults to its 0
-      // floor: the charge ships OFF (field, 2026-08-27) and the "Avoid
-      // uncontrolled crossings" switch is what raises it.
-      if (key === 'useMeasuredTraffic' || key.startsWith('crossUncontrolled')) continue;
+      // strengthened. useMeasuredTraffic is the one deliberate two-state
+      // control here; everything else is a continuous preference.
+      if (key === 'useMeasuredTraffic') continue;
       assert.ok(d > item.min && d < item.max,
         `${item.label}: default ${key}=${d} sits at an end of its ${item.min}-${item.max}`
         + ' range, so the slider can only move one way');

@@ -72,43 +72,38 @@ const probe = worker.run(`(() => {
     }
     return null;
   };
-  const defaults = { un: at(un, 'balanced'), con: at(con, 'balanced') };
-  // The rider's opt-in strengths, as the "Avoid uncontrolled crossings"
-  // switch sends them (the charge ships OFF by default — 2026-08-27 field
-  // direction after a day riding the always-on version).
-  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
-    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
+  // Rider-settled defaults (2026-08-27): the charge ships ON at 10/20/20.
   const on = { un: at(un, 'balanced'), unLow: at(un, 'low'),
-    con: at(con, 'balanced'), along: alongAt() };
+    unDirect: at(un, 'direct'), con: at(con, 'balanced'), along: alongAt() };
+  // A slider at 0 silences its mode — the expert escape that replaced the
+  // on/off switch.
+  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledBalancedSec: 0 });
+  const zeroed = at(un, 'balanced');
   useWeights(DEFAULT_WEIGHTS);
-  return { un, con, defaults, on,
-    restored: activeWeights.crossUncontrolledBalancedSec === 0 };
+  return { un, con, on, zeroed,
+    restored: activeWeights.crossUncontrolledBalancedSec === 20 };
 })()`);
 check('the shipped graph holds both specimen shapes',
   !!(probe.un && probe.con), JSON.stringify({ un: probe.un, con: probe.con }));
-check('by default the charge is off and routing is untouched',
-  probe.defaults.un === 0 && probe.defaults.con === 0 && probe.restored,
-  JSON.stringify(probe.defaults));
-check('switched on, an uncontrolled crossing of a failing road is charged',
-  probe.on.un === 45, `balanced charge ${probe.on.un}`);
-check('low-stress diverts further than balanced for the same crossing',
-  probe.on.unLow === 90, `low-stress charge ${probe.on.unLow}`);
+check('an uncontrolled crossing of a failing road is charged by default',
+  probe.on.un === 20 && probe.on.unLow === 20 && probe.on.unDirect === 10
+    && probe.restored, JSON.stringify(probe.on));
 check('the same crossing at a controlled node stays free',
   probe.on.con === 0, `controlled charge ${probe.on.con}`);
 check('arriving on the failing road itself is never charged here',
   probe.on.along === 0, `along charge ${probe.on.along}`);
+check('zeroing a slider silences that mode', probe.zeroed === 0,
+  `charge after zeroing ${probe.zeroed}`);
 
 // The Stone Way inversion (field, 2026-08-27): a street whose bike lane
 // serves one direction FAILS ridden the other way, so its own edges put
 // every mid-block node at fail-touch 2. Riding ALONG it must charge
 // nothing — the failing road through the node is the road being ridden,
 // not one being crossed. Found by name in the real graph, driven through
-// the real charge with the opt-in weights active.
+// the real charge under the shipped defaults.
 const stoneWay = worker.run(`(() => {
   const rules = ${rules};
   const touch = nodeFailTouch(rules);
-  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
-    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
   let checked = 0, charged = 0;
   for (let i = 0; i < E && checked < 200; i++) {
     if (edgeName(i) !== 'Stone Way North') continue;
@@ -123,20 +118,17 @@ const stoneWay = worker.run(`(() => {
       }
     }
   }
-  useWeights(DEFAULT_WEIGHTS);
   return { checked, charged };
 })()`);
 check('riding along a directionally-failing street is never charged as crossing it',
   stoneWay.checked > 10 && stoneWay.charged === 0, JSON.stringify(stoneWay));
 
-// And the trip that surfaced it: North 34th to Stone Way at 50th, with the
-// charge ON, must suggest a route that stays on the bike-lane corridor
+// And the trip that surfaced the Stone Way inversion: under the shipped
+// defaults (charge on), the suggestion must stay on the bike-lane corridor
 // rather than fleeing to a parallel street with failing pavement.
 const trip = worker.post({ type: 'route-options', id: 991,
   start: [-122.3402, 47.6497], end: [-122.3399, 47.6648],
-  rules: appDefaultRules(),
-  weights: { crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
-    crossUncontrolledLowStressSec: 90 } });
+  rules: appDefaultRules() });
 const suggested = trip?.options?.[0];
 const facilityShare = suggested
   ? (suggested.facilityM || 0) / Math.max(1, suggested.distM) : 0;
@@ -154,8 +146,6 @@ check('the Stone Way trip stays on the bike lane with the charge on',
 //      at the node (the divided-arterial median hop) still charges.
 const shapes = worker.run(`(() => {
   const rules = ${rules};
-  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
-    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
   const touch = nodeFailTouch(rules);
   const foreign = (u, a, b) => {
     const ok = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== eName[a] && nm !== eName[b];
@@ -179,25 +169,25 @@ const shapes = worker.run(`(() => {
   }
   const charge = (s) => s
     ? uncontrolledCrossPenaltyS(s.eIn, s.u, s.eOut, rules, 'balanced') : null;
-  const result = { intoOwn: found.intoOwn && { name: found.intoOwn.name,
+  return { intoOwn: found.intoOwn && { name: found.intoOwn.name,
       charged: charge(found.intoOwn) },
     medianHop: found.medianHop && { name: found.medianHop.name,
       charged: charge(found.medianHop) } };
-  useWeights(DEFAULT_WEIGHTS);
-  return result;
 })()`);
 check('riding into a failing stretch of your own street never charges',
   !!shapes.intoOwn && shapes.intoOwn.charged === 0, JSON.stringify(shapes));
 check('a same-named median hop with a foreign failing road still charges',
-  !!shapes.medianHop && shapes.medianHop.charged === 45, JSON.stringify(shapes));
+  !!shapes.medianHop && shapes.medianHop.charged === 20, JSON.stringify(shapes));
 
-// The 🐞 debug markers (field, 2026-08-27): with the charge fully OFF
-// (default zero weights), a debug-flagged request still returns each
-// option's uncontrolled failing crossings — detection is independent of
-// the avoidance switch, which is the whole point of the marker.
+// The 🐞 debug markers (field, 2026-08-27): even with every crossing
+// weight zeroed, a debug-flagged request still returns each option's
+// uncontrolled failing crossings — detection is independent of the charge,
+// which is the whole point of the marker.
 const debugTrip = worker.post({ type: 'route-options', id: 992,
   start: [-122.3300, 47.6800], end: [-122.3500, 47.6510],
-  rules: appDefaultRules(), debugUncontrolledCrossings: true });
+  rules: appDefaultRules(), debugUncontrolledCrossings: true,
+  weights: { crossUncontrolledDirectSec: 0, crossUncontrolledBalancedSec: 0,
+    crossUncontrolledLowStressSec: 0 } });
 const lists = (debugTrip?.options || []).map((o) => o.uncontrolledCrossings);
 check('debug crossings ride on every option with the charge off',
   lists.length > 0 && lists.every(Array.isArray)

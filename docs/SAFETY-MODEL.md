@@ -1363,13 +1363,16 @@ needed.
 
 Crossing a failing road at a **controlled** node costs nothing beyond the
 crossed pavement itself. At an **uncontrolled** node the route pays
-`crossUncontrolled*Sec` once per crossing — **off by default** (all three
-weights default 0; the rider rode the first day of 20/45/90 defaults and
-judged the reroutes not worth it, 2026-08-27). The "Avoid uncontrolled
-crossings" switch beside the advanced weights turns it on by writing
-20/45/90 by mode — sized so the router diverts up to about that many
-seconds of detour to cross at a signal, and no further; the switch reads
-back as on whenever any of the three sliders is nonzero. Two
+`crossUncontrolled*Sec` once per crossing — **on by default at 10 s direct,
+20 s balanced, 20 s low-stress**. The numbers are rider-settled after two
+field days (2026-08-27): the first shipped defaults of 20/45/90 bought
+bridge-length detours (a 90-second charge funds a 90-second detour, and a
+pocket walled in by failing arterials will spend it), so the charge went
+dark for a day behind a switch while the detector's false positives were
+found and fixed, then came back always-on at these values — strong enough
+to prefer a signal a block or so away, never enough to buy a bridge.
+There is no on/off switch; setting a mode's slider to 0 silences that
+mode. Two
 shapes are recognised: entering the failing road's own short pavement from a
 passing edge, and passing straight through a shared junction node that two or
 more failing edges touch. Both additionally require a **named failing road

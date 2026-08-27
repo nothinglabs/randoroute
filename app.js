@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.863';
+const APP_VERSION = '2026-08-26.864';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -162,7 +162,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // Field-tuned 2026-08-26: the rider's settled values applied as shipped
   // defaults. The `designated` off-state weight is gone — the signed-route
   // preference is always on, so strongDesignated is THE designation bonus.
-  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.5,
+  strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.6,
   facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
   facilitySeparated: 0.32, facilityPath: 0.25,
   mtbTrail: 6,
@@ -186,12 +186,9 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   // Crossing a failing road with no signal or all-way stop, once per
-  // crossing. OFF by default — the rider judged the first day's reroutes
-  // not worth it (field, 2026-08-27) — so routing is untouched until the
-  // "Avoid uncontrolled crossings" switch (or a slider) turns it on; the
-  // switch writes CROSS_UNCONTROLLED_ON_WEIGHTS into these.
-  crossUncontrolledDirectSec: 0, crossUncontrolledBalancedSec: 0,
-  crossUncontrolledLowStressSec: 0,
+  // crossing. Rider-settled 2026-08-27; rationale with the worker's copy.
+  crossUncontrolledDirectSec: 10, crossUncontrolledBalancedSec: 20,
+  crossUncontrolledLowStressSec: 20,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 // Weights the rider tuned under the old names, so a saved custom set is
@@ -218,7 +215,7 @@ const RENAMED_ROUTING_WEIGHTS = Object.freeze({
   wideRoadLow: 'wideRoadLowStress', stressedRoadLow: 'stressedRoadLowStress',
   climbLowSecPerM: 'climbLowStressSecPerM', turnLowSec: 'turnLowStressSec',
 });
-const ROUTING_WEIGHTS_VERSION = 9;
+const ROUTING_WEIGHTS_VERSION = 10;
 // Most weights share the legacy sanity range below. Values with narrower,
 // semantic domains live here so malformed saved/shared input cannot turn a
 // blend into extrapolation (and, for traffic, a negative edge cost).
@@ -971,15 +968,16 @@ if (savedWeightsVersion < 7) {
       }
     }
   }
-  if (savedWeightsVersion < 9) {
-    // Version 9 turns the uncontrolled-crossing charge OFF by default (the
-    // rider's call after a day riding it). Devices that ran .856/.857 saved
-    // the then-defaults 20/45/90; snap exactly those back to 0 so routing
-    // reverts, while a hand-tuned value survives as a deliberate opt-in.
-    const priorCrossDefaults = { crossUncontrolledDirectSec: 20,
-      crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 };
-    for (const key of Object.keys(priorCrossDefaults)) {
-      if (savedRoutingWeights[key] == null || savedRoutingWeights[key] === priorCrossDefaults[key]) {
+  if (savedWeightsVersion < 10) {
+    // Version 10 settles the uncontrolled-crossing charge at 10/20/20 and
+    // residential at 0.6 (rider-tuned, 2026-08-27). Every value a previous
+    // DEFAULT could have written — the off-era 0, the switch-era 20/45/90 —
+    // snaps to the settled default; a hand-tuned value survives.
+    const priors = { crossUncontrolledDirectSec: [0, 20],
+      crossUncontrolledBalancedSec: [0, 45], crossUncontrolledLowStressSec: [0, 90],
+      residential: [0.5] };
+    for (const [key, values] of Object.entries(priors)) {
+      if (savedRoutingWeights[key] == null || values.includes(savedRoutingWeights[key])) {
         savedRoutingWeights[key] = DEFAULT_ROUTING_WEIGHTS[key];
       }
     }
@@ -15881,7 +15879,7 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'freeway', label: 'Freeway, absolute last resort', min: 5, max: 100, step: 1,
       hint: 'Only reachable where a freeway shoulder is legally open to bikes and nothing else connects.' },
     { base: 'crossUncontrolled', suffix: 'Sec', label: 'Cross a failing road with no signal (seconds)', min: 0, max: 120, step: 5,
-      hint: 'Charged once per crossing of a failing road at a junction with no traffic signal or all-way stop. Crossing at a signal is free, so this is how far out of the way the router will go to reach one. 0 (the default) turns it off; the "Avoid uncontrolled crossings" switch under Route options sets all three at once. Needs a map pack built with control data; older packs skip the charge.' },
+      hint: 'Charged once per crossing of a failing road at a junction with no traffic signal or all-way stop. Crossing at a signal is free, so this is how far out of the way the router will go to reach one. 0 turns it off.' },
   ]],
   ['Bike infrastructure and quiet streets', 'Bonuses, not rules. Below 1 makes a mile feel shorter to the router, so it will ride further to use one.', [
     // The floors sit below the defaults on purpose. When the shipped default IS
@@ -15908,7 +15906,7 @@ const ROUTING_WEIGHT_GROUPS = [
   ]],
   ['Traffic volume', 'Priced from a measured vehicle count where the state or county has one, the FHWA functional class where it does not, and the OSM road tag only as a last resort. Thresholds match the "Road is busier than" setting in Limits. Any recorded bike facility clears these entirely.', [
     { key: 'useMeasuredTraffic', label: 'Trust measurements over OSM road tags', min: 0, max: 1, step: .05,
-      hint: 'Set to 0 to price traffic purely from OSM tags, exactly as the app did before the statewide counts were imported. 1 lets a real count or official class override the tag. Useful for telling whether the data is helping you.' },
+      hint: 'Set to 0 to price traffic purely from OSM tags; 1 lets a measured count or official class override the tag.' },
     { base: 'busyLight', label: 'Light traffic', min: 1, max: 3, step: .01,
       hint: 'Over 2,000 vehicles/day, or an FHWA major collector.' },
     { base: 'busyMedium', label: 'Medium traffic', min: 1, max: 4, step: .01,
@@ -16137,32 +16135,6 @@ function buildAdvancedRoutingOptions() {
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
-  // Uncontrolled-crossing avoidance is OFF by default (2026-08-27 field
-  // direction: the reroutes were not worth it). The switch is pure UI over
-  // the three crossUncontrolled*Sec weights — on writes the recommended
-  // strengths, off zeroes them, and any nonzero slider reads back as on —
-  // so shared routes, presets and the reset button need no extra state.
-  const crossKeys = ['crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec',
-    'crossUncontrolledLowStressSec'];
-  const crossOn = { crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
-    crossUncontrolledLowStressSec: 90 };
-  const crossCard = document.createElement('label');
-  crossCard.className = 'weights-route-option';
-  crossCard.htmlFor = 'r-avoidUncontrolledCrossings';
-  crossCard.innerHTML = `<input type="checkbox" id="r-avoidUncontrolledCrossings">
-    <span class="weights-route-option-label">Avoid uncontrolled crossings of roads that fail your rules</span>
-    <small class="weights-route-option-state">Changed</small>`;
-  const crossInput = crossCard.querySelector('input');
-  crossInput.addEventListener('change', () => {
-    for (const key of crossKeys) routingWeights[key] = crossInput.checked ? crossOn[key] : 0;
-    syncAvoidUncontrolledCard();
-    buildRoutingWeightsEditor();
-    suppressRoadInfo(900);
-    scheduleReroute();
-    syncWeightsTunedBadge();
-  });
-  grid.append(crossCard);
-  syncAvoidUncontrolledCard();
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');
@@ -16197,20 +16169,6 @@ function buildAdvancedRoutingOptions() {
   });
   bugPaint();
   debugGrid.append(bugCard);
-}
-// The switch's reading is derived from the weights, so a rider dragging one
-// of the three sliders flips it too. Looked up by id because the options
-// grid is rebuilt wholesale (reset button, boot); the one delegated listener
-// below survives those rebuilds.
-function syncAvoidUncontrolledCard() {
-  const input = document.getElementById('r-avoidUncontrolledCrossings');
-  if (!input) return;
-  const on = ['crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec',
-    'crossUncontrolledLowStressSec'].some((key) => routingWeights[key] > 0);
-  input.checked = on;
-  const card = input.closest('.weights-route-option');
-  card.classList.toggle('changed', on);
-  card.querySelector('.weights-route-option-state').hidden = !on;
 }
 
 function activeRoutingPreset() {
@@ -18235,13 +18193,6 @@ function prepareRoutingWeightsPane() {
   syncSettingsNavigationLock();
   syncConsideredRoutesButton();
 }
-// One registration, outside the rebuilds: dragging a crossUncontrolled*
-// slider must flip the derived "Avoid uncontrolled crossings" switch.
-document.getElementById('routingWeightsEditor')?.addEventListener('input', (event) => {
-  if (event.target?.dataset?.weight?.startsWith('crossUncontrolled')) {
-    syncAvoidUncontrolledCard();
-  }
-});
 
 function openRoutingWeights() {
   if (!uiPrefs.showAdvancedTools) return false;
