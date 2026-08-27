@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.877';
+const APP_VERSION = '2026-08-26.878';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1334,15 +1334,19 @@ function syncMapBootStatus() {
   const chip = document.getElementById('mapBootStatus');
   if (!chip) return;
   let text = '';
-  if (mapRestore.active.size) {
+  const downloading = mapRestore.active.size > 0;
+  if (downloading) {
     const names = [...mapRestore.active.entries()].map(([path, bytes]) => {
       const file = (path.split('/').pop() || '').replace('.pmtiles', '');
       return bytes ? `${file} (${Math.max(1, Math.round(bytes / 1048576))} MB)` : file;
     });
-    text = `Restoring map data — ${names.join(', ')}…`;
+    text = `Downloading map data — ${names.join(', ')}…`;
   } else if (mapRestore.bootCovered) {
     text = 'Preparing the map…';
   }
+  // Downloading is the state the rider must never mistake: the chip goes
+  // solid blue and says the word. "Preparing" stays quiet and neutral.
+  chip.classList.toggle('downloading', downloading);
   chip.textContent = text;
   chip.hidden = !text;
 }
@@ -1396,16 +1400,26 @@ const map = new maplibregl.Map({
   // tiles are small enough for the default cache policy to handle.
 });
 {
+  // The cover exists for the BLANK boot window only. It cannot wait on
+  // 'idle' alone: a statewide zoom requests tiles beyond the installed
+  // archives' coverage, the tile-retry hook keeps those failures alive,
+  // and 'idle' never comes — the chip sat over a fully rendered map
+  // (field, 2026-08-27). Ten seconds is longer than any healthy first
+  // render; past it, a still-blank map is its own evidence.
+  const clearBootCover = () => {
+    mapRestore.bootCovered = false;
+    syncMapBootStatus();
+  };
   const bootCoverTimer = setTimeout(() => {
     if (!map.loaded() || !map.areTilesLoaded()) {
       mapRestore.bootCovered = true;
       syncMapBootStatus();
+      setTimeout(clearBootCover, 10000);
     }
   }, 2500);
   map.once('idle', () => {
     clearTimeout(bootCoverTimer);
-    mapRestore.bootCovered = false;
-    syncMapBootStatus();
+    clearBootCover();
   });
 }
 
