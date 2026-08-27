@@ -205,7 +205,13 @@ const descToast = await page.evaluate(() => {
     failM: 0, optimization: { label: 'Route A', profileId: 'p-toast' } };
   const host = document.getElementById('routeDescToast');
   activateRouteOption(option);
-  const shown = { text: host.textContent, visible: host.classList.contains('show') };
+  // Centered over the start/destination card, not pinned to its top
+  // (field ask, 2026-08-27).
+  const bar = document.getElementById('routeBar').getBoundingClientRect();
+  const pill = host.getBoundingClientRect();
+  const centered = Math.abs((pill.top + pill.height / 2) - (bar.top + bar.height / 2)) <= 8;
+  const shown = { text: host.textContent, visible: host.classList.contains('show'),
+    centered, pillTop: pill.top, barTop: bar.top };
   // Turn navigation must stay pill-free: the space belongs to guidance.
   host.classList.remove('show');
   turnNav.active = true;
@@ -223,6 +229,8 @@ const descToast = await page.evaluate(() => {
 check('choosing a route shows its description pill',
   descToast.shown.visible && descToast.shown.text.length > 10
     && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
+check('the pill centers over the start/destination card',
+  descToast.shown.centered, JSON.stringify(descToast.shown));
 check('the pill stays out of turn navigation', !descToast.nav.visible,
   JSON.stringify(descToast.nav));
 check('a tap dismisses the pill instantly',

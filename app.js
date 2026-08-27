@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.881';
+const APP_VERSION = '2026-08-26.882';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11982,7 +11982,7 @@ function candidateRouteDescriptions(all) {
     // 2026-08-27: a 50%-caution ride to Port Townsend read as "Quickest,
     // mostly ordinary roads" with the caution nowhere in the line).
     if (f.cautionPct >= 0.3) {
-      out.push(`${Math.round(f.cautionPct * 100)}% needs extra care — ${miles(Math.round(f.cautionMi))} of caution riding`);
+      out.push(`${Math.round(f.cautionPct * 100)}% of this needs caution — ${miles(Math.round(f.cautionMi))}`);
     }
     if (c.timeS === minTime && facts.length > 1) {
       if (f.trailPct >= 0.45) out.push(`Quickest here, still ${miles(Math.round(f.trailMi))} on trails`);
@@ -11999,7 +11999,7 @@ function candidateRouteDescriptions(all) {
       out.push('Shortest distance, though not the quickest option');
     }
     if (f.failMi === 0 && facts.some((g) => g.failMi > 0.1)) {
-      out.push('No flagged road at all on this one');
+      out.push('No roads fail your rules on this one');
     }
     if (holds(f, 'desigMi', max, 2)) {
       out.push(`Follows signed bike routes for ${miles(Math.round(f.desigMi))}`);
@@ -12013,7 +12013,7 @@ function candidateRouteDescriptions(all) {
     }
     if (f.cautionMi >= 3 || f.cautionPct >= 0.15) {
       const n = Math.max(1, Math.round(f.cautionMi));
-      out.push(`${n} caution mile${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} extra care here`);
+      out.push(`${miles(n)} of this need${n === 1 ? 's' : ''} caution`);
     }
     if (f.failMi === 0) out.push('Every mile of this meets your rules');
     else if (f.failMi <= 0.5) {
@@ -12053,17 +12053,20 @@ function candidateRouteDescriptions(all) {
     out.push('An ordinary mixed-street route between your points');
     return out;
   };
-  // Field ask, 2026-08-27 ("use another 4 words"): a composition line may
-  // carry one extra fact as a short tail, budget 6-17 words in total. Safety
-  // lines stand alone — a failure share is not softened with scenery — and a
-  // tail never repeats the base line's own topic.
+  // Field ask, 2026-08-27 ("use another 4 words"): a line may carry extra
+  // facts as short tails, as many as fit a 6-17 word budget in order of
+  // importance. A tail never repeats the base line's own topic.
   const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
   const withDetail = (f, line) => {
     // A safety line is not softened with scenery, but it may carry the
     // OTHER safety fact: "Rides 7 miles that fail your rules" on a
-    // 54%-caution route said nothing about the caution, and "No flagged
-    // road at all" hid 4 caution miles (field, 2026-08-27). Each tail
-    // guards against restating the line's own topic.
+    // 54%-caution route said nothing about the caution, and a no-fail line
+    // hid 4 caution miles (field, 2026-08-27). Each tail guards against
+    // restating the line's own topic. The caution tail reads "though",
+    // because it most often rides a clean-sounding base line and a plain
+    // "with" there read as a contradiction (field, 2026-08-27). A serious
+    // climbing day counts as route-defining the same way (same field ask:
+    // note hills when noteworthy), so it may ride a safety line too.
     const safetyLine = /flag|fail|caution/i.test(line);
     const tails = [];
     if (f.failMi === 0 && !safetyLine && !/rule|clean|meets/i.test(line)) {
@@ -12072,20 +12075,32 @@ function candidateRouteDescriptions(all) {
       tails.push(`with ${miles(Math.round(f.failMi))} flagged`);
     }
     if (f.cautionMi >= 3 && !/caution|care/i.test(line)) {
-      tails.push(`with ${miles(Math.round(f.cautionMi))} needing caution`);
+      tails.push(`though ${miles(Math.round(f.cautionMi))} need caution`);
     }
-    if (safetyLine && !tails.length) return line;
-    if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
-      tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
+    const climbTail = f.ascentFt >= 800 && !/climb|flat|hill/i.test(line)
+      ? `climbing ${Math.round(f.ascentFt / 100) * 100} feet overall` : null;
+    if (climbTail && f.ascentFt >= 2000) tails.push(climbTail);
+    if (!safetyLine) {
+      if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
+        tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
+      }
+      if (climbTail && f.ascentFt < 2000) tails.push(climbTail);
+      if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
     }
-    if (f.ascentFt >= 800 && !/climb|flat|hill/i.test(line)) {
-      tails.push(`climbing ${Math.round(f.ascentFt / 100) * 100} feet overall`);
-    }
-    if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
+    // At most two tails within the budget. A second "with" tail folds into
+    // the first as "and": "with 4 miles flagged and 10 on trails", not a
+    // comma list of withs.
+    let full = line;
+    let attached = 0;
+    let lastWasWith = false;
     for (const tail of tails) {
-      if (wordsOf(line) + wordsOf(tail) <= 17) return `${line}, ${tail}`;
+      if (attached >= 2 || wordsOf(full) + wordsOf(tail) > 17) continue;
+      const foldsIn = lastWasWith && tail.startsWith('with ');
+      full = foldsIn ? `${full} and ${tail.slice(5)}` : `${full}, ${tail}`;
+      lastWasWith = tail.startsWith('with ');
+      attached += 1;
     }
-    return line;
+    return full;
   };
   const used = new Set();
   const chosen = new Map();
@@ -12232,14 +12247,18 @@ function showRouteDescriptionToast(option) {
   const text = profileId && all.length
     ? candidateRouteDescriptions(all).get(profileId) : null;
   if (!text) { hideRouteDescriptionToast(); return; }
+  host.textContent = text;
   const anchor = document.getElementById('routeBar')?.getBoundingClientRect();
   if (anchor && anchor.width) {
-    host.style.top = `${Math.round(anchor.top)}px`;
     host.style.left = `${Math.round(anchor.left)}px`;
     host.style.width = `${Math.round(anchor.width)}px`;
     host.style.minHeight = `${Math.round(anchor.height * 0.8)}px`;
+    // Centered over the card rather than pinned to its top (field ask,
+    // 2026-08-27). The pill is opacity-hidden, never display:none, so its
+    // height is measurable before .show.
+    const height = host.offsetHeight || anchor.height * 0.8;
+    host.style.top = `${Math.round(anchor.top + Math.max(0, (anchor.height - height) / 2))}px`;
   }
-  host.textContent = text;
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
   routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 3000);
