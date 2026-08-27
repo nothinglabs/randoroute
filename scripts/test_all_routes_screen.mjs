@@ -304,7 +304,7 @@ check('fail and caution miles ride every line that needs them',
   /3\.1 miles fail, 5 miles caution/.test(cautionAndHills.dirty),
   JSON.stringify(cautionAndHills));
 check('caution that is mostly official traffic stress says so',
-  /5 miles caution, mostly heavy traffic/.test(cautionAndHills.traffic),
+  /5 miles caution \(heavy traffic\)/.test(cautionAndHills.traffic),
   JSON.stringify(cautionAndHills));
 // Field, 2026-08-27: four car markers on a "meets rules" stretch and the
 // line said nothing about traffic — the official rating is reported at

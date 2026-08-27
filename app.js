@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.890';
+const APP_VERSION = '2026-08-26.891';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11977,9 +11977,11 @@ function candidateRouteDescriptions(all) {
   const miles = (n) => `${n} mile${n === 1 ? '' : 's'}`;
   // Larger stretches of traffic get named (field ask, 2026-08-27): when the
   // official traffic-stress rating caused at least half a route's caution
-  // mileage and spans 3+ miles, the caution mention says so.
+  // mileage and spans 3+ miles, the caution mention says so. Parenthesized
+  // so it reads as the caution's cause — a trailing ", mostly heavy
+  // traffic" sounded like it described the whole route (field, same day).
   const trafficNote = (f) => (f.trafficCautionMi >= 3
-    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ', mostly heavy traffic' : '');
+    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (heavy traffic)' : '');
   const lines = (f) => {
     const c = f.c;
     const out = [];
