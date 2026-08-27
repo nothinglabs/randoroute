@@ -197,15 +197,17 @@ check('every row explains why it was built',
 // The character line (field ask, 2026-08-26): a short glanceable phrase per
 // route, usually unique. The ceiling moved 8 -> 10 words the same day ("ok
 // to use a few more words"), then 10 -> 14 on 2026-08-27 ("use another 4
-// words"), then 14 -> 17 later that day: caution and noteworthy hills both
-// belong on the line, so up to two tails may attach within the budget.
+// words"), then 14 -> 17 later that day: caution and traffic belong on the
+// line, so up to two tails may attach within the budget. A route-defining
+// climb rides outside it as its own short sentence ("elevation gain should
+// be own sentence", same day), so the hard ceiling is 20.
 // "Usually" is the contract - collisions fall through to a shared fallback
 // rather than forcing awkward one-offs - so the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-check('every row carries a 6-17 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 17),
+check('every row carries a 6-20 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 20),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 17).join(' | '));
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 20).join(' | '));
 check('character lines are usually unique across the set',
   new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
   `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
@@ -259,9 +261,10 @@ check('a composition line carries a second fact within the 17-word budget',
   JSON.stringify({ ...enriched, quickWords }));
 // The caution tail once contradicted its base line ("No flagged road at all
 // ... with 4 miles needing caution" — field, 2026-08-27): a route clean of
-// fails but carrying caution now reads "No roads fail ... though N miles
-// need caution", a serious climbing day is noted even on a safety line, and
-// a second tail may attach within the budget.
+// fails but carrying caution reads "No roads fail ... though N miles need
+// caution", while after a fail mention the joiner is "and" ("though" there
+// read as weird — same day). A route-defining climb is its own trailing
+// sentence, and caution that is mostly official traffic stress says so.
 const cautionAndHills = await pg.evaluate(() => {
   const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
     facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
@@ -270,20 +273,25 @@ const cautionAndHills = await pg.evaluate(() => {
     mk({ profileId: 'cleanish', ascentM: 700 }),
     mk({ profileId: 'dirty', timeS: 7000, failM: 5000,
       levelM: [0, 0, 19140, 8047, 5000] }),
+    mk({ profileId: 'traffic', timeS: 7100, highStressM: 6437 }),
   ];
   const d = candidateRouteDescriptions(set);
-  return { cleanish: d.get('cleanish'), dirty: d.get('dirty') };
+  return { cleanish: d.get('cleanish'), dirty: d.get('dirty'),
+    traffic: d.get('traffic') };
 });
 check('a fail-clean route with caution says both without contradiction',
   /No roads fail your rules/.test(cautionAndHills.cleanish)
     && /though 5 miles need caution/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
-check('a serious climbing day is noted even on a safety line',
-  /climbing 2300 feet/.test(cautionAndHills.cleanish),
+check('a route-defining climb is its own trailing sentence',
+  /\. Climbs 2300 feet$/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
-check('two facts may tail one line: flagged and caution together',
+check('after a fail mention the caution joins with "and", not "though"',
   /with 3 miles flagged/.test(cautionAndHills.dirty)
-    && /though 5 miles need caution/.test(cautionAndHills.dirty),
+    && /and 5 miles need caution/.test(cautionAndHills.dirty),
+  JSON.stringify(cautionAndHills));
+check('caution that is mostly official traffic stress says so',
+  /need caution, mostly heavy traffic/.test(cautionAndHills.traffic),
   JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen

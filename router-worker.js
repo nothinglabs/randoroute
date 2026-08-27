@@ -3864,6 +3864,11 @@ function candidateSummary(candidate) {
     unpavedM: candidate.unpavedM || 0,
     ferryM: candidate.ferryM || 0,
     ascentM: candidate.ascentM || 0,
+    // Caution mileage the official traffic-stress rating caused, so the
+    // description layer can say a caution-heavy route is mostly heavy
+    // traffic (field ask, 2026-08-27).
+    highStressM: (candidate.segs || []).reduce((sum, seg) =>
+      sum + (seg.cautionCause === 'high-stress' ? (Number(seg.lenM) || 0) : 0), 0),
     suggestionScore: recommendationScoreBreakdown(candidate),
     safetyEquivalentM: candidate.failM + (candidate.dismountM || 0) * 3,
     preferredRouteM: preferredRouteMeters(candidate),

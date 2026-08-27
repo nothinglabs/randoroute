@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.882';
+const APP_VERSION = '2026-08-26.883';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11952,6 +11952,7 @@ function candidateRouteDescriptions(all) {
       failPct: (c.failM || 0) / ridingM,
       cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
       cautionPct: ((c.levelM || [])[3] || 0) / ridingM,
+      trafficMi: (c.highStressM || 0) / 1609.344,
       unpavedMi: (c.unpavedM || 0) / 1609.344,
       ferry: (c.ferryM || 0) > 0,
       ascentFt: (c.ascentM || 0) * 3.28084,
@@ -11967,6 +11968,11 @@ function candidateRouteDescriptions(all) {
   // "1 flagged miles" read as a bug (field screenshot): every counted noun
   // pluralizes properly.
   const miles = (n) => `${n} mile${n === 1 ? '' : 's'}`;
+  // Larger stretches of traffic get named (field ask, 2026-08-27): when the
+  // official traffic-stress rating caused at least half a route's caution
+  // mileage and spans 3+ miles, the caution mention says so.
+  const trafficNote = (f) => (f.trafficMi >= 3 && f.trafficMi >= f.cautionMi * 0.5
+    ? ', mostly heavy traffic' : '');
   const lines = (f) => {
     const c = f.c;
     const out = [];
@@ -11982,7 +11988,7 @@ function candidateRouteDescriptions(all) {
     // 2026-08-27: a 50%-caution ride to Port Townsend read as "Quickest,
     // mostly ordinary roads" with the caution nowhere in the line).
     if (f.cautionPct >= 0.3) {
-      out.push(`${Math.round(f.cautionPct * 100)}% of this needs caution — ${miles(Math.round(f.cautionMi))}`);
+      out.push(`${Math.round(f.cautionPct * 100)}% of this needs caution — ${miles(Math.round(f.cautionMi))}${trafficNote(f)}`);
     }
     if (c.timeS === minTime && facts.length > 1) {
       if (f.trailPct >= 0.45) out.push(`Quickest here, still ${miles(Math.round(f.trailMi))} on trails`);
@@ -12013,7 +12019,7 @@ function candidateRouteDescriptions(all) {
     }
     if (f.cautionMi >= 3 || f.cautionPct >= 0.15) {
       const n = Math.max(1, Math.round(f.cautionMi));
-      out.push(`${miles(n)} of this need${n === 1 ? 's' : ''} caution`);
+      out.push(`${miles(n)} of this need${n === 1 ? 's' : ''} caution${trafficNote(f)}`);
     }
     if (f.failMi === 0) out.push('Every mile of this meets your rules');
     else if (f.failMi <= 0.5) {
@@ -12055,18 +12061,15 @@ function candidateRouteDescriptions(all) {
   };
   // Field ask, 2026-08-27 ("use another 4 words"): a line may carry extra
   // facts as short tails, as many as fit a 6-17 word budget in order of
-  // importance. A tail never repeats the base line's own topic.
+  // importance, plus a short climb sentence outside that budget. A tail
+  // never repeats the base line's own topic.
   const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
   const withDetail = (f, line) => {
     // A safety line is not softened with scenery, but it may carry the
     // OTHER safety fact: "Rides 7 miles that fail your rules" on a
     // 54%-caution route said nothing about the caution, and a no-fail line
     // hid 4 caution miles (field, 2026-08-27). Each tail guards against
-    // restating the line's own topic. The caution tail reads "though",
-    // because it most often rides a clean-sounding base line and a plain
-    // "with" there read as a contradiction (field, 2026-08-27). A serious
-    // climbing day counts as route-defining the same way (same field ask:
-    // note hills when noteworthy), so it may ride a safety line too.
+    // restating the line's own topic.
     const safetyLine = /flag|fail|caution/i.test(line);
     const tails = [];
     if (f.failMi === 0 && !safetyLine && !/rule|clean|meets/i.test(line)) {
@@ -12075,16 +12078,19 @@ function candidateRouteDescriptions(all) {
       tails.push(`with ${miles(Math.round(f.failMi))} flagged`);
     }
     if (f.cautionMi >= 3 && !/caution|care/i.test(line)) {
-      tails.push(`though ${miles(Math.round(f.cautionMi))} need caution`);
+      // "though" concedes a clean claim; when the line or an earlier tail
+      // already reports failing miles, the caution is one more fact and
+      // joins with "and" ("though" after a fail line read as weird —
+      // field, 2026-08-27).
+      const cleanClaim = !/flag|fail/i.test(line) || /^No roads fail/.test(line);
+      const joiner = cleanClaim && !tails.some((t) => t.includes('flagged'))
+        ? 'though' : 'and';
+      tails.push(`${joiner} ${miles(Math.round(f.cautionMi))} need caution${trafficNote(f)}`);
     }
-    const climbTail = f.ascentFt >= 800 && !/climb|flat|hill/i.test(line)
-      ? `climbing ${Math.round(f.ascentFt / 100) * 100} feet overall` : null;
-    if (climbTail && f.ascentFt >= 2000) tails.push(climbTail);
     if (!safetyLine) {
       if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
         tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
       }
-      if (climbTail && f.ascentFt < 2000) tails.push(climbTail);
       if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
     }
     // At most two tails within the budget. A second "with" tail folds into
@@ -12099,6 +12105,12 @@ function candidateRouteDescriptions(all) {
       full = foldsIn ? `${full} and ${tail.slice(5)}` : `${full}, ${tail}`;
       lastWasWith = tail.startsWith('with ');
       attached += 1;
+    }
+    // A route-defining climbing day is its own sentence at the end, outside
+    // the tail budget, so it never crowds out a safety fact (field ask,
+    // 2026-08-27: elevation gain as its own sentence).
+    if (f.ascentFt >= 2000 && !/climb|flat|hill/i.test(full)) {
+      full += `. Climbs ${Math.round(f.ascentFt / 100) * 100} feet`;
     }
     return full;
   };
