@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.874';
+const APP_VERSION = '2026-08-26.875';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11898,6 +11898,12 @@ function candidateRouteDescriptions(all) {
     } else if (f.failMi >= 5) {
       out.push(`Rides ${miles(Math.round(f.failMi))} that fail your rules`);
     }
+    // Half-caution defines a route the same way heavy fail does (field,
+    // 2026-08-27: a 50%-caution ride to Port Townsend read as "Quickest,
+    // mostly ordinary roads" with the caution nowhere in the line).
+    if (f.cautionPct >= 0.3) {
+      out.push(`${Math.round(f.cautionPct * 100)}% needs extra care — ${miles(Math.round(f.cautionMi))} of caution riding`);
+    }
     if (c.timeS === minTime && facts.length > 1) {
       if (f.trailPct >= 0.45) out.push(`Quickest here, still ${miles(Math.round(f.trailMi))} on trails`);
       if (f.resPct >= 0.2) out.push('Quickest, leaning on quiet residential connector streets');
@@ -11968,7 +11974,7 @@ function candidateRouteDescriptions(all) {
     return out;
   };
   // Field ask, 2026-08-27 ("use another 4 words"): a composition line may
-  // carry one extra fact as a short tail, budget 6-14 words in total. Safety
+  // carry one extra fact as a short tail, budget 6-17 words in total. Safety
   // lines stand alone — a failure share is not softened with scenery — and a
   // tail never repeats the base line's own topic.
   const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
@@ -11980,6 +11986,9 @@ function candidateRouteDescriptions(all) {
     } else if (f.failMi >= 1) {
       tails.push(`with ${miles(Math.round(f.failMi))} flagged`);
     }
+    if (f.cautionMi >= 3) {
+      tails.push(`with ${miles(Math.round(f.cautionMi))} needing caution`);
+    }
     if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
       tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
     }
@@ -11988,7 +11997,7 @@ function candidateRouteDescriptions(all) {
     }
     if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
     for (const tail of tails) {
-      if (wordsOf(line) + wordsOf(tail) <= 14) return `${line}, ${tail}`;
+      if (wordsOf(line) + wordsOf(tail) <= 17) return `${line}, ${tail}`;
     }
     return line;
   };
@@ -12219,7 +12228,10 @@ function buildRoutingPanel() {
     const button = event.target.closest('[data-route-option]');
     if (!button || button.disabled || choices.classList.contains('loading')) return;
     const option = routing.options[Number(button.dataset.routeOption)];
-    if (!option || option === routing.last) return;
+    if (!option) return;
+    // Retapping the active letter replays its description pill (field ask,
+    // 2026-08-27) without recomputing or redrawing anything.
+    if (option === routing.last) { showRouteDescriptionToast(option); return; }
     // Leaving the shared route recomputes with the receiver's own settings.
     if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
     activateRouteOption(option);
