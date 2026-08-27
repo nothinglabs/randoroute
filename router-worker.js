@@ -1483,6 +1483,10 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // options genuinely different instead of one route offered twice. The
   // default is the field-tuned 800 m the dedupe shipped with.
   distinctRideMi: 0.5,
+  // Scales every outcome threshold in materialTradeoff below: under 1,
+  // smaller safety/facility differences keep a near-identical pair
+  // separate; above 1 only large ones do. 1 is the shipped behaviour.
+  twinTradeoffX: 1,
 });
 // One place decides how a mode names its weights. Everything that used to spell
 // out `mode === 'low' ? 'Low' : ...` inline now calls this, so a future mode
@@ -1512,6 +1516,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // Below ~250 ft everything reads as different and the portfolio fills
   // with near-twins; above 2 mi short trips cannot offer alternatives.
   distinctRideMi: Object.freeze([0.05, 2]),
+  twinTradeoffX: Object.freeze([0.3, 3]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -3593,18 +3598,22 @@ function edgeOverlap(a, b) {
 }
 
 function materialTradeoff(a, b) {
-  const routeScale = Math.max(250, Math.min(a.distM, b.distM) * 0.08);
+  // The rider's twinTradeoffX slider scales every threshold at once: below
+  // 1, smaller outcome differences keep a near-twin; above 1 only large
+  // ones do. At the default 1 this is exactly the shipped behaviour.
+  const x = Math.min(3, Math.max(0.3, activeWeights.twinTradeoffX || 1));
+  const routeScale = Math.max(250, Math.min(a.distM, b.distM) * 0.08) * x;
   // A short failing stretch can be the most important difference on a long
   // ride. Do not scale this threshold with total route length: doing so once
   // hid hundreds of feet of avoided rule failures as an "equivalent" route.
-  return Math.abs(a.failM - b.failM) >= 60
-    || Math.abs(a.freewayM - b.freewayM) >= 60
-    || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120, routeScale * 0.5)
-    || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40
+  return Math.abs(a.failM - b.failM) >= 60 * x
+    || Math.abs(a.freewayM - b.freewayM) >= 60 * x
+    || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120 * x, routeScale * 0.5)
+    || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40 * x
     || (!!a.dismountM !== !!b.dismountM)
     || Math.abs(a.facilityM - b.facilityM) >= routeScale
     || Math.abs((a.trailM || 0) - (b.trailM || 0)) >= routeScale
-    || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50
+    || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50 * x
     || Math.abs(a.desigM - b.desigM) >= routeScale
     || Math.abs(a.residentialM - b.residentialM) >= routeScale;
 }

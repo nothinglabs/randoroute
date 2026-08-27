@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.875';
+const APP_VERSION = '2026-08-26.876';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -198,6 +198,10 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // options genuinely different instead of one route offered twice. The
   // default is the field-tuned 800 m the dedupe shipped with.
   distinctRideMi: 0.5,
+  // Scales every outcome threshold in the near-twin keeper (worker's
+  // materialTradeoff): below 1, smaller safety/facility differences keep a
+  // near-identical pair separate; above 1 only large ones do.
+  twinTradeoffX: 1,
 });
 // Weights the rider tuned under the old names, so a saved custom set is
 // carried across the rename instead of silently snapping back to defaults.
@@ -244,6 +248,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // Below ~250 ft everything reads as different and the portfolio fills
   // with near-twins; above 2 mi short trips cannot offer alternatives.
   distinctRideMi: Object.freeze([0.05, 2]),
+  twinTradeoffX: Object.freeze([0.3, 3]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -6343,6 +6348,7 @@ function navigationElevationProgressM() {
 }
 
 function openRouteDetails(detailTab = null, concernId = null) {
+  hideRouteDescriptionToast();
   if (!routing.last?.ok) return;
   // Refresh the compact report before loading it. This lets an already-drawn
   // route gain its per-segment Google Maps and Street View locations as soon
@@ -11979,16 +11985,22 @@ function candidateRouteDescriptions(all) {
   // tail never repeats the base line's own topic.
   const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
   const withDetail = (f, line) => {
-    if (/flag|fail|caution/i.test(line)) return line;
+    // A safety line is not softened with scenery, but it may carry the
+    // OTHER safety fact: "Rides 7 miles that fail your rules" on a
+    // 54%-caution route said nothing about the caution, and "No flagged
+    // road at all" hid 4 caution miles (field, 2026-08-27). Each tail
+    // guards against restating the line's own topic.
+    const safetyLine = /flag|fail|caution/i.test(line);
     const tails = [];
-    if (f.failMi === 0 && !/rule|clean|meets/i.test(line)) {
+    if (f.failMi === 0 && !safetyLine && !/rule|clean|meets/i.test(line)) {
       tails.push('with every mile passing your rules');
-    } else if (f.failMi >= 1) {
+    } else if (f.failMi >= 1 && !/flag|fail/i.test(line)) {
       tails.push(`with ${miles(Math.round(f.failMi))} flagged`);
     }
-    if (f.cautionMi >= 3) {
+    if (f.cautionMi >= 3 && !/caution|care/i.test(line)) {
       tails.push(`with ${miles(Math.round(f.cautionMi))} needing caution`);
     }
+    if (safetyLine && !tails.length) return line;
     if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
       tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
     }
@@ -12151,12 +12163,12 @@ function showRouteDescriptionToast(option) {
     host.style.top = `${Math.round(anchor.top)}px`;
     host.style.left = `${Math.round(anchor.left)}px`;
     host.style.width = `${Math.round(anchor.width)}px`;
-    host.style.minHeight = `${Math.round(anchor.height)}px`;
+    host.style.minHeight = `${Math.round(anchor.height * 0.8)}px`;
   }
   host.textContent = text;
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
-  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 4000);
+  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 3000);
 }
 document.getElementById('routeDescToast')?.addEventListener('click', (event) => {
   const host = event.currentTarget;
@@ -16091,6 +16103,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'One extra search with the facility pull reduced this far toward neutral, finding routes that lose only because trail miles are priced shorter. 0 turns it off. Never changes the pricing of routes you see.' },
     { key: 'distinctRideMi', label: 'Different riding to stay separate (miles)', min: .05, max: 2, step: .05,
       hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
+    { key: 'twinTradeoffX', label: 'Safety difference to keep a near-twin (x)', min: .3, max: 3, step: .05,
+      hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
   ], 'Alternatives'],
 ];
 
@@ -17978,6 +17992,9 @@ function setPanelOpen() {
 }
 
 function selectPanelTab(tabId) {
+  // Leaving the map screen takes the description pill with it — it anchors
+  // to a card that is no longer the thing on screen.
+  hideRouteDescriptionToast();
   const settingsWasOpen = settingsMenuIsOpen();
   if (!settingsWasOpen && tabId === 'settings') beginSettingsEditSession();
   if (tabId !== 'layers') setActiveRouteIconLegendOpen(false);
