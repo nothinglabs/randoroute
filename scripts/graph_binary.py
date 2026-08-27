@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 
-SUPPORTED_MAGICS = (b"BGR9", b"BGRA", b"BGRB", b"BGRC")
+SUPPORTED_MAGICS = (b"BGR9", b"BGRA", b"BGRB", b"BGRC", b"BGRD")
 PARTITION_MAGIC = b"BGP1"
-PARTITION_FORMAT = "bgp1-bgrc12"
+PARTITION_FORMAT = "bgp1-bgrd13"
 
 
 @dataclass
@@ -33,6 +33,10 @@ class GraphData:
     geom_lon: Sequence[float]
     geom_lat: Sequence[float]
     names: Sequence[str]
+    # Format 13 (BGRD) trailer sections; empty on older graphs. Stored,
+    # remapped through partitioning, and read by nothing at runtime yet.
+    restrictions: Sequence[tuple] = ()   # (via node, from edge, to edge, kind)
+    destinations: Sequence[tuple] = ()   # (edge, name id)
 
     @property
     def node_count(self) -> int:
@@ -102,9 +106,10 @@ def read_graph_bytes(raw: bytes) -> GraphData:
         "official": take("B", e),
         "surface": take("B", e),
     }
-    has_traffic = magic in (b"BGRA", b"BGRB", b"BGRC")
-    has_measures = magic in (b"BGRB", b"BGRC")
-    has_adt_source = magic == b"BGRC"
+    has_traffic = magic in (b"BGRA", b"BGRB", b"BGRC", b"BGRD")
+    has_measures = magic in (b"BGRB", b"BGRC", b"BGRD")
+    has_adt_source = magic in (b"BGRC", b"BGRD")
+    has_extras = magic == b"BGRD"
     if has_traffic:
         edges["lanes"] = take("B", e)
         edges["lts"] = take("B", e)
@@ -116,6 +121,9 @@ def read_graph_bytes(raw: bytes) -> GraphData:
         if has_adt_source:
             edges["adt_source"] = take("B", e)
         edges["class_owner"] = take("B", e)
+    if has_extras:
+        edges["extras"] = take("B", e)
+        edges["width"] = take("B", e)
     edges["hazard_ab"] = take("B", e)
     edges["hazard_ba"] = take("B", e)
     offset = _align(offset, 2)
@@ -136,6 +144,30 @@ def read_graph_bytes(raw: bytes) -> GraphData:
     geom_lon = take("f", g)
     geom_lat = take("f", g)
     name_blob = bytes(take("B", b))
+    restrictions = []
+    destinations = []
+    if has_extras:
+        offset = _align(offset, 4)
+        (restriction_count,) = struct.unpack_from("<I", raw, offset)
+        offset += 4
+        r_via = take("I", restriction_count)
+        r_from = take("I", restriction_count)
+        r_to = take("I", restriction_count)
+        r_kind = take("B", restriction_count)
+        offset = _align(offset, 4)
+        (destination_count,) = struct.unpack_from("<I", raw, offset)
+        offset += 4
+        d_edge = take("I", destination_count)
+        d_name = take("I", destination_count)
+        for index in range(restriction_count):
+            if r_via[index] >= n or r_from[index] >= e or r_to[index] >= e:
+                raise ValueError(f"restriction {index} is out of range")
+            restrictions.append((r_via[index], r_from[index],
+                                 r_to[index], r_kind[index]))
+        for index in range(destination_count):
+            if d_edge[index] >= e or d_name[index] >= u:
+                raise ValueError(f"destination {index} is out of range")
+            destinations.append((d_edge[index], d_name[index]))
     if offset != len(raw):
         raise ValueError(f"graph has {len(raw) - offset} trailing bytes")
     if out_start[-1] != d:
@@ -161,7 +193,9 @@ def read_graph_bytes(raw: bytes) -> GraphData:
         if edges["name_id"][index] >= u:
             raise ValueError(f"edge {index} has an out-of-range name")
     return GraphData(magic, node_lon, node_lat, node_ele, edges,
-                     geom_lon, geom_lat, names)
+                     geom_lon, geom_lat, names,
+                     restrictions=tuple(restrictions),
+                     destinations=tuple(destinations))
 
 
 def read_graph(path: Path | str) -> tuple[GraphData, bytes, bytes]:
@@ -258,10 +292,10 @@ def serialize_bgrc(graph: GraphData, *, magic: bytes = b"BGRC") -> bytes:
     parts.append(b"\0" * ((_align(sum(map(len, parts)), 4) - sum(map(len, parts)))))
     for field, code, default in _EDGE_BASE:
         parts.append(_pack_values(code, edge.get(field), e, default))
-    if magic in (b"BGRA", b"BGRB", b"BGRC"):
+    if magic in (b"BGRA", b"BGRB", b"BGRC", b"BGRD"):
         for field, code, default in _EDGE_TRAFFIC:
             parts.append(_pack_values(code, edge.get(field), e, default))
-    if magic in (b"BGRB", b"BGRC"):
+    if magic in (b"BGRB", b"BGRC", b"BGRD"):
         for field, code, default in _EDGE_MEASURE_BYTES:
             parts.append(_pack_values(code, edge.get(field), e, default))
         # edge_space/county_shoulder leave the stream 2-byte aligned.
@@ -269,9 +303,12 @@ def serialize_bgrc(graph: GraphData, *, magic: bytes = b"BGRC") -> bytes:
             raise ValueError("edge ADT field is not 2-byte aligned")
         parts.append(_pack_values("H", edge.get("adt"), e, 0))
         parts.append(_pack_values("B", edge.get("adt_meta"), e, 0))
-        if magic == b"BGRC":
+        if magic in (b"BGRC", b"BGRD"):
             parts.append(_pack_values("B", edge.get("adt_source"), e, 0))
         parts.append(_pack_values("B", edge.get("class_owner"), e, 0))
+    if magic == b"BGRD":
+        parts.append(_pack_values("B", edge.get("extras"), e, 0))
+        parts.append(_pack_values("B", edge.get("width"), e, 0))
     for field in ("hazard_ab", "hazard_ba"):
         parts.append(_pack_values("B", edge.get(field), e, 0))
     offset = sum(map(len, parts))
@@ -294,6 +331,21 @@ def serialize_bgrc(graph: GraphData, *, magic: bytes = b"BGRC") -> bytes:
         _pack_values("f", graph.geom_lat, g, 0),
         name_blob,
     ))
+    if magic == b"BGRD":
+        restrictions = list(graph.restrictions or ())
+        destinations = list(graph.destinations or ())
+        offset = sum(map(len, parts))
+        parts.append(b"\0" * (_align(offset, 4) - offset))
+        parts.append(struct.pack("<I", len(restrictions)))
+        for column, code in ((0, "I"), (1, "I"), (2, "I"), (3, "B")):
+            parts.append(_pack_values(code, [r[column] for r in restrictions],
+                                      len(restrictions), 0))
+        offset = sum(map(len, parts))
+        parts.append(b"\0" * (_align(offset, 4) - offset))
+        parts.append(struct.pack("<I", len(destinations)))
+        for column in (0, 1):
+            parts.append(_pack_values("I", [d[column] for d in destinations],
+                                      len(destinations), 0))
     raw = b"".join(parts)
     # The reader is a cheap structural proof and catches alignment drift here,
     # before a generated partition reaches the catalogue.

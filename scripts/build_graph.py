@@ -16,13 +16,19 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGRC' + N,E,D,G,U,B (u32).
-'BGRC' is format 12; the magic is four bytes, so 12 is written as the hex
-digit C. Readers must keep accepting 'BGR9' (which lacks the arrays marked
-"format 10"), 'BGRA' (which lacks those marked "format 11") and 'BGRB'
-(which lacks those marked "format 12") — see
-router-worker.js. A rider keeps routing on the graph already cached on their
-phone, and the next data rebuild upgrades them without a coordinated deploy.
+Binary layout (little-endian), after header 'BGRD' + N,E,D,G,U,B (u32).
+'BGRD' is format 13; the magic is four bytes, so 13 is written as the hex
+digit D. Readers must keep accepting 'BGR9' (which lacks the arrays marked
+"format 10"), 'BGRA' (which lacks those marked "format 11"), 'BGRB'
+(which lacks those marked "format 12") and 'BGRC' (which lacks those marked
+"format 13") — see router-worker.js. A rider keeps routing on the graph
+already cached on their phone, and the next data rebuild upgrades them
+without a coordinated deploy.
+
+Format 13 exists to be ready, not to be read: every field it adds is
+collected for the 50-state build so no state needs an immediate rebuild
+when a consumer appears (2026-08-27 direction). Nothing in the app or
+worker prices or displays any of it yet.
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeedAB u8[E], edgeSpeedBA u8[E] (mph; 0 = separated infra),
@@ -33,10 +39,13 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
     (-128 permanent prohibition, -1 unknown, else ft),
   edgeLimitedDir u8[E] (bit 0 = a->b, bit 1 = b->a; bit 2 = traffic control
                         at node A, bit 3 = at node B -- a signal or all-way
-                        stop within CONTROL_MATCH_M, see there. The byte is
-                        read with explicit masks everywhere, which is what
-                        lets the control bits ride in it without a format
-                        bump),
+                        stop within CONTROL_MATCH_M, see there; bit 4/5 =
+                        format 13, a mapped barrier node (gate, bollard,
+                        chicane -- see BARRIER_NODE_VALUES) at node A/B;
+                        bit 6/7 = format 13, a pedestrian-refuge island
+                        (crossing:island=yes) at node A/B. The byte is read
+                        with explicit masks everywhere, which is what lets
+                        these facts ride in it without widening an edge),
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
   edgeFacility u8[E] (low nibble = a->b rung: 0=none, 1=shared lane,
                       2=bike lane, 3=buffered lane, 4=separated lane,
@@ -49,8 +58,10 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
                       64=Census urban area, 128=literal bicycle=dismount tag --
                       bit 8 without 128 is a synthesised walk link, which the
                       app keeps out of dismount warnings),
-  edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
-                     3=rough unpaved),
+  edgeSurface u8[E] (low nibble: 0=unknown, 1=paved, 2=gravel/compacted,
+                     3=rough unpaved; high nibble = format 13, OSM
+                     smoothness rank 1 (excellent) .. 8 (impassable),
+                     0 = untagged. Every reader masks the low nibble),
   edgeLanes u8[E] (format 10; bits 0-5 = through lanes, 0 = not tagged;
                    bit 6 = tagged centre turn lane. OSM `lanes`, falling back
                    to WSDOT LaneCount on state routes),
@@ -81,6 +92,15 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
   edgeClassOwner u8[E] (format 11; bits 0-3 = FHWA functional class 1-7,
                  0 = unclassified; bits 4-7 = FHWA roadway owner, 1 state,
                  2 county, 3 town, 4 city, 0 unknown),
+  edgeExtras u8[E] (format 13; bit 0 = conditional/seasonal access tagged on
+                 the way, bit 1 = lit=yes, bit 2 = traffic_calming on the way,
+                 bit 3/4 = railway level crossing at node A/B, bit 5 = OSM
+                 claims a shoulder with no width (shoulder=yes/left/right/
+                 both and no shoulder:width -- deliberately NOT in
+                 edgeShoulderAB, whose -1/-128/ft vocabulary the safety rules
+                 read today), bits 6-7 spare),
+  edgeWidth u8[E] (format 13; OSM width= in half-metres, 0 = untagged,
+                 saturating at 255),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
     (0=none; 1-3 directional possible limited-visibility uphill curve),
   edgeHazardStartAB u16[E], edgeHazardEndAB u16[E],
@@ -89,6 +109,20 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
   geomLon f32[G], geomLat f32[G]  (pool; G = sum of edgeGeomCnt)
+
+Format 13 appends two sparse sections after the name blob (both counts may
+be zero; absent entirely before 'BGRD'):
+  restrictionCount u32, then restrictionVia u32[R] (graph node),
+    restrictionFrom u32[R], restrictionTo u32[R] (edge indexes),
+    restrictionKind u8[R] (1 no_left_turn, 2 no_right_turn,
+    3 no_straight_on, 4 no_u_turn, 5 only_left_turn, 6 only_right_turn,
+    7 only_straight_on, 8 no_entry, 9 no_exit; bit 7 = bicycles excepted),
+    padding to 4,
+  destinationCount u32, then destinationEdge u32[T],
+    destinationName u32[T] (ids in the shared name table -- `destination=`
+    on link roads, for eventual "toward X" ramp guidance).
+Only node-via restrictions are resolved; way-via spans (dual-carriageway
+U-turn bans) are counted and skipped at build time.
 
 WSDOT conflation: BLTS provides measured shoulder/access-control context;
 Roadway Characteristic Data provides authoritative legal speeds; and Active
@@ -278,6 +312,107 @@ EDGE_URBAN = 64
 # router-worker.js builds a segment's flags as `eFlags[ei] | 128` for
 # limited-access, so bit 7 there already means something else to the UI.
 EDGE_DISMOUNT_TAG = 128
+# ---- format 13 collection (stored, unread -- see the header note) ----
+# OSM smoothness= vocabulary to a monotone rank. Anything outside the
+# documented scale (typos, 'unknown') stays 0.
+SMOOTHNESS_RANK = {
+    'excellent': 1, 'good': 2, 'intermediate': 3, 'bad': 4,
+    'very_bad': 5, 'horrible': 6, 'very_horrible': 7, 'impassable': 8,
+}
+# Barrier node values that physically interrupt or narrow the carriageway
+# for a rider. Deliberately excludes kerb, cattle_grid, border_control,
+# toll_booth and entrance -- rideable or informational, not obstructions.
+BARRIER_NODE_VALUES = frozenset({
+    'gate', 'bollard', 'cycle_barrier', 'lift_gate', 'swing_gate',
+    'kissing_gate', 'chain', 'block', 'sliding_gate', 'stile', 'turnstile',
+    'full-height_turnstile', 'motorcycle_barrier', 'horse_stile', 'log',
+    'jersey_barrier', 'planter', 'bar', 'hampshire_gate', 'debris',
+})
+RESTRICTION_KINDS = {
+    'no_left_turn': 1, 'no_right_turn': 2, 'no_straight_on': 3,
+    'no_u_turn': 4, 'only_left_turn': 5, 'only_right_turn': 6,
+    'only_straight_on': 7, 'no_entry': 8, 'no_exit': 9,
+}
+
+
+def smoothness_rank(tags):
+    return SMOOTHNESS_RANK.get((tags.get('smoothness') or '').strip(), 0)
+
+
+def way_extras_byte(tags):
+    """Format-13 per-way facts, packed. Level-crossing bits are stamped
+    later from railway nodes; shoulder-presence here is only the widthless
+    OSM claim (widths go through parse_shoulder_ft as before)."""
+    extras = 0
+    if tags.get('seasonal') not in (None, 'no') \
+            or any('no' in (tags.get(k) or '')
+                   for k in ('access:conditional', 'vehicle:conditional',
+                             'bicycle:conditional', 'motor_vehicle:conditional')):
+        extras |= 1
+    if tags.get('lit') == 'yes':
+        extras |= 2
+    if tags.get('traffic_calming') not in (None, 'no'):
+        extras |= 4
+    if tags.get('shoulder') in ('yes', 'both', 'left', 'right') \
+            and parse_shoulder_ft(tags) is None:
+        extras |= 32
+    return extras
+
+
+def parse_width_half_m(tags):
+    """width= in half-metres, 0 unknown, saturating at 255 (127.5 m)."""
+    value = tags.get('width')
+    if not value:
+        return 0
+    m = _num.match(value)
+    if not m:
+        return 0
+    metres = float(m.group(1))
+    if "'" in value or 'ft' in value:
+        metres *= 0.3048
+    if metres <= 0:
+        return 0
+    return max(1, min(255, int(round(metres * 2))))
+
+
+def collect_turn_restrictions(src):
+    """Node-via OSM turn restrictions: (from way, via node, to way, kind).
+
+    Way-via spans (dual-carriageway U-turn bans) are counted and skipped --
+    resolving them needs a path search the builder does not do. Kind bit 7
+    marks a restriction that excepts bicycles.
+    """
+    out = []
+    way_via = 0
+    for o in osmium.FileProcessor(src, osmium.osm.RELATION):
+        t = o.tags
+        if t.get('type') != 'restriction':
+            continue
+        kind = RESTRICTION_KINDS.get(t.get('restriction')
+                                     or t.get('restriction:motorcar') or '')
+        if kind is None:
+            continue
+        excepted = 'bicycle' in (t.get('except') or '') \
+            or bool(t.get('restriction:bicycle'))
+        frm = via = to = None
+        via_is_way = False
+        for m in o.members:
+            if m.role == 'from' and m.type == 'w' and frm is None:
+                frm = m.ref
+            elif m.role == 'via' and m.type == 'n' and via is None:
+                via = m.ref
+            elif m.role == 'via' and m.type == 'w':
+                via_is_way = True
+            elif m.role == 'to' and m.type == 'w' and to is None:
+                to = m.ref
+        if via is None and via_is_way:
+            way_via += 1
+            continue
+        if frm is not None and via is not None and to is not None:
+            out.append((frm, via, to, kind | (128 if excepted else 0)))
+    return out, way_via
+
+
 # A crossing is "controlled" when the crossed road's traffic is made to stop:
 # a signal (highway=traffic_signals, or a signalised pedestrian crossing
 # node), or an all-way stop. A plain minor-road stop sign does not qualify --
@@ -1534,6 +1669,10 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     designated = collect_designated(src)
     mtb_route_members = collect_mtb_route_members(src)
     print(f'  {len(designated):,} designated member ways; {len(mtb_route_members):,} MTB member ways', flush=True)
+    turn_restrictions, way_via_skipped = collect_turn_restrictions(src)
+    restriction_ways = {r[0] for r in turn_restrictions} | {r[2] for r in turn_restrictions}
+    print(f'  {len(turn_restrictions):,} node-via turn restrictions '
+          f'({way_via_skipped:,} way-via spans skipped)', flush=True)
 
     # ---- pass 1: which ways are kept; count node references to find junctions
     phase('pass 1: scanning ways...')
@@ -1541,6 +1680,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     kept_ways = 0
     last_way_id = [0]
     control_nodes = {}       # osm node id -> (lon, lat) of a traffic control
+    # Format-13 node facts, matched by exact node id only: these sit ON the
+    # way's own nodes (a gate is a node of the path it blocks), so the
+    # control pass's 35 m spatial net would only blur them.
+    barrier_nodes = set()
+    island_nodes = set()
+    level_crossing_nodes = set()
 
     def collect_control_node(obj):
         # See CONTROL_MATCH_M for what counts as a control and why.
@@ -1556,6 +1701,13 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             loc = obj.location
             if loc.valid():
                 control_nodes[obj.id] = (loc.lon, loc.lat)
+        if (t.get('barrier') or '') in BARRIER_NODE_VALUES:
+            barrier_nodes.add(obj.id)
+        if hw == 'crossing' and (t.get('crossing:island') == 'yes'
+                                 or t.get('crossing') == 'island'):
+            island_nodes.add(obj.id)
+        if t.get('railway') == 'level_crossing':
+            level_crossing_nodes.add(obj.id)
 
     def count_way_refs(obj):
         nonlocal kept_ways
@@ -1598,6 +1750,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # ---- pass 2: build edges split at junctions
     phase('pass 2: building edges...')
     node_index = {}          # osm node id -> graph node index
+    restriction_edge_lookup = {}   # (way id, endpoint osm ref) -> [edge index]
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eSpeedBA = array('B'); eFlags = array('B')
@@ -1609,6 +1762,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     eEdgeSpace = array('B'); eCountyShoulder = array('B')
     eAdt = array('H'); eAdtMeta = array('B'); eClassOwner = array('B')
     eAdtSource = array('B')
+    # Format 13: stored for the 50-state build, read by nothing yet.
+    eExtras = array('B'); eWidth = array('B')
+    eDestName = array('I')   # name-table id of `destination=`, 0 = none
     eHazStartAB = array('H'); eHazEndAB = array('H')
     eHazStartBA = array('H'); eHazEndBA = array('H')
     eOff = array('I'); eCnt = array('H')
@@ -1697,11 +1853,13 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                 aref, coords[0], bref, coords[-1], True,
                 length, coords, eflags, 0, 0,
                 -1, -1, 0, 0,
-                FACILITY_PATH, eofficial, surface_class(tags),
+                FACILITY_PATH, eofficial,
+                surface_class(tags) | (smoothness_rank(tags) << 4),
                 0, 0, MEASURE_UNKNOWN, MEASURE_UNKNOWN, 0,
                 0, 0, 0,
                 asc, des, (0, 0, 0), (0, 0, 0),
-                False, False, tags.get('name') or ''))
+                False, False, tags.get('name') or '',
+                way_extras_byte(tags), parse_width_half_m(tags), '', obj.id))
         sidewalk_stitches[0] += len(runs)
         return runs or None
 
@@ -1776,6 +1934,14 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                  | (64 if obj.id in designated else 0))
         sh = -1 if attrs['sh'] is None else max(-1, min(127, attrs['sh']))
         name_str = tags.get('name') or tags.get('ref')
+        # Format 13, per way: stored facts nothing reads yet. Ramp
+        # destinations only off link roads, where "toward X" guidance would
+        # eventually use them.
+        extras = way_extras_byte(tags)
+        e_width = parse_width_half_m(tags)
+        esurface = attrs['surface'] | (smoothness_rank(tags) << 4)
+        dest_str = ((tags.get('destination') or '').strip()[:60]
+                    if (tags.get('highway') or '').endswith('_link') else '')
         way_runs = []
 
         seg = [pts[0]]
@@ -1941,11 +2107,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 aref, coords[0], bref, coords[-1], True,
                                 length, coords, eflags, espeed, espeed_ba,
                                 esh, esh_ba, limited_dir, attrs['road_class'],
-                                efacility, eofficial, attrs['surface'],
+                                efacility, eofficial, esurface,
                                 elanes, elts, e_space, e_county_sh, e_adt,
                                 e_adt_meta, e_adt_source, e_class_owner,
                                 asc, des, haz_ab, haz_ba,
-                                attrs['mtb'], ow == 1, name_str))
+                                attrs['mtb'], ow == 1, name_str,
+                                extras, e_width, dest_str, obj.id))
                 seg = [p]
         return way_runs or None
 
@@ -1966,7 +2133,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
              limited_dir, road_class, efacility, eofficial, surface,
              elanes, elts, e_space, e_county_sh, e_adt, e_adt_meta,
              e_adt_source, e_class_owner, asc, des, haz_ab, haz_ba,
-             is_mtb, is_oneway, name_str) = r[5:]
+             is_mtb, is_oneway, name_str,
+             extras, e_width, dest_str, way_id) = r[5:]
+            # Format 13: a turn restriction names (from way, via node,
+            # to way); the via must be an END of the from/to edges, so only
+            # runs of those ways whose endpoint IS the via can resolve it.
+            if way_id in restriction_ways:
+                edge_index = len(eA)
+                restriction_edge_lookup.setdefault((way_id, r[0]), []).append(edge_index)
+                restriction_edge_lookup.setdefault((way_id, r[2]), []).append(edge_index)
             geom_off = len(gLon)
             geom_cnt = min(len(coords), 65535)
             for x, y in coords[:geom_cnt]:
@@ -1986,6 +2161,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             eAdt.append(e_adt); eAdtMeta.append(e_adt_meta)
             eAdtSource.append(e_adt_source)
             eClassOwner.append(e_class_owner)
+            eExtras.append(extras); eWidth.append(e_width)
+            eDestName.append(name_idx(dest_str) if dest_str else 0)
             eHazAB.append(haz_ab[0]); eHazBA.append(haz_ba[0])
             eHazStartAB.append(haz_ab[1]); eHazEndAB.append(haz_ab[2])
             eHazStartBA.append(haz_ba[1]); eHazEndBA.append(haz_ba[2])
@@ -2160,6 +2337,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                         eAdt.append(eAdt[t]); eAdtMeta.append(eAdtMeta[t])
                         eAdtSource.append(eAdtSource[t])
                         eClassOwner.append(eClassOwner[t])
+                        eExtras.append(0); eWidth.append(0)
+                        eDestName.append(0)
                         eHazAB.append(0); eHazBA.append(0)
                         eHazStartAB.append(0); eHazEndAB.append(0)
                         eHazStartBA.append(0); eHazEndBA.append(0)
@@ -2224,6 +2403,54 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
               flush=True)
     stamp_control_nodes()
 
+    # ---- format 13 node facts, exact-id matched: barriers and refuge
+    # islands into edgeLimitedDir bits 4-7, level crossings into
+    # edgeExtras bits 3/4. Pre-prune for the same reason as the control
+    # pass: node_index is still valid, and per-edge bytes survive the copy.
+    def stamp_node_fact_bits():
+        def graph_ids(osm_ids):
+            out = set()
+            for osmid in osm_ids:
+                gi = node_index.get(osmid)
+                if gi is not None:
+                    out.add(gi)
+            return out
+        barrier = graph_ids(barrier_nodes)
+        island = graph_ids(island_nodes)
+        level = graph_ids(level_crossing_nodes)
+        for i in range(len(eA)):
+            a, b = eA[i], eB[i]
+            ld = ((16 if a in barrier else 0) | (32 if b in barrier else 0)
+                  | (64 if a in island else 0) | (128 if b in island else 0))
+            if ld:
+                eLimitedDir[i] |= ld
+            ex = (8 if a in level else 0) | (16 if b in level else 0)
+            if ex:
+                eExtras[i] |= ex
+        print(f'  format 13 nodes: {len(barrier):,} barriers, '
+              f'{len(island):,} refuge islands, {len(level):,} level '
+              f'crossings on graph nodes', flush=True)
+    stamp_node_fact_bits()
+
+    # ---- format 13: resolve node-via turn restrictions to graph indices.
+    # A restriction only makes sense when the via is a junction the graph
+    # kept AND both ways contribute an edge ending exactly there; anything
+    # else (a filtered service way, a via mid-edge because nothing else
+    # splits there) is dropped and counted.
+    resolved_restrictions = []
+    dropped_restrictions = 0
+    for frm, via, to, kind in turn_restrictions:
+        via_g = node_index.get(via)
+        from_edges = restriction_edge_lookup.get((frm, via), [])
+        to_edges = restriction_edge_lookup.get((to, via), [])
+        if via_g is None or not from_edges or not to_edges \
+                or from_edges[0] == to_edges[0]:
+            dropped_restrictions += 1
+            continue
+        resolved_restrictions.append((via_g, from_edges[0], to_edges[0], kind))
+    print(f'  format 13: {len(resolved_restrictions):,} turn restrictions '
+          f'resolved, {dropped_restrictions:,} unresolvable dropped', flush=True)
+
     # ---- prune pure walk-link components.
     # Walk links exist to CONNECT: a footbridge or park path that joins two
     # ridable networks. Admitting untagged footways also imported thousands of
@@ -2269,13 +2496,16 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         per_edge = [eA, eB, eLen, eSpeed, eSpeedBA, eFlags, eSh, eShBA,
                     eLimitedDir, eClass, eFacility, eOfficial, eSurface,
                     eLanes, eLts, eEdgeSpace, eCountyShoulder, eAdt, eAdtMeta,
-                    eAdtSource, eClassOwner, eHazAB, eHazBA, eHazStartAB,
+                    eAdtSource, eClassOwner, eExtras, eWidth, eDestName,
+                    eHazAB, eHazBA, eHazStartAB,
                     eHazEndAB, eHazStartBA, eHazEndBA, eName, eOff, eCnt,
                     eAsc, eDes]
         new_arrays = [array(a.typecode) for a in per_edge]
+        new_edge_of = {}
         for i in range(len(eA)):
             if not keep_edge[i]:
                 continue
+            new_edge_of[i] = len(new_arrays[0])
             off = len(new_gLon)
             for g in range(eOff[i], eOff[i] + eCnt[i]):
                 new_gLon.append(gLon[g]); new_gLat.append(gLat[g])
@@ -2290,11 +2520,17 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                     dst_arr.append(src_arr[i])
         (eA, eB, eLen, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir,
          eClass, eFacility, eOfficial, eSurface, eLanes, eLts, eEdgeSpace,
-         eCountyShoulder, eAdt, eAdtMeta, eAdtSource, eClassOwner, eHazAB,
+         eCountyShoulder, eAdt, eAdtMeta, eAdtSource, eClassOwner,
+         eExtras, eWidth, eDestName, eHazAB,
          eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eName, eOff,
          eCnt, eAsc, eDes) = new_arrays
         node_lon, node_lat, nEle = new_node_lon, new_node_lat, new_nEle
         gLon, gLat = new_gLon, new_gLat
+        # Restrictions reference node/edge indices the prune just moved.
+        resolved_restrictions = [
+            (node_map[via_g], new_edge_of[fe], new_edge_of[te], kind)
+            for via_g, fe, te, kind in resolved_restrictions
+            if via_g in node_map and fe in new_edge_of and te in new_edge_of]
         print(f'  pruned {dropped:,} edges in walk-only components', flush=True)
     parent = None
 
@@ -2341,17 +2577,29 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     U, B = len(name_list), len(name_blob)
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
+    # Format 13 trailer data, sparse from the full build-time arrays.
+    rVia = array('I'); rFrom = array('I'); rTo = array('I'); rKind = array('B')
+    for via_g, fe, te, kind in sorted(resolved_restrictions):
+        rVia.append(via_g); rFrom.append(fe); rTo.append(te); rKind.append(kind)
+    dEdge = array('I'); dName = array('I')
+    for i in range(len(eDestName)):
+        if eDestName[i]:
+            dEdge.append(i); dName.append(eDestName[i])
+    print(f'  format 13 trailer: {len(rVia):,} restrictions, '
+          f'{len(dEdge):,} ramp destinations', flush=True)
+
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes,
                 eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir, eClass,
                 eFacility, eOfficial, eSurface, eLanes, eLts, eHazAB, eHazBA,
                 eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA,
-                eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
+                eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat,
+                eExtras, eWidth, rVia, rFrom, rTo, rKind, dEdge, dName):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGRC', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGRD', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
@@ -2371,6 +2619,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     assert sum(len(p) for p in parts) % 2 == 0, 'edgeAdt must start 2-byte aligned'
     parts += [eAdt.tobytes(), eAdtMeta.tobytes(), eAdtSource.tobytes(),
               eClassOwner.tobytes(),
+              eExtras.tobytes(), eWidth.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((2 - off % 2) % 2))
@@ -2385,6 +2634,16 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     parts += [outStart.tobytes(), outTarget.tobytes(), outEdge.tobytes(),
               eName.tobytes(), name_offs.tobytes(),
               gLon.tobytes(), gLat.tobytes(), bytes(name_blob)]
+    # Format 13 trailer: counts + arrays, 4-aligned between sections so the
+    # u32 views land aligned whatever the name blob's length was.
+    off = sum(len(p) for p in parts)
+    parts.append(b'\x00' * ((4 - off % 4) % 4))
+    parts.append(struct.pack('<I', len(rVia)))
+    parts += [rVia.tobytes(), rFrom.tobytes(), rTo.tobytes(), rKind.tobytes()]
+    off = sum(len(p) for p in parts)
+    parts.append(b'\x00' * ((4 - off % 4) % 4))
+    parts.append(struct.pack('<I', len(dEdge)))
+    parts += [dEdge.tobytes(), dName.tobytes()]
     raw = b''.join(parts)
     with gzip.open(out, 'wb', compresslevel=9) as f:
         f.write(raw)

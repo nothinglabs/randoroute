@@ -74,11 +74,11 @@ try {
         || metadata.stateId !== partition.stateId
         || metadata.sourceGraphVersion !== partition.sourceGraphVersion
         || metadata.sourceGraphSha256 !== state.sourceSha256
-        || metadata.embeddedGraphMagic !== 'BGRC') {
+        || metadata.embeddedGraphMagic !== 'BGRD') {
       throw new Error(`${partition.path}: wrapper metadata does not match catalogue`);
     }
-    if (raw.subarray(graphStart, graphStart + 4).toString() !== 'BGRC') {
-      throw new Error(`${partition.path}: embedded graph is not BGRC`);
+    if (raw.subarray(graphStart, graphStart + 4).toString() !== 'BGRD') {
+      throw new Error(`${partition.path}: embedded graph is not BGRD`);
     }
     const graph = raw.subarray(graphStart, graphStart + graphBytes);
     const counts = [graph.readUInt32LE(4), graph.readUInt32LE(8), graph.readUInt32LE(12),

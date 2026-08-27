@@ -10,7 +10,7 @@ const graph = zlib.gunzipSync(fs.readFileSync(new URL('../maps/washington/graph2
 // never stranded on the graph already cached on their phone. 10 adds
 // edgeLanes/edgeLts, 11 the road measurements, 12 the count's provenance byte.
 // and this file relies on its parsing, so either layout is valid here.
-assert.ok(['BGR9', 'BGRA', 'BGRB', 'BGRC'].includes(graph.subarray(0, 4).toString('ascii')),
+assert.ok(['BGR9', 'BGRA', 'BGRB', 'BGRC', 'BGRD'].includes(graph.subarray(0, 4).toString('ascii')),
   'production graph should use a supported direction-aware surface layout');
 
 const messages = [];
@@ -33,10 +33,12 @@ const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteL
 context.onmessage({ data: { type: 'graph', buffer } });
 assert.equal(messages.at(-1)?.type, 'ready', 'surface-aware graph should load in the router');
 
+// Format 13 packs the OSM smoothness rank into the high nibble; the surface
+// class is the low nibble, masked exactly as every runtime consumer does.
 const surfacesFor = (name) => vm.runInContext(`(() => {
   const values = [];
   for (let edge = 0; edge < E; edge++) {
-    if (edgeName(edge) === ${JSON.stringify(name)}) values.push(eSurface[edge]);
+    if (edgeName(edge) === ${JSON.stringify(name)}) values.push(eSurface[edge] & 15);
   }
   return values;
 })()`, context);

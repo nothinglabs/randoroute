@@ -30,6 +30,9 @@ let eLanes, eLts;
 // source, and FHWA functional class with the owner. Carried to the card; none
 // of it prices a route.
 let eEdgeSpace, eCountyShoulder, eAdt, eAdtMeta, eClassOwner;
+// Format 13, stored-unused (see the parse-site note): per-edge extras and
+// width, plus the turn-restriction and ramp-destination trailers.
+let eExtras, eWidth, rViaNode, rFromEdge, rToEdge, rKind, destEdge, destName;
 // Format 12 only. Which inventory a count came from; a format 11 graph carries
 // only the older single "from the state" bit, handled below.
 let eAdtSource;
@@ -220,11 +223,12 @@ function loadGraph(buf) {
   // 'BGRA' is format 10, 'BGRB' 11, 'BGRC' 12. Each only ever appends, so a
   // newer reader still understands an older graph and a rider is never stranded
   // on a cached one; the fields it lacks simply read as "not known".
-  const hasAdtSource = magic === 0x42475243;
+  const hasExtras = magic === 0x42475244;
+  const hasAdtSource = magic === 0x42475243 || hasExtras;
   const hasMeasures = magic === 0x42475242 || hasAdtSource;
   const hasTrafficStress = magic === 0x42475241 || hasMeasures;
   if (magic !== 0x42475239 && !hasTrafficStress) {
-    throw new Error('bad graph magic (want BGR9, BGRA, BGRB or BGRC)');
+    throw new Error('bad graph magic (want BGR9, BGRA, BGRB, BGRC or BGRD)');
   }
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
@@ -256,6 +260,13 @@ function loadGraph(buf) {
   eAdtMeta = hasMeasures ? u8(E) : null;
   eAdtSource = hasAdtSource ? u8(E) : null;
   eClassOwner = hasMeasures ? u8(E) : null;
+  // Format 13: collected for the 50-state build, priced and displayed by
+  // NOTHING yet -- parsed and held so the day a consumer appears is an app
+  // release, not fifty graph rebuilds. eSurface additionally carries the
+  // OSM smoothness rank in its high nibble from this format on, which is
+  // why every surface read masks the low nibble.
+  eExtras = hasExtras ? u8(E) : null;
+  eWidth = hasExtras ? u8(E) : null;
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
   eHazStartAB = u16(E); eHazEndAB = u16(E);
@@ -268,6 +279,21 @@ function loadGraph(buf) {
   eName = u32(E); nameOff = u32(U + 1);
   gLon = f32(G); gLat = f32(G);
   nameBytes = u8(B);
+  // Format 13 trailer: node-via turn restrictions and ramp destinations.
+  // Held, not consulted -- see the eExtras note above.
+  rViaNode = rFromEdge = rToEdge = rKind = destEdge = destName = null;
+  if (hasExtras) {
+    pad4();
+    const restrictionCount = dv.getUint32(o, true); o += 4;
+    rViaNode = u32(restrictionCount);
+    rFromEdge = u32(restrictionCount);
+    rToEdge = u32(restrictionCount);
+    rKind = u8(restrictionCount);
+    pad4();
+    const destinationCount = dv.getUint32(o, true); o += 4;
+    destEdge = u32(destinationCount);
+    destName = u32(destinationCount);
+  }
   // DEM nodata and bathymetry poison a handful of pier and terminal nodes
   // with impossible depths (-2,973 m in the released Washington graph), and
   // the 100 m pier edge that climbs back out carries thousands of metres of
@@ -1797,7 +1823,7 @@ function climbPreferenceS(i, forward, mode) {
 function surfacePreferenceS(i, rules) {
   if (eFlags[i] & 32) return 0;
   const strength = rules?.preferPaved === true ? 10 : 0.20;
-  const surface = eSurface[i];
+  const surface = eSurface[i] & 15;
   if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065 * strength;
   if (surface === SURFACE_ROUGH) return eLen[i] * 0.20 * strength;
   return 0;
@@ -2921,7 +2947,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       facility: edgeFacility(ei, forward), facilityOther: edgeFacility(ei, !forward),
       official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
       dismount: dismountHere, facilityGap, level, cautionCause,
-      surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
+      surface: eSurface[ei] & 15, surfaceLabel: SURFACE_LABEL[eSurface[ei] & 15] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
@@ -4215,7 +4241,7 @@ function sectionFrontierArcMetrics(source, index) {
   const limitedM = !(flags & 4) && edgeLimited(edge, forward) ? len : 0;
   const gapM = flags & (8 | 32) || (seg.facility || 0) >= 2 ? 0 : len;
   const nonTrailM = flags & (8 | 32) ? 0 : len;
-  const roughM = !(flags & 32) && eSurface[edge] >= SURFACE_GRAVEL ? len : 0;
+  const roughM = !(flags & 32) && (eSurface[edge] & 15) >= SURFACE_GRAVEL ? len : 0;
   return {
     failM,
     dangerM: failM * 8 + freewayM * 20 + mtbM * 6 + dismountM * 5

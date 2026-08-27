@@ -19,6 +19,7 @@
 
   const BGP_MAGIC = 0x42475031; // BGP1
   const BGRC_MAGIC = 0x42475243;
+  const BGRD_MAGIC = 0x42475244;
   const textDecoder = new TextDecoder();
 
   class PartitionRuntimeError extends Error {
@@ -54,8 +55,11 @@
   function parseBgrc(buffer, byteOffset = 0, byteLength = buffer.byteLength - byteOffset) {
     if (byteLength < 28) throw new PartitionRuntimeError('bad-partition-graph', 'A partition graph is truncated.');
     const dv = new DataView(buffer, byteOffset, byteLength);
-    if (dv.getUint32(0, false) !== BGRC_MAGIC) {
-      throw new PartitionRuntimeError('bad-partition-graph', 'A partition does not contain a BGRC graph.');
+    const magic = dv.getUint32(0, false);
+    // BGRD (format 13) appends stored-unused fields to BGRC; both parse here.
+    const hasExtras = magic === BGRD_MAGIC;
+    if (magic !== BGRC_MAGIC && !hasExtras) {
+      throw new PartitionRuntimeError('bad-partition-graph', 'A partition does not contain a BGRC or BGRD graph.');
     }
     const N = dv.getUint32(4, true), E = dv.getUint32(8, true), D = dv.getUint32(12, true);
     const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
@@ -86,7 +90,16 @@
     graph.eLts = take(Uint8Array, E); graph.eEdgeSpace = take(Uint8Array, E);
     graph.eCountyShoulder = take(Uint8Array, E); graph.eAdt = take(Uint16Array, E);
     graph.eAdtMeta = take(Uint8Array, E); graph.eAdtSource = take(Uint8Array, E);
-    graph.eClassOwner = take(Uint8Array, E); graph.eHazAB = take(Uint8Array, E);
+    graph.eClassOwner = take(Uint8Array, E);
+    if (hasExtras) {
+      // Format 13, stored-unused: parsed so the offsets line up; the
+      // composite deliberately stays BGRC and drops these until a consumer
+      // exists (the shipped partitions keep them, so that day is an app
+      // release, not fifty rebuilds).
+      graph.eExtras = take(Uint8Array, E);
+      graph.eWidth = take(Uint8Array, E);
+    }
+    graph.eHazAB = take(Uint8Array, E);
     graph.eHazBA = take(Uint8Array, E);
     o = align(o, 2);
     graph.eHazStartAB = take(Uint16Array, E); graph.eHazEndAB = take(Uint16Array, E);
@@ -99,6 +112,18 @@
     graph.eName = take(Uint32Array, E); graph.nameOff = take(Uint32Array, U + 1);
     graph.gLon = take(Float32Array, G); graph.gLat = take(Float32Array, G);
     graph.nameBytes = take(Uint8Array, B);
+    if (hasExtras) {
+      o = align(o, 4);
+      const restrictionCount = dv.getUint32(o, true); o += 4;
+      graph.rViaNode = take(Uint32Array, restrictionCount);
+      graph.rFromEdge = take(Uint32Array, restrictionCount);
+      graph.rToEdge = take(Uint32Array, restrictionCount);
+      graph.rKind = take(Uint8Array, restrictionCount);
+      o = align(o, 4);
+      const destinationCount = dv.getUint32(o, true); o += 4;
+      graph.destEdge = take(Uint32Array, destinationCount);
+      graph.destName = take(Uint32Array, destinationCount);
+    }
     if (o !== byteLength) {
       throw new PartitionRuntimeError('bad-partition-graph',
         `A partition graph has ${byteLength - o} unexpected trailing bytes.`);

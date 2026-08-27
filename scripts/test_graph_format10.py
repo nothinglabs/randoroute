@@ -149,10 +149,10 @@ def main():
     args = ap.parse_args()
 
     raw = bytearray(gzip.open(GRAPH, 'rb').read())
-    # Formats 11 ('BGRB') and 12 ('BGRC') only append after edgeLts, so the
-    # offsets this verifier computes are unchanged and it checks them in place
-    # exactly as it does for format 10.
-    if bytes(raw[:4]) in (b'BGRA', b'BGRB', b'BGRC'):
+    # Formats 11 ('BGRB'), 12 ('BGRC') and 13 ('BGRD') only append after
+    # edgeLts, so the offsets this verifier computes are unchanged and it
+    # checks them in place exactly as it does for format 10.
+    if bytes(raw[:4]) in (b'BGRA', b'BGRB', b'BGRC', b'BGRD'):
         return verify_shipped_format10(raw)
     header, sections = split_format9(raw)
     n, e = header[0], header[1]

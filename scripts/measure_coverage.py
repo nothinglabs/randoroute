@@ -42,10 +42,10 @@ def read_graph(path):
     """Minimal reader for the fields this analysis needs."""
     raw = gzip.open(path, 'rb').read()
     magic = raw[:4]
-    if magic not in (b'BGRA', b'BGRB', b'BGRC'):
+    if magic not in (b'BGRA', b'BGRB', b'BGRC', b'BGRD'):
         raise SystemExit(f'unexpected graph magic {magic!r}')
-    has_measures = magic in (b'BGRB', b'BGRC')
-    has_adt_source = magic == b'BGRC'
+    has_measures = magic in (b'BGRB', b'BGRC', b'BGRD')
+    has_adt_source = magic in (b'BGRC', b'BGRD')
     n, e, d, g, u, b = struct.unpack_from('<IIIIII', raw, 4)
     off = 28
 

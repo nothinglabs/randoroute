@@ -46,7 +46,7 @@
   root.GRAPH_DATA_VERSION = region.versions.graph || '';
   // Keeps a just-updated worker from being handed a graph cached by an older
   // service worker during the first post-update load.
-  root.GRAPH_FORMAT_VERSION = 'bgr10-1';
+  root.GRAPH_FORMAT_VERSION = 'bgr13-1';
   // Through the region: the graph lives in the loaded state's folder, and no
   // file outside maps/<state>/ names a state.
   root.GRAPH_URL = `${region.dataUrl('graph2.bin.gz')}`

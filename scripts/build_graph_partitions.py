@@ -121,7 +121,12 @@ def subset_graph(graph: GraphData, edge_indices: list[int]):
     source_nodes = sorted({int(graph.edges[side][edge])
                            for edge in edge_indices for side in ("a", "b")})
     local_node = {source: local for local, source in enumerate(source_nodes)}
-    used_name_ids = sorted({int(graph.edges["name_id"][edge]) for edge in edge_indices})
+    kept_edges = set(edge_indices)
+    # Ramp-destination strings live in the shared name table but are not any
+    # edge's name_id, so the subset's table must admit them explicitly.
+    used_name_ids = sorted({int(graph.edges["name_id"][edge]) for edge in edge_indices}
+                           | {int(name) for edge_index, name in (graph.destinations or ())
+                              if edge_index in kept_edges})
     name_remap = {source: local for local, source in enumerate(used_name_ids)}
     names = [graph.names[source] for source in used_name_ids]
     edges = {}
@@ -143,12 +148,26 @@ def subset_graph(graph: GraphData, edge_indices: list[int]):
         geom_lat.extend(graph.geom_lat[start:start + count])
     edges["geom_start"], edges["geom_count"] = geom_start, geom_count
 
+    # Format 13 trailer entries follow their edges: a restriction survives
+    # only when its via node and BOTH edges live in this partition (one that
+    # straddles a cut cannot be enforced locally and is dropped -- the data
+    # is stored-unused, so a dropped boundary entry costs nothing yet, and
+    # the statewide monolith always keeps the complete set).
+    local_edge = {source: local for local, source in enumerate(edge_indices)}
+    restrictions = [(local_node[via], local_edge[frm], local_edge[to], kind)
+                    for via, frm, to, kind in (graph.restrictions or ())
+                    if via in local_node and frm in local_edge and to in local_edge]
+    destinations = [(local_edge[edge_index], name_remap[name])
+                    for edge_index, name in (graph.destinations or ())
+                    if edge_index in local_edge and name in name_remap]
+
     subset = GraphData(
-        b"BGRC",
+        graph.magic,
         [graph.node_lon[node] for node in source_nodes],
         [graph.node_lat[node] for node in source_nodes],
         [graph.node_ele[node] for node in source_nodes],
         edges, geom_lon, geom_lat, names,
+        restrictions=restrictions, destinations=destinations,
     )
     return subset, source_nodes, local_node
 
@@ -271,7 +290,7 @@ def build_state(state_dir: Path, output_root: Path, cell: Decimal) -> BuiltState
             "stateId": state_id,
             "sourceGraphVersion": region["versions"]["graph"],
             "sourceGraphSha256": source_sha,
-            "embeddedGraphMagic": "BGRC",
+            "embeddedGraphMagic": graph_raw[:4].decode("ascii"),
         }
         partition_raw = wrap_partition(metadata, graph_raw)
         # Validate both wrapper and embedded graph before bytes reach disk.
