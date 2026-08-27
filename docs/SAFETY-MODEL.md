@@ -1372,15 +1372,25 @@ seconds of detour to cross at a signal, and no further; the switch reads
 back as on whenever any of the three sliders is nonzero. Two
 shapes are recognised: entering the failing road's own short pavement from a
 passing edge, and passing straight through a shared junction node that two or
-more failing edges touch — where the failing road must be a **different
-road** (by name) from the one being ridden. That last clause is load-bearing:
-a street whose bike lane serves one direction *fails* ridden the other way,
-so without it a rider northbound on Stone Way's trusted lane was charged one
-uncontrolled crossing per driveway for crossing Stone Way itself, and the
-suggested route fled to a worse parallel street (field, 2026-08-27). Two
-unnamed roads meeting go uncharged — the accepted cost of using names to
-tell roads apart. Arriving on a failing edge never pays it — riding *along*
-the road is the level-4 multipliers' job. Freeway edges are excluded
+more failing edges touch. Both additionally require a **named failing road
+different from the street ridden in** at that node — and, when the ridden-out
+edge itself passes, different from that street too (a road may change name
+mid-node without that being a crossing; a failing road being *entered* is
+exactly the road being crossed, so its name stays eligible). Every part of that clause is load-bearing, each from its own field
+day (2026-08-27): a street whose bike lane serves one direction *fails*
+ridden the other way, so without the name test a rider northbound on Stone
+Way's trusted lane was charged one uncontrolled crossing per driveway for
+crossing Stone Way itself, and the suggested route fled to a worse parallel
+street; unnamed failing fragments are excluded because N 34th's nameless
+twin carriageway read as a foreign road crossing 34th; and riding INTO a
+failing stretch of one's own street (a short first fragment looks
+crossing-shaped, N 92nd) charges nothing, while a median hop over Aurora
+still does — the crossing stub carries the minor street's name, but
+Aurora's own named edges sit at the same node and satisfy the test. The
+charge and the 🐞 debug markers share one predicate
+(`uncontrolledCrossingAt`), so what is drawn is exactly what is priced.
+Arriving on a failing edge never pays it — riding *along* the road is the
+level-4 multipliers' job. Freeway edges are excluded
 from the through-node count (their only shared nodes with surface streets
 are ramp mouths, where traffic merges rather than crosses). A graph built
 before the control bits existed disables the charge entirely rather than

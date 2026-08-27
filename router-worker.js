@@ -1137,8 +1137,14 @@ function nodeFailTouch(rules) {
   const name2 = new Uint32Array(N).fill(FAIL_TOUCH_NO_NAME);
   for (let i = 0; i < E; i++) {
     if (eFlags[i] & (4 | 32)) continue;
-    if (edgeLevelFor(i, rules, true) !== 4 && edgeLevelFor(i, rules, false) !== 4) continue;
+    // Unnamed failing edges are excluded outright: a nameless fragment
+    // cannot prove a DIFFERENT road, and counting one made N 34th's unnamed
+    // twin carriageway read as a foreign failing road crossing 34th itself
+    // (field 🐞 audit, 2026-08-27). A real failing road is a busy arterial,
+    // and busy arterials carry names.
     const nm = eName[i];
+    if (!nm) continue;
+    if (edgeLevelFor(i, rules, true) !== 4 && edgeLevelFor(i, rules, false) !== 4) continue;
     for (const u of [eA[i], eB[i]]) {
       if (count[u] < 2) count[u]++;
       if (name1[u] === FAIL_TOUCH_NO_NAME) name1[u] = nm;
@@ -1961,28 +1967,46 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
 // cost. A graph without control bits (built before they existed) disables
 // the charge entirely rather than pricing every signalised crossing in the
 // state as uncontrolled.
+// The one definition of "this transition crosses a failing road
+// uncontrolled", shared by the routing charge and the 🐞 debug markers so
+// the two can never disagree. Every clause earned its place in the field:
+// a NAMED failing road different from both the street ridden in and the
+// street ridden out must touch the node — the name test is what stops a
+// directionally-failing street from charging its own riders (Stone Way),
+// what stops riding INTO a failing stretch from reading as a crossing
+// (N 92nd: same name, short first fragment), and what still charges a
+// median hop over Aurora, whose crossing stub carries the minor street's
+// name while Aurora's own named edges sit at the same node.
+function uncontrolledCrossingAt(incomingEdge, node, outgoingEdge, rules) {
+  if (!nodeControlledCount || !(incomingEdge >= 0) || nodeControlled[node]) return false;
+  if (edgeLevelFor(incomingEdge, rules, eB[incomingEdge] === node) === 4) return false;
+  const touch = nodeFailTouch(rules);
+  const inName = eName[incomingEdge];
+  const outFails = edgeLevelFor(outgoingEdge, rules, eA[outgoingEdge] === node) === 4;
+  // When the out edge PASSES, its name is excluded too: the street being
+  // ridden may change name at the node (Stone Way becoming Green Lake Way)
+  // without that being a crossing. When the out edge FAILS, only the
+  // street ridden in on is excluded — the failing road entered is exactly
+  // the road being crossed (9th Ave doglegging 7 m along failing NE 40th),
+  // and excluding its name too suppressed that genuine charge while it was
+  // only ever needed to spare riding INTO one's own street's failing
+  // stretch (N 92nd), which the inName exclusion already covers.
+  const outName = outFails ? FAIL_TOUCH_NO_NAME : eName[outgoingEdge];
+  const crosses = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== inName && nm !== outName;
+  if (!crosses(touch.name1[node]) && !crosses(touch.name2[node])) return false;
+  if (outFails) {
+    return eLen[outgoingEdge] <= CROSSING_MAX_M && !(eFlags[outgoingEdge] & 4);
+  }
+  return touch.count[node] >= 2;
+}
+
 function uncontrolledCrossPenaltyS(incomingEdge, node, outgoingEdge, rules, mode) {
   // Weight first: at 0 (the shipped default) the charge does no detection
   // work and builds no cache at all.
   const sec = activeWeights[mode === 'direct' ? 'crossUncontrolledDirectSec'
     : mode === 'low' ? 'crossUncontrolledLowStressSec' : 'crossUncontrolledBalancedSec'];
-  if (!sec || !nodeControlledCount || !(incomingEdge >= 0) || nodeControlled[node]) return 0;
-  if (edgeLevelFor(incomingEdge, rules, eB[incomingEdge] === node) === 4) return 0;
-  const outForward = eA[outgoingEdge] === node;
-  let crossing;
-  if (edgeLevelFor(outgoingEdge, rules, outForward) === 4) {
-    crossing = eLen[outgoingEdge] <= CROSSING_MAX_M && !(eFlags[outgoingEdge] & 4);
-  } else {
-    // A failing road runs through — but it must be a DIFFERENT road from
-    // the one being ridden, or a directionally-failing street charges its
-    // own riders at every driveway (the Stone Way inversion, 2026-08-27).
-    const touch = nodeFailTouch(rules);
-    if (touch.count[node] < 2) return 0;
-    const inName = eName[incomingEdge], outName = eName[outgoingEdge];
-    const crosses = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== inName && nm !== outName;
-    crossing = crosses(touch.name1[node]) || crosses(touch.name2[node]);
-  }
-  return crossing ? sec : 0;
+  if (!sec) return 0;
+  return uncontrolledCrossingAt(incomingEdge, node, outgoingEdge, rules) ? sec : 0;
 }
 
 // Debug surface for the field: every uncontrolled crossing of a failing
@@ -2001,19 +2025,8 @@ function debugUncontrolledCrossingsFor(segs, rules) {
     for (const n1 of [eA[e1], eB[e1]]) {
       if (n1 === eA[e2] || n1 === eB[e2]) u = n1;
     }
-    if (u < 0 || u === lastNode || nodeControlled[u]) continue;
-    if (edgeLevelFor(e1, rules, eB[e1] === u) === 4) continue;
-    let crossing;
-    if (edgeLevelFor(e2, rules, eA[e2] === u) === 4) {
-      crossing = eLen[e2] <= CROSSING_MAX_M && !(eFlags[e2] & 4);
-    } else {
-      const touch = nodeFailTouch(rules);
-      if (touch.count[u] < 2) continue;
-      const inName = eName[e1], outName = eName[e2];
-      const crosses = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== inName && nm !== outName;
-      crossing = crosses(touch.name1[u]) || crosses(touch.name2[u]);
-    }
-    if (!crossing) continue;
+    if (u < 0 || u === lastNode) continue;
+    if (!uncontrolledCrossingAt(e1, u, e2, rules)) continue;
     lastNode = u;
     out.push([nodeLon[u], nodeLat[u]]);
     if (out.length >= 200) break;

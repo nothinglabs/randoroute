@@ -144,6 +144,53 @@ check('the Stone Way trip stays on the bike lane with the charge on',
   !!suggested && facilityShare > 0.7 && (suggested.failM || 0) < 100,
   suggested ? `facility ${(facilityShare * 100).toFixed(0)}%, fail ${Math.round(suggested.failM)}m, ${(suggested.distM / 1609).toFixed(1)}mi` : 'no route');
 
+// The 🐞 audit's two false-positive classes (field, 2026-08-27), pinned on
+// real graph specimens, with the median-hop shape they must NOT break:
+//   1. riding INTO a failing stretch of one's own street — same name, short
+//      first fragment, no foreign failing road at the node — never charges;
+//   2. a node whose failing edges are all unnamed or same-named never
+//      charges a rider passing through;
+//   3. a short same-named failing entry WITH a foreign named failing road
+//      at the node (the divided-arterial median hop) still charges.
+const shapes = worker.run(`(() => {
+  const rules = ${rules};
+  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
+    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
+  const touch = nodeFailTouch(rules);
+  const foreign = (u, a, b) => {
+    const ok = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== eName[a] && nm !== eName[b];
+    return ok(touch.name1[u]) || ok(touch.name2[u]);
+  };
+  const found = { intoOwn: null, medianHop: null };
+  for (let u = 0; u < N && !(found.intoOwn && found.medianHop); u++) {
+    if (nodeControlled[u]) continue;
+    for (let a1 = outStart[u]; a1 < outStart[u + 1]; a1++) {
+      const eIn = outEdge[a1];
+      if (edgeLevelFor(eIn, rules, eB[eIn] === u) === 4) continue;
+      for (let a2 = outStart[u]; a2 < outStart[u + 1]; a2++) {
+        const eOut = outEdge[a2];
+        if (eOut === eIn || eName[eOut] !== eName[eIn] || !eName[eIn]) continue;
+        if (edgeLevelFor(eOut, rules, eA[eOut] === u) !== 4) continue;
+        if (eLen[eOut] > CROSSING_MAX_M || (eFlags[eOut] & 4)) continue;
+        const slot = foreign(u, eIn, eOut) ? 'medianHop' : 'intoOwn';
+        if (!found[slot]) found[slot] = { u, eIn, eOut, name: edgeName(eIn) };
+      }
+    }
+  }
+  const charge = (s) => s
+    ? uncontrolledCrossPenaltyS(s.eIn, s.u, s.eOut, rules, 'balanced') : null;
+  const result = { intoOwn: found.intoOwn && { name: found.intoOwn.name,
+      charged: charge(found.intoOwn) },
+    medianHop: found.medianHop && { name: found.medianHop.name,
+      charged: charge(found.medianHop) } };
+  useWeights(DEFAULT_WEIGHTS);
+  return result;
+})()`);
+check('riding into a failing stretch of your own street never charges',
+  !!shapes.intoOwn && shapes.intoOwn.charged === 0, JSON.stringify(shapes));
+check('a same-named median hop with a foreign failing road still charges',
+  !!shapes.medianHop && shapes.medianHop.charged === 45, JSON.stringify(shapes));
+
 // The 🐞 debug markers (field, 2026-08-27): with the charge fully OFF
 // (default zero weights), a debug-flagged request still returns each
 // option's uncontrolled failing crossings — detection is independent of
