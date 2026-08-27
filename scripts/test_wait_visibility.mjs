@@ -116,6 +116,25 @@ try {
   check('and the bar leaves when the renderer catches up',
     catchup.hiddenAfter === true, JSON.stringify(catchup));
 
+  // A route compute is invisible work with a waiting rider (field,
+  // 2026-08-26): the bar must hold through a calculation that moves no
+  // tiles at all, and settle promptly once the request ends.
+  const compute = await page.evaluate(async () => {
+    routing.routeRequestActive = true;
+    setRouteOptionsLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 2400));
+    const shownDuringCompute = !document.getElementById('mapLoadingBar').hidden;
+    routing.routeRequestActive = false;
+    setRouteOptionsLoading(false);
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    return { shownDuringCompute,
+      hiddenAfter: document.getElementById('mapLoadingBar').hidden };
+  });
+  check('a route calculation with no tile traffic holds the bar',
+    compute.shownDuringCompute === true, JSON.stringify(compute));
+  check('and the bar settles once the request ends',
+    compute.hiddenAfter === true, JSON.stringify(compute));
+
   const banner = await page.evaluate(() => {
     hideRouteCalculationStatus();
     showRouteCalculationStatus('Calculating route options', 'Testing route profiles… (1 of 3)');

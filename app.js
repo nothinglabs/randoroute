@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.851';
+const APP_VERSION = '2026-08-26.852';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1394,6 +1394,14 @@ let mapLoadingBarRecheck = null;
 let mapLoadingBarHideTimer = null;
 let mapLoadingBarShownAt = 0;
 let mapLoadingLastEventAt = 0;
+// A route compute is invisible work with a visible waiting rider — exactly
+// what the bar exists for (field, 2026-08-26: "make it also active when the
+// route is calculating"). While a request is in flight the flow clock never
+// goes stale, so the bar holds through a compute with zero tile traffic and
+// settles moments after the portfolio lands.
+function routeComputeKeepsBarBusy() {
+  return !!(routing.routeRequestActive || routing.pendingRoute);
+}
 function armMapLoadingBar() {
   mapLoadingLastEventAt = Date.now();
   if (mapLoadingBarArmTimer != null || mapLoadingBarRecheck != null) return;
@@ -1402,13 +1410,15 @@ function armMapLoadingBar() {
     const bar = document.getElementById('mapLoadingBar');
     if (!bar || !document.documentElement.classList.contains('app-ready')) return;
     // A burst that already ended (a cached pan) never shows.
-    if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS) return;
+    if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS
+      && !routeComputeKeepsBarBusy()) return;
     clearTimeout(mapLoadingBarHideTimer);
     mapLoadingBarHideTimer = null;
     bar.hidden = false;
     mapLoadingBarShownAt = Date.now();
     mapLoadingBarRecheck = setInterval(() => {
-      if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS) {
+      if (Date.now() - mapLoadingLastEventAt > MAP_LOADING_BAR_FRESH_MS
+        && !routeComputeKeepsBarBusy()) {
         settleMapLoadingBar();
       }
     }, 350);
@@ -11415,6 +11425,9 @@ function syncRouteOptionControls() {
 }
 
 function setRouteOptionsLoading(loading) {
+  // Every compute path passes through here on its way in, which makes it
+  // the one reliable place to arm the top loading bar for calculation work.
+  if (loading) armMapLoadingBar();
   const host = document.getElementById('routeOptions');
   if (!host) return;
   host.classList.toggle('loading', loading);
