@@ -1390,13 +1390,15 @@ const DEFAULT_WEIGHTS = Object.freeze({
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   // Crossing a failing road with no signal or all-way stop (seconds, once per
-  // crossing; see uncontrolledCrossPenaltyS). Sized against the detour to a
-  // controlled crossing: a Seattle-grid signal two blocks over costs ~50 s
-  // round trip, so balanced diverts about that far and low-stress nearly twice
-  // as far. Controlled crossings are free by design -- the rider asked for the
-  // difference, not a blanket crossing tax (field, 2026-08-27).
-  crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
-  crossUncontrolledLowStressSec: 90,
+  // crossing; see uncontrolledCrossPenaltyS). OFF by default: the rider rode
+  // the first day of it and judged the reroutes not worth it (field,
+  // 2026-08-27), so the charge is opt-in via the app's "Avoid uncontrolled
+  // crossings" switch, which sends 20/45/90 — sized so a Seattle-grid signal
+  // two blocks over (~50 s round trip) is worth reaching in balanced mode and
+  // nearly twice that far in low-stress. Controlled crossings are free by
+  // design at any setting — the point is the difference, not a crossing tax.
+  crossUncontrolledDirectSec: 0, crossUncontrolledBalancedSec: 0,
+  crossUncontrolledLowStressSec: 0,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 // One place decides how a mode names its weights. Everything that used to spell

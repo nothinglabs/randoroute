@@ -125,9 +125,11 @@ for (const [title, blurb, items] of groups) {
         `${item.label}: default ${key}=${d} is outside the slider range ${item.min}-${item.max}`);
       // A default that IS an endpoint leaves the slider able to move only one
       // way, so the preference the control exists to strengthen cannot be
-      // strengthened. useMeasuredTraffic is the one deliberate two-state
-      // control here; everything else is a continuous preference.
-      if (key === 'useMeasuredTraffic') continue;
+      // strengthened. useMeasuredTraffic is a deliberate two-state control,
+      // and the crossUncontrolled triple deliberately defaults to its 0
+      // floor: the charge ships OFF (field, 2026-08-27) and the "Avoid
+      // uncontrolled crossings" switch is what raises it.
+      if (key === 'useMeasuredTraffic' || key.startsWith('crossUncontrolled')) continue;
       assert.ok(d > item.min && d < item.max,
         `${item.label}: default ${key}=${d} sits at an end of its ${item.min}-${item.max}`
         + ' range, so the slider can only move one way');

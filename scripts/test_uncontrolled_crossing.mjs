@@ -54,45 +54,42 @@ const probe = worker.run(`(() => {
   const un = specimen(false);
   const con = specimen(true);
   if (!un || !con) return { un, con };
-  return {
-    un, con,
-    unPenalty: uncontrolledCrossPenaltyS(un.inEdge, un.node, un.outEdge, rules, 'balanced'),
-    unPenaltyLow: uncontrolledCrossPenaltyS(un.inEdge, un.node, un.outEdge, rules, 'low'),
-    conPenalty: uncontrolledCrossPenaltyS(con.inEdge, con.node, con.outEdge, rules, 'balanced'),
-    // Arriving ON the failing road: riding along it is the multipliers' job.
-    alongPenalty: (() => {
-      for (let a = outStart[un.node]; a < outStart[un.node + 1]; a++) {
-        const ei = outEdge[a];
-        if (edgeLevelFor(ei, rules, eA[ei] === un.node) === 4) {
-          return uncontrolledCrossPenaltyS(ei, un.node, un.outEdge, rules, 'balanced');
-        }
+  const at = (spec, mode) =>
+    uncontrolledCrossPenaltyS(spec.inEdge, spec.node, spec.outEdge, rules, mode);
+  // Arriving ON the failing road: riding along it is the multipliers' job.
+  const alongAt = () => {
+    for (let a = outStart[un.node]; a < outStart[un.node + 1]; a++) {
+      const ei = outEdge[a];
+      if (edgeLevelFor(ei, rules, eA[ei] === un.node) === 4) {
+        return uncontrolledCrossPenaltyS(ei, un.node, un.outEdge, rules, 'balanced');
       }
-      return null;
-    })(),
+    }
+    return null;
   };
+  const defaults = { un: at(un, 'balanced'), con: at(con, 'balanced') };
+  // The rider's opt-in strengths, as the "Avoid uncontrolled crossings"
+  // switch sends them (the charge ships OFF by default — 2026-08-27 field
+  // direction after a day riding the always-on version).
+  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
+    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
+  const on = { un: at(un, 'balanced'), unLow: at(un, 'low'),
+    con: at(con, 'balanced'), along: alongAt() };
+  useWeights(DEFAULT_WEIGHTS);
+  return { un, con, defaults, on,
+    restored: activeWeights.crossUncontrolledBalancedSec === 0 };
 })()`);
 check('the shipped graph holds both specimen shapes',
   !!(probe.un && probe.con), JSON.stringify({ un: probe.un, con: probe.con }));
-check('an uncontrolled crossing of a failing road is charged',
-  probe.unPenalty === 45, `balanced charge ${probe.unPenalty}`);
+check('by default the charge is off and routing is untouched',
+  probe.defaults.un === 0 && probe.defaults.con === 0 && probe.restored,
+  JSON.stringify(probe.defaults));
+check('switched on, an uncontrolled crossing of a failing road is charged',
+  probe.on.un === 45, `balanced charge ${probe.on.un}`);
 check('low-stress diverts further than balanced for the same crossing',
-  probe.unPenaltyLow === 90, `low-stress charge ${probe.unPenaltyLow}`);
-check('the same crossing at a controlled node is free',
-  probe.conPenalty === 0, `controlled charge ${probe.conPenalty}`);
+  probe.on.unLow === 90, `low-stress charge ${probe.on.unLow}`);
+check('the same crossing at a controlled node stays free',
+  probe.on.con === 0, `controlled charge ${probe.on.con}`);
 check('arriving on the failing road itself is never charged here',
-  probe.alongPenalty === 0, `along charge ${probe.alongPenalty}`);
-
-// The weight is a rider control: zero must turn the charge off.
-const zeroed = worker.run(`(() => {
-  const saved = activeWeights.crossUncontrolledBalancedSec;
-  const rules = ${rules};
-  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledBalancedSec: 0 });
-  const off = uncontrolledCrossPenaltyS(${probe.un?.inEdge}, ${probe.un?.node},
-    ${probe.un?.outEdge}, rules, 'balanced');
-  useWeights(DEFAULT_WEIGHTS);
-  return { off, restored: activeWeights.crossUncontrolledBalancedSec === saved };
-})()`);
-check('zeroing the weight silences the charge', zeroed.off === 0 && zeroed.restored,
-  JSON.stringify(zeroed));
+  probe.on.along === 0, `along charge ${probe.on.along}`);
 
 done();
