@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.854';
+const APP_VERSION = '2026-08-26.855';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1459,21 +1459,30 @@ map.on('sourcedata', (event) => {
   if (vectorSourceOf(event)) mapLoadingLastEventAt = Date.now();
 });
 // A fast zoom-out can outrun the renderer with every byte already fetched:
-// tiles sit parsing and painting, no request ever starts, and the flow clock
-// never arms (field, 2026-08-26 — "zoom out faster than the map can render,
-// progress indicator isn't showing"). While the map is behind within a short
-// window of the rider's own gesture, each rendered-but-not-loaded frame
-// counts as flow. The window is what keeps the zombie-tile poison out: a
-// hung tile holds map.loaded() false forever, but only frames near a real
-// interaction feed the clock, so the bar still settles moments after the
-// catch-up ends — or the window closes.
+// tiles sit parsing, no request ever starts, and the flow clock never arms
+// (field, 2026-08-26 — "zoom out faster than the map can render, progress
+// indicator isn't showing"). While tiles are pending within a short window
+// of the rider's own gesture, each rendered frame counts as flow.
+//
+// Pending means map.areTilesLoaded() — NOT map.loaded(). loaded() reads the
+// style's dirty flags, and every camera change marks sources dirty, so it is
+// false for the whole duration of any drag plus its inertia. Feeding the
+// clock from it showed the bar for several seconds after every small swipe
+// of a fully drawn map (field, 2026-08-27): the motion itself spanned the
+// arm delay, then freshness decay and the minimum-on time were owed on top.
+// areTilesLoaded() is false only while some tile is genuinely fetching or
+// parsing, which is the catch-up the bar exists to narrate. The zombie-tile
+// poison that once ruled areTilesLoaded() out (a hung tile pends forever) is
+// what the gesture window is for: only frames near a real interaction feed
+// the clock, so the bar settles when the catch-up ends — or the window
+// closes.
 const MAP_RENDER_CATCHUP_WINDOW_MS = 10000;
 let mapInteractionAt = 0;
 for (const gesture of ['movestart', 'zoomstart', 'move', 'zoom']) {
   map.on(gesture, () => { mapInteractionAt = Date.now(); });
 }
 map.on('render', () => {
-  if (map.loaded()) return;
+  if (map.areTilesLoaded()) return;
   if (Date.now() - mapInteractionAt > MAP_RENDER_CATCHUP_WINDOW_MS) return;
   armMapLoadingBar();
 });

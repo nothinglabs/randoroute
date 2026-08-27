@@ -93,11 +93,11 @@ try {
   // Render catch-up: a fast zoom-out can leave the renderer behind with every
   // byte already fetched — no requests, no arrivals, just parse and paint.
   // Field, 2026-08-26: the bar stayed hidden through exactly that. Drive the
-  // real handlers: hold map.loaded() false while firing a gesture and frames,
-  // and the bar must arm; release it and go idle, and the bar must leave.
+  // real handlers: hold map.areTilesLoaded() false while firing a gesture and
+  // frames, and the bar must arm; release it and go idle, and it must leave.
   const catchup = await page.evaluate(async () => {
-    const realLoaded = map.loaded.bind(map);
-    map.loaded = () => false;
+    const realTilesLoaded = map.areTilesLoaded.bind(map);
+    map.areTilesLoaded = () => false;
     map.fire('zoomstart');
     const until = Date.now() + 3500;
     while (Date.now() < until && document.getElementById('mapLoadingBar').hidden) {
@@ -105,7 +105,7 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 120));
     }
     const shownDuringCatchup = !document.getElementById('mapLoadingBar').hidden;
-    map.loaded = realLoaded;
+    map.areTilesLoaded = realTilesLoaded;
     map.fire('idle');
     await new Promise((resolve) => setTimeout(resolve, 1200));
     return { shownDuringCatchup,
@@ -115,6 +115,27 @@ try {
     catchup.shownDuringCatchup === true, JSON.stringify(catchup));
   check('and the bar leaves when the renderer catches up',
     catchup.hiddenAfter === true, JSON.stringify(catchup));
+
+  // Camera motion alone is not catch-up. MapLibre's loaded() flag is false
+  // for the whole of any drag plus inertia, and feeding the clock from it
+  // showed the bar for several seconds after every small swipe of a fully
+  // drawn map (field, 2026-08-27, PWA). Drive a long gesture with renders
+  // over a map whose tiles are all resident: the bar must stay away.
+  const swipe = await page.evaluate(async () => {
+    map.fire('movestart');
+    const until = Date.now() + 3200;
+    while (Date.now() < until) {
+      map.fire('move');
+      map.fire('render');
+      await new Promise((resolve) => setTimeout(resolve, 110));
+    }
+    const shownDuringSwipe = !document.getElementById('mapLoadingBar').hidden;
+    map.fire('idle');
+    return { shownDuringSwipe, tilesLoaded: map.areTilesLoaded() };
+  });
+  check('motion over a fully drawn map never summons the bar',
+    swipe.shownDuringSwipe === false && swipe.tilesLoaded === true,
+    JSON.stringify(swipe));
 
   // A route compute is invisible work with a waiting rider (field,
   // 2026-08-26): the bar must hold through a calculation that moves no
