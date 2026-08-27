@@ -3722,6 +3722,14 @@ function profileExplanation(profile) {
   if (profile.fullyMatchingProbe) {
     return 'Strict probe: searched only road that fully matches your rules.';
   }
+  // Before the fullyMatchingRules adoption tag: a clean facility-neutral
+  // find is often ALSO the fastest fully-matching candidate, and its row
+  // should say how it was found, not how it was later adopted.
+  if (profile.facilityNeutral) {
+    return 'Re-run with the pull of bike lanes, trails and signed routes halved,'
+      + ' to surface a corridor that loses only because facility miles are priced shorter.'
+      + ' Safety pricing and every shown stat still use your settings.';
+  }
   if (profile.fullyMatchingRules) {
     return 'Searched only road that fully matches your rules.';
   }
@@ -5024,6 +5032,28 @@ function addPreferredRouteSpectrumCandidates(raw, points, rules, forceDesig, for
   }
 }
 
+// The facility-neutral diversity round (rider direction, 2026-08-27): one
+// extra Balanced search with every facility discount moved halfway to
+// neutral in log space (sqrt: path 0.25 -> 0.5, lane 0.42 -> 0.65, shared
+// 0.75 -> 0.87, strongDesignated 0.5 -> 0.71). Safety pricing is untouched;
+// the round asks "same standards — what would you ride if trails were half
+// as magnetic?", which is exactly the near-tie corridor that a hair's
+// change in weights or start point flips into and out of the portfolio.
+// The ordinary dedupe and filters decide whether its find is distinct
+// enough to offer, and every stat and score the rider sees is computed
+// under their own unchanged weights.
+const FACILITY_NEUTRAL_KEYS = Object.freeze(['facilityShared', 'facilityLane',
+  'facilityBuffered', 'facilitySeparated', 'facilityPath', 'strongDesignated']);
+function facilityNeutralWeights(base) {
+  const weights = { ...base };
+  for (const key of FACILITY_NEUTRAL_KEYS) {
+    if (Number.isFinite(weights[key]) && weights[key] > 0) {
+      weights[key] = +Math.sqrt(weights[key]).toFixed(4);
+    }
+  }
+  return weights;
+}
+
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
     progress = null, requestSignature = null,
     mainWeights = null, lensWeights = null) {
@@ -5112,6 +5142,33 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
 
   endPhase('corridors');
+  // The facility-neutral round (see facilityNeutralWeights above). Runs
+  // unconditionally: the <5-distinct trigger above would skip it exactly on
+  // the trips where one magnetic corridor owns every profile, which is
+  // where it earns its keep. Weights are restored before anything else
+  // prices or scores — only this one search sees the lens.
+  {
+    const mainSignature = weightsSignature;
+    const savedWeights = activeWeights;
+    useWeights(facilityNeutralWeights(activeWeights));
+    if (weightsSignature !== mainSignature) {
+      progress?.('Retrying with half the trail pull…', 0.58);
+      const profile = { id: 'facility-neutral', label: 'Half trail pull',
+        mode: 'balanced', prefDesig: forceDesig, prefResidential: forceResidential,
+        order: 1.42, facilityNeutral: true };
+      const result = route(points, rules, profile.mode, profile.prefDesig,
+        profile.prefResidential, snaps);
+      useWeights(savedWeights);
+      if (result.ok) {
+        result._profile = profile;
+        result.aggression = routeAggression(result);
+        raw.push(result);
+      }
+    } else {
+      useWeights(savedWeights);
+    }
+    endPhase('facilityNeutral');
+  }
   progress?.('Trying discovery profiles on calmer roads…', 0.6);
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
