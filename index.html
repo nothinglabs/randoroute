@@ -120,6 +120,10 @@
   </script>
   <div id="map"></div>
   <div id="mapLoadingBar" role="status" aria-label="Loading map" hidden><span></span><span></span></div>
+  <!-- Body-level on purpose: inside a panel, the panel's stacking context
+       trapped the pill under the top toolbar (field, 2026-08-27: it drew as
+       a grey wash BEHIND the translucent endpoint card). -->
+  <div id="routeDescToast" class="route-desc-toast" role="status" aria-live="polite"></div>
   <div id="topToolbar">
     <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
       <span id="navStartIcon" aria-hidden="true">▶</span> <span id="navStartLabel">Navigate</span>
@@ -215,7 +219,6 @@
         </div>
         <div class="route-chooser-row">
           <div id="routeOptions" role="group" aria-label="Choose route"></div>
-          <div id="routeDescToast" class="route-desc-toast" role="status" aria-live="polite"></div>
           <button id="routeTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
         </div>
       </div>
