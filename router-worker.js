@@ -3877,6 +3877,18 @@ function candidateSummary(candidate) {
       sum + (seg.highStress ? (Number(seg.lenM) || 0) : 0), 0),
     trafficCautionM: (candidate.segs || []).reduce((sum, seg) =>
       sum + (seg.cautionCause === 'high-stress' ? (Number(seg.lenM) || 0) : 0), 0),
+    // Contiguous failing stretches, so the description can say "just 2
+    // short fails" about a route whose failures are crossing-sized dabs
+    // rather than print a mileage that rounds to nothing.
+    ...(() => {
+      let count = 0, longest = 0, run = 0;
+      for (const seg of candidate.segs || []) {
+        if (seg.level === 4) run += Number(seg.lenM) || 0;
+        else if (run > 0) { count++; if (run > longest) longest = run; run = 0; }
+      }
+      if (run > 0) { count++; if (run > longest) longest = run; }
+      return { failRunCount: count, failRunLongestM: Math.round(longest) };
+    })(),
     suggestionScore: recommendationScoreBreakdown(candidate),
     safetyEquivalentM: candidate.failM + (candidate.dismountM || 0) * 3,
     preferredRouteM: preferredRouteMeters(candidate),

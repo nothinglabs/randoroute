@@ -200,14 +200,19 @@ check('every row explains why it was built',
 // words"), then 14 -> 17 later that day: caution and traffic belong on the
 // line, so up to two tails may attach within the budget. A route-defining
 // climb rides outside it as its own short sentence ("elevation gain should
-// be own sentence", same day), so the hard ceiling is 20.
+// be own sentence", same day), and every line now ends with a mandatory
+// fails/caution clause ("always say something about presence or lack of
+// fail or caution", same day), so the hard ceiling is 22.
 // "Usually" is the contract - collisions fall through to a shared fallback
 // rather than forcing awkward one-offs - so the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-check('every row carries a 6-20 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 20),
+check('every row carries a 6-22 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 22),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 20).join(' | '));
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 22).join(' | '));
+check('every row says something about fails and caution',
+  rows.every((r) => /fail|caution/i.test(r.desc)),
+  rows.filter((r) => !/fail|caution/i.test(r.desc)).map((r) => r.desc).join(' | '));
 check('character lines are usually unique across the set',
   new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
   `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
@@ -236,9 +241,12 @@ const safetyDescs = await pg.evaluate(() => {
   return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
 });
 check('a heavy-fail route leads with the failure share, even when quickest',
-  /% of this fails your safety rules$/.test(safetyDescs.dirty), JSON.stringify(safetyDescs));
-check('a single flagged mile reads singular',
-  /1 flagged mile your rules reject$/.test(safetyDescs.one), JSON.stringify(safetyDescs));
+  /% of this fails your safety rules — 1\.2 miles caution/.test(safetyDescs.dirty),
+  JSON.stringify(safetyDescs));
+check('a single failing mile reads singular in the safety clause',
+  /1 mile fail, 1\.2 miles caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
+check('a clean route says so outright',
+  /no fails or caution/.test(safetyDescs.clean), JSON.stringify(safetyDescs));
 check('descriptions never talk about the search itself',
   !/search/i.test(Object.values(safetyDescs).join(' ')), JSON.stringify(safetyDescs));
 // The extra-fact tail (field, 2026-08-27): a clean quick route with real
@@ -259,12 +267,11 @@ const quickWords = enriched.quick.split(/\s+/).filter(Boolean).length;
 check('a composition line carries a second fact within the 17-word budget',
   /, (with|climbing|plus)/.test(enriched.quick) && quickWords > 10 && quickWords <= 17,
   JSON.stringify({ ...enriched, quickWords }));
-// The caution tail once contradicted its base line ("No flagged road at all
-// ... with 4 miles needing caution" — field, 2026-08-27): a route clean of
-// fails but carrying caution reads "No roads fail ... though N miles need
-// caution", while after a fail mention the joiner is "and" ("though" there
-// read as weird — same day). A route-defining climb is its own trailing
-// sentence, and caution that is mostly official traffic stress says so.
+// The mandatory safety clause (field ask, 2026-08-27: always say
+// something about presence or lack of fails and caution): fail-clean
+// routes with caution say both, crossing-sized fails read as a count, a
+// route-defining climb is its own trailing sentence, and caution that is
+// mostly official traffic stress says so.
 const cautionAndHills = await pg.evaluate(() => {
   const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
     facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
@@ -277,30 +284,35 @@ const cautionAndHills = await pg.evaluate(() => {
       trafficCautionM: 6437 }),
     mk({ profileId: 'passing', timeS: 7150, highStressM: 12875,
       levelM: [0, 0, 32187, 0, 0] }),
+    mk({ profileId: 'dabs', timeS: 7160, ascentM: 700, failM: 260,
+      failRunCount: 2, failRunLongestM: 100,
+      levelM: [0, 0, 31927, 0, 260] }),
   ];
   const d = candidateRouteDescriptions(set);
   return { cleanish: d.get('cleanish'), dirty: d.get('dirty'),
-    traffic: d.get('traffic'), passing: d.get('passing') };
+    traffic: d.get('traffic'), passing: d.get('passing'),
+    dabs: d.get('dabs') };
 });
-check('a fail-clean route with caution says both without contradiction',
-  /No roads fail your rules/.test(cautionAndHills.cleanish)
-    && /though 5 miles need caution/.test(cautionAndHills.cleanish),
+check('a fail-clean route with caution states both plainly',
+  /no fails, 5 miles caution/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
 check('a route-defining climb is its own trailing sentence',
   /\. Climbs 2300 feet$/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
-check('after a fail mention the caution joins with "and", not "though"',
-  /with 3 miles flagged/.test(cautionAndHills.dirty)
-    && /and 5 miles need caution/.test(cautionAndHills.dirty),
+check('fail and caution miles ride every line that needs them',
+  /3\.1 miles fail, 5 miles caution/.test(cautionAndHills.dirty),
   JSON.stringify(cautionAndHills));
 check('caution that is mostly official traffic stress says so',
-  /need caution, mostly heavy traffic/.test(cautionAndHills.traffic),
+  /5 miles caution, mostly heavy traffic/.test(cautionAndHills.traffic),
   JSON.stringify(cautionAndHills));
 // Field, 2026-08-27: four car markers on a "meets rules" stretch and the
 // line said nothing about traffic — the official rating is reported at
 // every level, so long high-stress stretches are named even when they pass.
 check('long high-stress stretches are named even when the rules pass them',
   /with 8 miles in heavy traffic/.test(cautionAndHills.passing),
+  JSON.stringify(cautionAndHills));
+check('crossing-sized fails read as a count, not vanishing mileage',
+  /just 2 short fails, no caution/.test(cautionAndHills.dabs),
   JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
