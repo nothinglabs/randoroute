@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.872';
+const APP_VERSION = '2026-08-26.873';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4365,6 +4365,7 @@ function routeSegProps(s, routeIndex) {
     facilityOther: Number.isFinite(Number(s.facilityOther)) ? Number(s.facilityOther) : null,
     official: s.official || 0, mtb: s.mtb ? 1 : 0,
     dismount: isDismountSegment(s) ? 1 : 0,
+    walkAccess: s.walkAccess ? 1 : 0,
     dismountEscalated: s.dismountEscalated ? 1 : 0,
     facilityGap: s.facilityGap ? 1 : 0,
     surface: Number.isInteger(s.surface) ? s.surface : 0,
@@ -5006,7 +5007,8 @@ function storeRouteDetails(m) {
         partitionId: s.partitionId || null,
         localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
-        dismount: isDismountSegment(s), dismountEscalated: !!s.dismountEscalated,
+        dismount: isDismountSegment(s), walkAccess: !!s.walkAccess,
+        dismountEscalated: !!s.dismountEscalated,
         surface: Number.isInteger(s.surface) ? s.surface : 0,
         roadClass: s.roadClass || 0, lanes: Number(s.lanes) || 0,
         measures: s.measures || null, c0: s.c0, c1: s.c1,
@@ -9388,6 +9390,14 @@ function routeVisualStyle(p) {
   // even though route totals and Route Details count it as passing.
   if (p.crossing === 1) return 'pass';
   if (p.dismountEscalated === 1) return 'fail';
+  // A walked endpoint stub (the walked sidewalk escape): the road fails on
+  // its own numbers, which is exactly what the re-score below would say —
+  // but the route WALKS it, a fact only the worker knows. This line is why
+  // the stub draws amber instead of maroon, why the legend's fail bucket
+  // stays honest, and why the marker builder does not plant a "!" on a
+  // stretch the rider pushes a bike along (field, 2026-08-27: four display
+  // fixes missed this one independent re-score).
+  if (p.walkAccess === 1) return 'caution';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   // Walking is a caution wherever the route is shown. A dismount stretch --
   // tagged or synthesised -- used to draw as lime trail, which read as the
@@ -9642,7 +9652,7 @@ function buildRouteMarkerData(sdata) {
           // chain TOWARD mountains; slot order settles ties within a kind.
           const sort = (kind === 'steep' || kind.startsWith('steep+')
             ? 0 : ROUTE_MARKER_SLOT_SPAN) + slot;
-          const point = { type: 'Feature', properties: { kind, slot, sort,
+          const point = { type: 'Feature', properties: { kind, slot, sort, atM: target,
             routeIndex: f.routeIndex },
             geometry: { type: 'Point',
               coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } };
@@ -9687,6 +9697,32 @@ function buildRouteMarkerData(sdata) {
         geometry: { type: 'Point', coordinates: at } });
     }
   };
+  // A walked stub at the route's very START sits inside the spacing clock's
+  // opening gap (the first slot lands ~175 m in), so an 80 m endpoint walk
+  // earned no walker badge at all (field, 2026-08-27) — the one icon that
+  // says "this bit is on foot" never appeared where the feature fires most.
+  // Every qualified walk run gets at least one badge: when the clock placed
+  // none inside a run's span, one goes at the run's midpoint.
+  let walkRunStart = -1;
+  feats.forEach((f, i) => {
+    if (qualified[i].includes('walk') && walkRunStart < 0) walkRunStart = i;
+    const runEnds = walkRunStart >= 0
+      && (i === feats.length - 1 || !qualified[i + 1]?.includes('walk'))
+      && qualified[i].includes('walk');
+    if (!runEnds) { if (!qualified[i].includes('walk')) walkRunStart = -1; return; }
+    const span = { startM: spans[walkRunStart].startM, endM: spans[i].endM };
+    walkRunStart = -1;
+    const covered = walk.some((point) => point.properties.atM >= span.startM
+      && point.properties.atM <= span.endM);
+    if (covered) return;
+    const mid = (span.startM + span.endM) / 2;
+    const index = spans.findIndex((sp) => mid >= sp.startM && mid <= sp.endM);
+    const at = index >= 0 ? pointAt(feats[index], spans[index], mid) : null;
+    if (at) walk.push({ type: 'Feature', properties: { kind: 'walk',
+      slot: Math.round(mid / ROUTE_MARKER_SPACING_M), sort: ROUTE_MARKER_SLOT_SPAN,
+      atM: mid, routeIndex: feats[index].routeIndex },
+      geometry: { type: 'Point', coordinates: at } });
+  });
   let failStart = -1, failKind = null;
   feats.forEach((f, i) => {
     const kind = !f.fail ? null : (f.designated ? 'fail-designated' : 'fail');
