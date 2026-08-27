@@ -69,16 +69,22 @@ try {
     }
     const metadata = JSON.parse(raw.subarray(12, 12 + metadataBytes).toString('utf8'));
     const state = catalogue.states.find((entry) => entry.id === partition.stateId);
+    // The magic is honest, not pinned: metadata must NAME what the bytes
+    // actually are, and it must be a format the runtime parses (a BGRC
+    // source graph legitimately yields BGRC partitions -- the synthetic
+    // fixtures exercise exactly that back-compat path).
     if (metadata.partitionFormat !== catalogue.graphFormat
         || metadata.partitionId !== partition.id
         || metadata.stateId !== partition.stateId
         || metadata.sourceGraphVersion !== partition.sourceGraphVersion
         || metadata.sourceGraphSha256 !== state.sourceSha256
-        || metadata.embeddedGraphMagic !== 'BGRD') {
+        || !['BGRC', 'BGRD'].includes(metadata.embeddedGraphMagic)) {
       throw new Error(`${partition.path}: wrapper metadata does not match catalogue`);
     }
-    if (raw.subarray(graphStart, graphStart + 4).toString() !== 'BGRD') {
-      throw new Error(`${partition.path}: embedded graph is not BGRD`);
+    const embeddedMagic = raw.subarray(graphStart, graphStart + 4).toString();
+    if (embeddedMagic !== metadata.embeddedGraphMagic) {
+      throw new Error(`${partition.path}: embedded graph is ${embeddedMagic}, `
+        + `metadata claims ${metadata.embeddedGraphMagic}`);
     }
     const graph = raw.subarray(graphStart, graphStart + graphBytes);
     const counts = [graph.readUInt32LE(4), graph.readUInt32LE(8), graph.readUInt32LE(12),

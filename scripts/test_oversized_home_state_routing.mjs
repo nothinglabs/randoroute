@@ -31,7 +31,7 @@ try {
   }));
   check('the budget override marks the home graph as oversized',
     gates.budget === 104857600 && gates.oversized === true
-      && gates.graphRawBytes === 149082781, JSON.stringify(gates));
+      && gates.graphRawBytes === 152141368, JSON.stringify(gates));
 
   await page.evaluate(() => {
     setRoutePoint('start', { lng: -122.33006, lat: 47.60383 }, 'Seattle');

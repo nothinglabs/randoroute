@@ -16,13 +16,13 @@
   const PARTITION_CATALOGUE_FORMAT = 1;
   const MAX_ROUTE_STATES = 3;
   const MAX_STATE_CHAIN_CANDIDATES = 8;
-  // Baseline measured from the largest released BGRC graph (Washington,
-  // 2026-08-26 rebuild). This is an input-byte ceiling, not a claim about
+  // Baseline measured from the largest released graph (Washington, BGRD,
+  // 2026-08-27 rebuild). This is an input-byte ceiling, not a claim about
   // peak process memory. A Washington rebuild that grows the graph must move
   // this with it, or homeGraphExceedsDeviceBudget() silently switches the
   // whole state off the monolithic home worker — routing.ready never turns
   // true on web, and every in-state trip pays the partition session.
-  const MAX_DETAILED_GRAPH_INPUT_BYTES = 149082781;
+  const MAX_DETAILED_GRAPH_INPUT_BYTES = 152141368;
   const ROUTE_STATE_LIMIT_MESSAGE = 'Routes may cross up to three states in this version.';
 
   const SAFE_ID = /^[a-z0-9][a-z0-9._/-]{0,191}$/;

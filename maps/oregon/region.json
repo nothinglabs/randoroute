@@ -58,12 +58,12 @@
     "restrictions": false,
     "closures": true
   },
-  "graphRawBytes": 95167364,
+  "graphRawBytes": 97068428,
   "versions": {
     "roads": "sha-2a9ec0dbb5bf",
     "basemap": "sha-24def659819d",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-62bc009dda45",
+    "graph": "sha-aded1e326cdf",
     "regional": "sha-fa4293d054c7"
   },
   "attribution": {
