@@ -40,17 +40,6 @@ The machinery is shipped and tested. Remaining, in order:
 - **Decide the web deployment**: keep serving maps same-origin (works today,
   nothing changes) or move the web app to store downloads too.
 
-### 3. Multi-state routing — remaining to-dos
-- Physical-iPhone verdict on cross-state trips: Cache Storage durability,
-  memory pressure, navigation behavior, and real timings.
-- Field verdict: ambient street safety coloring in steady state (reported
-  white once right after an install; did not reproduce in the harness).
-- Parked: a composite regional build could reopen the narrow Admiralty
-  Inlet throat at z6, which the generalized coastline closes (as desktop
-  has always drawn it). Trigger: a rider finds it objectionable.
-- Deflake `test_saved_routes_ui` (intermittent 6.5 px navigation-position
-  assertion under load).
-
 ### 4. Import and test all states
 Import every U.S. state under the documented state-import process and verify
 each state's data, routing, map rendering, place search, and cross-state
