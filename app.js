@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.865';
+const APP_VERSION = '2026-08-26.866';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4393,6 +4393,13 @@ function fallbackRouteLevel(s) {
   // assembling the route. Preserve that explicit structural fact, not an
   // otherwise opaque and potentially stale stored level byte.
   if (s?.dismountEscalated) return 4;
+  // A walked endpoint stub is the same kind of structural fact: the road
+  // fails when scored from its own numbers, but the route WALKS it (the
+  // walked sidewalk escape, SAFETY-MODEL.md), and that depends on where the
+  // leg's endpoints were — which this re-scoring cannot know. Without this,
+  // the map re-failed a stub the engine had walked: maroon paint and a "!"
+  // over an amber walk (field, 2026-08-27).
+  if (s?.walkAccess) return 3;
   const level = effectiveLevel(scoreRouteSeg(routeSegProps(s)));
   return s?.facilityGap && level < 3 ? 3 : level;
 }
@@ -4402,6 +4409,7 @@ function fallbackRouteLevel(s) {
 // a matching item under Concerns. New worker payloads provide the exact cause;
 // the evaluation keeps older payloads useful.
 function routeSegmentCautionCause(s) {
+  if (s?.walkAccess) return 'dismount';
   if (s?.facilityGap && fallbackRouteLevel(s) === 3) return 'facility-gap';
   const verdict = evaluateRoad(scoreRouteSeg(routeSegProps(s)));
   if (verdict.level === 3 && verdict.caution) return verdict.caution;
@@ -5807,6 +5815,9 @@ function safetyRunSpeech(category, reason, lengthText, aheadText, hasLane = fals
 // nothing specific to say, which keeps the plain wording rather than inventing
 // a reason.
 function routeSegmentSafetyReason(s) {
+  // A walked endpoint stub reads as its road's failure when scored raw;
+  // the honest reason is the walking itself.
+  if (s?.walkAccess) return 'dismount';
   const scored = scoreRouteSeg(routeSegProps(s));
   const verdict = evaluateRoad(scored);
   if (verdict.level === 4) {
@@ -5888,8 +5899,10 @@ function buildRouteSafetyRuns(segs, cumulative) {
     // Synthesised walk links draw amber but stay out of the voice: the rider
     // chose that split deliberately, and a spoken "Caution" at every quiet
     // park connector is the noise the tagged-only rule exists to prevent.
+    // Walked endpoint stubs join the quiet tier for the same reason — a
+    // spoken warning at every departure from the rider's own street.
     if (isDismountSegment(seg) && !isTaggedDismountSegment(seg)
-        && fallbackRouteLevel(seg) < 3 && !seg.mtb) {
+        && (fallbackRouteLevel(seg) < 3 || seg.walkAccess) && !seg.mtb) {
       run.quietWalkM = (run.quietWalkM || 0) + (endM - startM);
     }
     const reason = routeSegmentSafetyReason(seg);

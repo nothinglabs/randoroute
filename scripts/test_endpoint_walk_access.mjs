@@ -8,6 +8,8 @@
 // stub as caution-level dismount rather than failing mileage, and the
 // walk price must sit above the A* floor so every cached bound stays
 // admissible.
+import fs from 'node:fs';
+import vm from 'node:vm';
 import { appDefaultRules, check, done, routerWorker } from './testlib/harness.mjs';
 
 const worker = routerWorker();
@@ -150,5 +152,56 @@ const floors = worker.run(`(() => {
 })()`);
 check('walking never undercuts the A* cost floor on any eligible edge',
   floors.checked > 5000 && floors.undercut === 0, JSON.stringify(floors));
+
+// The app and Route Details both re-score segments client-side from raw road
+// facts ("a stored worker byte is a cache, not truth"), which re-FAILED a
+// stub the engine had walked: maroon paint and a "!" over an amber walk
+// (field, 2026-08-27). walkAccess is a structural fact the client cannot
+// re-derive — it depends on where the leg's endpoints were — so both pages
+// must preserve it the way they preserve dismountEscalated. Lift the real
+// functions and drive them with facts that fail raw: the flag alone must
+// flip the verdict to caution/dismount.
+function lift(src, marker, endMarker, label) {
+  const i = src.indexOf(marker);
+  check(`${label} still contains ${marker}`, i !== -1);
+  const e = src.indexOf(endMarker, i);
+  check(`${label} ${marker} still ends with the expected marker`, e !== -1);
+  return src.slice(i, e + endMarker.length);
+}
+const appSrc = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const appBox = vm.createContext({
+  effectiveLevel: () => 4, scoreRouteSeg: (p) => p, routeSegProps: () => ({}),
+  evaluateRoad: () => ({ level: 4 }), routeSegmentDisplayCategory: () => 'fail',
+});
+vm.runInContext([
+  lift(appSrc, 'function fallbackRouteLevel', '\n}', 'app.js'),
+  lift(appSrc, 'function routeSegmentCautionCause', '\n}', 'app.js'),
+  'globalThis.OUT = { level: fallbackRouteLevel, cause: routeSegmentCautionCause };',
+].join('\n'), appBox);
+check('app: a raw-failing seg scores 4, the walkAccess flag alone makes it caution 3',
+  appBox.OUT.level({}) === 4 && appBox.OUT.level({ walkAccess: true }) === 3,
+  `plain=${appBox.OUT.level({})} walked=${appBox.OUT.level({ walkAccess: true })}`);
+check('app: the walked stub names dismount as its caution cause',
+  appBox.OUT.cause({ walkAccess: true }) === 'dismount',
+  String(appBox.OUT.cause({ walkAccess: true })));
+
+const detailsSrc = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
+const detailsBox = vm.createContext({
+  window: { SafetyModel: { evaluate: () => ({ level: 4 }) } },
+  routeSegmentFacts: () => ({}), activeDetailRules: () => ({}),
+  isDismountSegment: () => false, isMountainBikeTrail: () => false,
+  routeDisplayCategory: () => 'fail', details: { rules: {} },
+});
+vm.runInContext([
+  lift(detailsSrc, 'function routeSegmentLevel', '\n}', 'route-details.js'),
+  lift(detailsSrc, 'function routeCautionCause', '\n}', 'route-details.js'),
+  'globalThis.OUT = { level: routeSegmentLevel, cause: routeCautionCause };',
+].join('\n'), detailsBox);
+check('route details: a raw-failing seg scores 4, the walkAccess flag makes it caution 3',
+  detailsBox.OUT.level({}) === 4 && detailsBox.OUT.level({ walkAccess: true }) === 3,
+  `plain=${detailsBox.OUT.level({})} walked=${detailsBox.OUT.level({ walkAccess: true })}`);
+check('route details: the walked stub names dismount as its caution cause',
+  detailsBox.OUT.cause({ walkAccess: true }) === 'dismount',
+  String(detailsBox.OUT.cause({ walkAccess: true })));
 
 done();

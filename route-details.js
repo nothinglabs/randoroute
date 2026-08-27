@@ -64,6 +64,10 @@ function routeSegmentLevel(seg, rules = activeDetailRules()) {
   // segment facts under the saved rider rules every time instead of trusting a
   // cached byte written by whichever app version created the route.
   if (seg?.dismountEscalated) return 4;
+  // A walked endpoint stub (the walked sidewalk escape) is a structural fact
+  // from the worker, like the escalation above: the road fails on its own
+  // numbers but the route walks it, which no re-evaluation here can know.
+  if (seg?.walkAccess) return 3;
   const level = window.SafetyModel.evaluate(routeSegmentFacts(seg), rules).level;
   return seg?.facilityGap && level < 3 ? 3 : level;
 }
@@ -141,6 +145,7 @@ function isSidewalkFallbackSegment(seg, rules = {}) {
 // deliberate last line of defence: an amber segment must never disappear from
 // Concerns merely because a new cause was added elsewhere first.
 function routeCautionCause(seg, rules = {}) {
+  if (seg?.walkAccess) return 'dismount';
   if (seg?.facilityGap && routeSegmentLevel(seg, rules) === 3) return 'facility-gap';
   const verdict = window.SafetyModel.evaluate(routeSegmentFacts(seg), rules);
   if (verdict.level === 3 && verdict.caution) return verdict.caution;
