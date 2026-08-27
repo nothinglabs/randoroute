@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.876';
+const APP_VERSION = '2026-08-26.877';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1323,6 +1323,37 @@ document.addEventListener('visibilitychange', () => {
 
 window.__setAppLaunchStatus?.('Opening local map data…');
 const constrainedMapRuntime = isConstrainedDevice() && !isMacDesktopSafari();
+/* Map-restore visibility (field, 2026-08-27): after an app update the map
+   sat blank for minutes with no explanation — the service worker was
+   silently re-downloading whole tile archives it had lost. The SW now
+   announces each whole-archive refetch; this chip names what is restoring
+   (file and megabytes), and a plain "Preparing the map…" covers any other
+   boot where tiles have not rendered within a couple of seconds. */
+const mapRestore = { active: new Map(), bootCovered: false };
+function syncMapBootStatus() {
+  const chip = document.getElementById('mapBootStatus');
+  if (!chip) return;
+  let text = '';
+  if (mapRestore.active.size) {
+    const names = [...mapRestore.active.entries()].map(([path, bytes]) => {
+      const file = (path.split('/').pop() || '').replace('.pmtiles', '');
+      return bytes ? `${file} (${Math.max(1, Math.round(bytes / 1048576))} MB)` : file;
+    });
+    text = `Restoring map data — ${names.join(', ')}…`;
+  } else if (mapRestore.bootCovered) {
+    text = 'Preparing the map…';
+  }
+  chip.textContent = text;
+  chip.hidden = !text;
+}
+navigator.serviceWorker?.addEventListener('message', (event) => {
+  const m = event.data;
+  if (m?.type !== 'map-archive-refetch' || !m.pathname) return;
+  if (m.phase === 'done' || m.phase === 'failed') mapRestore.active.delete(m.pathname);
+  else mapRestore.active.set(m.pathname, m.bytes || mapRestore.active.get(m.pathname) || null);
+  syncMapBootStatus();
+});
+
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle({ constrainedRenderer: constrainedMapRuntime }),
@@ -1364,6 +1395,20 @@ const map = new maplibregl.Map({
   // trails below z9 and the invisible tap layers floor at z9, so low-zoom
   // tiles are small enough for the default cache policy to handle.
 });
+{
+  const bootCoverTimer = setTimeout(() => {
+    if (!map.loaded() || !map.areTilesLoaded()) {
+      mapRestore.bootCovered = true;
+      syncMapBootStatus();
+    }
+  }, 2500);
+  map.once('idle', () => {
+    clearTimeout(bootCoverTimer);
+    mapRestore.bootCovered = false;
+    syncMapBootStatus();
+  });
+}
+
 function collapseMapAttribution() {
   const attribution = document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
   if (!attribution) return;

@@ -1750,6 +1750,12 @@ body.street-view-open #map { visibility: hidden; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-modified-notice { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #d59a3b; border-left: 5px solid #b66a00; border-radius: 9px; background: #fff4df; color: #714000; font: 850 15px/1.2 system-ui; }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
+#mapBootStatus { position: fixed; z-index: 63; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 122px); max-width: 88vw;
+  background: rgba(255, 255, 255, .93); color: #24404f; border: 1px solid #c9d7df;
+  border-radius: 999px; padding: 8px 16px; font: 640 12.5px/1.35 system-ui;
+  box-shadow: 0 3px 10px rgba(20, 35, 45, .18); pointer-events: none; }
+#mapBootStatus[hidden] { display: none; }
 .route-desc-toast { position: fixed; z-index: 64; box-sizing: border-box;
   display: flex; align-items: center; max-width: 96vw;
   padding: 10px 16px; border-radius: 16px; background: rgba(28, 46, 58, .72);

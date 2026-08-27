@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v876';
+const VERSION = 'v877';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -507,6 +507,20 @@ function ensurePmtilesChunks(cache, pathname, fullRequest, archiveVersion) {
 // could be deleted correctly and immediately replaced by half a dozen parallel
 // 40+ MB downloads.
 const fullArchiveFetchInFlight = new Map();
+// A whole-archive network download is tens of megabytes and minutes on a
+// phone — it must never be silent (field, 2026-08-27: an updated PWA sat on
+// a blank map for two minutes with no explanation while archives restored).
+// Every open page hears when one starts and when it settles.
+async function notifyArchiveRefetch(pathname, phase, bytes) {
+  try {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true });
+    for (const client of clients) {
+      client.postMessage({ type: 'map-archive-refetch', pathname, phase,
+        bytes: Number.isFinite(bytes) ? bytes : null });
+    }
+  } catch (error) { /* nonfatal: the download still proceeds */ }
+}
+
 function fetchAndCacheFullArchive(cache, pathname, fullRequest) {
   let inFlight = fullArchiveFetchInFlight.get(pathname);
   if (!inFlight) {
@@ -514,16 +528,25 @@ function fetchAndCacheFullArchive(cache, pathname, fullRequest) {
       // WebKit's HTTP cache can conflate a prior Range response with this
       // range-free request. Bypass it, and never store a 206 under the key that
       // means "complete archive" in Cache API.
-      const fetched = await fetch(fullRequest, { cache: 'no-store' });
-      if (fetched.status !== 200 || fetched.headers.get('Content-Range')) {
-        throw new Error(`full archive fetch returned HTTP ${fetched.status} for ${pathname}`);
+      notifyArchiveRefetch(pathname, 'start', null);
+      let ok = false;
+      try {
+        const fetched = await fetch(fullRequest, { cache: 'no-store' });
+        if (fetched.status !== 200 || fetched.headers.get('Content-Range')) {
+          throw new Error(`full archive fetch returned HTTP ${fetched.status} for ${pathname}`);
+        }
+        notifyArchiveRefetch(pathname, 'downloading',
+          Number(fetched.headers.get('Content-Length')));
+        await cache.put(fullRequest, fetched.clone());
+        const stored = await cache.match(fullRequest, {
+          ignoreVary: true, ignoreSearch: true,
+        });
+        if (!stored) throw new Error(`could not store complete archive ${pathname}`);
+        ok = true;
+        return stored;
+      } finally {
+        notifyArchiveRefetch(pathname, ok ? 'done' : 'failed', null);
       }
-      await cache.put(fullRequest, fetched.clone());
-      const stored = await cache.match(fullRequest, {
-        ignoreVary: true, ignoreSearch: true,
-      });
-      if (!stored) throw new Error(`could not store complete archive ${pathname}`);
-      return stored;
     })().finally(() => fullArchiveFetchInFlight.delete(pathname));
     fullArchiveFetchInFlight.set(pathname, inFlight);
   }
