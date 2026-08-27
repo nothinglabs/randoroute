@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.887';
+const APP_VERSION = '2026-08-26.888';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12051,7 +12051,7 @@ function candidateRouteDescriptions(all) {
   // "no fails, 2.5 miles caution", "just 2 short fails, no caution" — so
   // the rider always knows the kind of ride, and can weigh the miles
   // against the route's length themselves. Optional tails then fit a
-  // 17-word budget, and a short climb sentence rides outside it.
+  // 20-word budget, and a short climb sentence rides outside it.
   const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
   const miNum = (x) => {
     const one = Math.max(0.1, Math.round(x * 10) / 10);
@@ -12086,12 +12086,11 @@ function candidateRouteDescriptions(all) {
     const clause = safetyClause(f, /fail|flag/i.test(line), /caution/i.test(line));
     let full = clause ? `${line} — ${clause}` : line;
     const tails = [];
-    // Long stretches on officially high-stress roads are worth a word even
-    // when the rider's rules pass them (field, 2026-08-27: four car markers
-    // on a "meets rules" stretch and the line said nothing about traffic) —
-    // unless the caution mention already named the traffic.
-    if ((f.trafficMi >= 5 || (f.trafficMi >= 3 && f.trafficMi >= f.mi * 0.25))
-        && !/traffic/i.test(full)) {
+    // Stretches on officially high-stress roads are worth a word from 3
+    // miles up, even when the rider's rules pass them (field, 2026-08-27:
+    // four car markers on a "meets rules" stretch and the line said nothing
+    // about traffic) — unless the caution mention already named it.
+    if (f.trafficMi >= 3 && !/traffic/i.test(full)) {
       tails.push(`with ${miles(Math.round(f.trafficMi))} in heavy traffic`);
     }
     // Scenery stays off the heavy-safety base lines, as before.
@@ -12106,7 +12105,7 @@ function candidateRouteDescriptions(all) {
     let attached = 0;
     let lastWasWith = false;
     for (const tail of tails) {
-      if (attached >= 2 || wordsOf(full) + wordsOf(tail) > 17) continue;
+      if (attached >= 2 || wordsOf(full) + wordsOf(tail) > 20) continue;
       const foldsIn = lastWasWith && tail.startsWith('with ');
       full = foldsIn ? `${full} and ${tail.slice(5)}` : `${full}, ${tail}`;
       lastWasWith = tail.startsWith('with ');
@@ -12266,11 +12265,23 @@ function showRouteDescriptionToast(option) {
   const text = profileId && all.length
     ? candidateRouteDescriptions(all).get(profileId) : null;
   if (!text) { hideRouteDescriptionToast(); return; }
-  host.textContent = text;
+  const body = document.createElement('span');
+  body.className = 'route-desc-text';
+  body.textContent = text;
+  // A visible way out. The whole pill already dismisses on tap; the ✕ is
+  // the affordance saying so (field ask, 2026-08-27), so it carries no
+  // behavior of its own — its tap bubbles to the host.
+  const close = document.createElement('span');
+  close.className = 'route-desc-close';
+  close.setAttribute('aria-hidden', 'true');
+  close.textContent = '✕';
+  host.replaceChildren(body, close);
   const anchor = document.getElementById('routeBar')?.getBoundingClientRect();
   if (anchor && anchor.width) {
-    host.style.left = `${Math.round(anchor.left)}px`;
     host.style.width = `${Math.round(anchor.width)}px`;
+    // Centered horizontally on the SCREEN (field ask, 2026-08-27) — the
+    // card itself sits left of center, beside the toolbar buttons.
+    host.style.left = `${Math.round(Math.max(0, (window.innerWidth - anchor.width) / 2))}px`;
     host.style.minHeight = `${Math.round(anchor.height * 0.8)}px`;
     // Centered over the card rather than pinned to its top (field ask,
     // 2026-08-27). The pill is opacity-hidden, never display:none, so its
@@ -12280,7 +12291,7 @@ function showRouteDescriptionToast(option) {
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
-  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 4000);
+  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 5000);
 }
 document.getElementById('routeDescToast')?.addEventListener('click', () => {
   hideRouteDescriptionToast();

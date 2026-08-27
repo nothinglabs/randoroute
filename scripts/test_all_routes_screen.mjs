@@ -202,14 +202,15 @@ check('every row explains why it was built',
 // climb rides outside it as its own short sentence ("elevation gain should
 // be own sentence", same day), and every line now ends with a mandatory
 // fails/caution clause ("always say something about presence or lack of
-// fail or caution", same day), so the hard ceiling is 22.
+// fail or caution", same day). The tail budget moved 17 -> 20 ("ok to
+// expand word limit a little", same day), so the hard ceiling is 25.
 // "Usually" is the contract - collisions fall through to a shared fallback
 // rather than forcing awkward one-offs - so the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-check('every row carries a 6-22 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 22),
+check('every row carries a 6-25 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 25),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 22).join(' | '));
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 25).join(' | '));
 check('every row says something about fails and caution',
   rows.every((r) => /fail|caution/i.test(r.desc)),
   rows.filter((r) => !/fail|caution/i.test(r.desc)).map((r) => r.desc).join(' | '));
@@ -282,7 +283,7 @@ const cautionAndHills = await pg.evaluate(() => {
       levelM: [0, 0, 19140, 8047, 5000] }),
     mk({ profileId: 'traffic', timeS: 7100, highStressM: 6437,
       trafficCautionM: 6437 }),
-    mk({ profileId: 'passing', timeS: 7150, highStressM: 12875,
+    mk({ profileId: 'passing', timeS: 7150, highStressM: 6437,
       levelM: [0, 0, 32187, 0, 0] }),
     mk({ profileId: 'dabs', timeS: 7160, ascentM: 700, failM: 260,
       failRunCount: 2, failRunLongestM: 100,
@@ -308,8 +309,8 @@ check('caution that is mostly official traffic stress says so',
 // Field, 2026-08-27: four car markers on a "meets rules" stretch and the
 // line said nothing about traffic — the official rating is reported at
 // every level, so long high-stress stretches are named even when they pass.
-check('long high-stress stretches are named even when the rules pass them',
-  /with 8 miles in heavy traffic/.test(cautionAndHills.passing),
+check('high-stress stretches from 3 miles up are named even when the rules pass them',
+  /with 4 miles in heavy traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
 check('crossing-sized fails read as a count, not vanishing mileage',
   /just 2 short fails, no caution/.test(cautionAndHills.dabs),

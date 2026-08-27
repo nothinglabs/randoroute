@@ -1760,11 +1760,13 @@ body.street-view-open #map { visibility: hidden; }
   box-shadow: 0 3px 12px rgba(0, 80, 130, .35); }
 .route-desc-toast { position: fixed; z-index: 64; box-sizing: border-box;
   display: flex; align-items: center; max-width: 96vw;
-  padding: 10px 16px; border-radius: 16px; background: rgba(28, 46, 58, .72);
+  padding: 10px 34px 10px 16px; border-radius: 16px; background: rgba(28, 46, 58, .58);
   color: #fff; font: 640 13.5px/1.45 system-ui; box-shadow: 0 4px 14px rgba(20, 35, 45, .28);
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 .route-desc-toast.show { opacity: 1; pointer-events: auto; }
+.route-desc-toast .route-desc-close { position: absolute; top: 7px; right: 11px;
+  font: 700 12px/1 system-ui; color: rgba(255, 255, 255, .85); }
 .weights-subnav { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: nowrap; gap: 6px;
   overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   padding: 8px 2px 9px; margin: 0 0 8px; background: #fff; border-bottom: 1px solid #e2eaef; }
