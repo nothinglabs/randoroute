@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.880';
+const APP_VERSION = '2026-08-26.881';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -18327,6 +18327,45 @@ async function verifyRenderedArchives() {
   location.reload();
 }
 verifyRenderedArchives();
+
+// Re-downloading an archive mid-session is a worst-case fallback, not a
+// feature: it begins only when the renderer trips over the hole, which on a
+// multi-state install can be while panning across a state line -- and until
+// then routes compute and draw over a map that is not there (field,
+// 2026-08-27). Sweep at boot instead: every archive an installed state is
+// meant to serve must already be in the offline data cache, and any missing
+// one starts restoring right away. The one-byte ranged fetch IS the restore:
+// the service worker answers a range of a missing archive by downloading and
+// caching the whole file, announcing progress to the download chip as it
+// goes. Sequential on purpose -- archives are tens of megabytes, and one
+// hole at a time is all a phone connection should fill. Presence only, not
+// integrity: a truncated copy is caught by the chunker's declared-size check
+// and verifyRenderedArchives above.
+async function restoreMissingMapArchives() {
+  if (!navigator.serviceWorker?.controller || !('caches' in window)) return;
+  const states = new Map();
+  if (Region.localDataAvailable) states.set(Region.id, Region);
+  for (const entry of (window.MapStore ? MapStore.installedStates() : [])) {
+    if (!states.has(entry.state.id)) states.set(entry.state.id, entry.state);
+  }
+  let cache;
+  try { cache = await caches.open(DATA_CACHE_NAME); } catch (error) { return; }
+  for (const state of states.values()) {
+    for (const url of Object.values(BikeBasemap.stateArchiveUrls(state))) {
+      const plain = url.slice('pmtiles://'.length);
+      try {
+        const hit = await cache.match(new Request(plain), {
+          ignoreVary: true, ignoreSearch: true,
+        });
+        // The service worker never serves ranges from a partial entry, so a
+        // stored non-200 (or Content-Range) copy counts as missing here too.
+        if (hit && hit.status === 200 && !hit.headers.get('Content-Range')) continue;
+        await fetch(plain, { headers: { Range: 'bytes=0-0' } });
+      } catch (error) { /* offline or transient: swept again next boot */ }
+    }
+  }
+}
+setTimeout(restoreMissingMapArchives, 4000);
 
 // A rider should hear that an installed state's map has an update, not
 // discover it by opening the Maps screen. The comparison runs against the

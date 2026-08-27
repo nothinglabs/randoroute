@@ -112,6 +112,31 @@
     return `pmtiles://maps/${state.id}/${file}?v=${version}`;
   }
 
+  // Every tile archive a state's folder is meant to serve, under the exact
+  // URL (?v= included) the renderer requests it by. One definition for two
+  // readers: the neighbor-state attach loop below, and app.js's boot sweep,
+  // which restores any of these missing from the offline data cache. The ?v=
+  // literals must stay equal to CONTEXT_URL / ROADS_URL above and the
+  // overlays source in app.js -- two spellings of one archive are two
+  // browser-cache entries and two PMTiles instances.
+  function stateArchiveUrls(state) {
+    const urls = {};
+    if (state?.datasets?.regional) {
+      urls.regional = stateArchiveUrl(state, 'regional.pmtiles',
+        archiveDatasetVersion(state, 'regional'));
+    }
+    if (state?.datasets?.basemap) {
+      urls.context = stateArchiveUrl(state, 'basemap.pmtiles', 5);
+    }
+    if (state?.datasets?.roads) {
+      urls.roads = stateArchiveUrl(state, 'roads.pmtiles', 24);
+    }
+    if (state?.datasets?.overlays) {
+      urls.overlays = stateArchiveUrl(state, 'overlays.pmtiles', 2);
+    }
+    return urls;
+  }
+
   function registerArchive(url) {
     ensureProtocol();
     const key = archiveKey(url);
@@ -296,29 +321,25 @@
       const contextId = visibleSourceId(state.id, 'context');
       const roadsId = visibleSourceId(state.id, 'roads');
       const overlaysId = visibleSourceId(state.id, 'overlays');
-      const regionalUrl = stateArchiveUrl(state, 'regional.pmtiles',
-        archiveDatasetVersion(state, 'regional'));
-      const contextUrl = stateArchiveUrl(state, 'basemap.pmtiles', 5);
-      const roadsUrl = stateArchiveUrl(state, 'roads.pmtiles', 24);
-      const overlaysUrl = stateArchiveUrl(state, 'overlays.pmtiles', 2);
-      if (regionalRenderer && state.datasets.regional && !map.getSource(regionalId)) {
-        registerArchive(regionalUrl);
-        map.addSource(regionalId, { type: 'vector', url: regionalUrl,
+      const urls = stateArchiveUrls(state);
+      if (regionalRenderer && urls.regional && !map.getSource(regionalId)) {
+        registerArchive(urls.regional);
+        map.addSource(regionalId, { type: 'vector', url: urls.regional,
           attribution: '© OpenStreetMap contributors' });
       }
-      if (detailed && state.datasets.basemap && !map.getSource(contextId)) {
-        registerArchive(contextUrl);
-        map.addSource(contextId, { type: 'vector', url: contextUrl,
+      if (detailed && urls.context && !map.getSource(contextId)) {
+        registerArchive(urls.context);
+        map.addSource(contextId, { type: 'vector', url: urls.context,
           attribution: '© OpenStreetMap contributors · Natural Earth' });
       }
-      if (detailed && state.datasets.roads && !map.getSource(roadsId)) {
-        registerArchive(roadsUrl);
-        map.addSource(roadsId, { type: 'vector', url: roadsUrl,
+      if (detailed && urls.roads && !map.getSource(roadsId)) {
+        registerArchive(urls.roads);
+        map.addSource(roadsId, { type: 'vector', url: urls.roads,
           attribution: '© OpenStreetMap contributors' });
       }
-      if (detailed && state.datasets.overlays && !map.getSource(overlaysId)) {
-        registerArchive(overlaysUrl);
-        map.addSource(overlaysId, { type: 'vector', url: overlaysUrl,
+      if (detailed && urls.overlays && !map.getSource(overlaysId)) {
+        registerArchive(urls.overlays);
+        map.addSource(overlaysId, { type: 'vector', url: urls.overlays,
           attribution: '© OpenStreetMap contributors' });
       }
       const style = map.getStyle();
@@ -763,6 +784,7 @@
     ROAD_MIN_ZOOM,
     ensureProtocol,
     createStyle,
+    stateArchiveUrls,
     syncVisibleStateSources,
   };
 })(window);
