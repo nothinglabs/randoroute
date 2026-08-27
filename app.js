@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.878';
+const APP_VERSION = '2026-08-26.879';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1336,9 +1336,13 @@ function syncMapBootStatus() {
   let text = '';
   const downloading = mapRestore.active.size > 0;
   if (downloading) {
-    const names = [...mapRestore.active.entries()].map(([path, bytes]) => {
+    const names = [...mapRestore.active.entries()].map(([path, p]) => {
       const file = (path.split('/').pop() || '').replace('.pmtiles', '');
-      return bytes ? `${file} (${Math.max(1, Math.round(bytes / 1048576))} MB)` : file;
+      if (p.bytes && p.loaded) {
+        return `${file} · ${Math.min(99, Math.round(100 * p.loaded / p.bytes))}% of ${Math.max(1, Math.round(p.bytes / 1048576))} MB`;
+      }
+      if (p.loaded) return `${file} · ${Math.max(1, Math.round(p.loaded / 1048576))} MB so far`;
+      return p.bytes ? `${file} (${Math.max(1, Math.round(p.bytes / 1048576))} MB)` : file;
     });
     text = `Downloading map data — ${names.join(', ')}…`;
   } else if (mapRestore.bootCovered) {
@@ -1354,7 +1358,13 @@ navigator.serviceWorker?.addEventListener('message', (event) => {
   const m = event.data;
   if (m?.type !== 'map-archive-refetch' || !m.pathname) return;
   if (m.phase === 'done' || m.phase === 'failed') mapRestore.active.delete(m.pathname);
-  else mapRestore.active.set(m.pathname, m.bytes || mapRestore.active.get(m.pathname) || null);
+  else {
+    const entry = mapRestore.active.get(m.pathname) || {};
+    mapRestore.active.set(m.pathname, {
+      bytes: m.bytes ?? entry.bytes ?? null,
+      loaded: m.loaded ?? entry.loaded ?? 0,
+    });
+  }
   syncMapBootStatus();
 });
 

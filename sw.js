@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v878';
+const VERSION = 'v879';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -511,14 +511,44 @@ const fullArchiveFetchInFlight = new Map();
 // phone — it must never be silent (field, 2026-08-27: an updated PWA sat on
 // a blank map for two minutes with no explanation while archives restored).
 // Every open page hears when one starts and when it settles.
-async function notifyArchiveRefetch(pathname, phase, bytes) {
+async function notifyArchiveRefetch(pathname, phase, bytes, loaded) {
   try {
     const clients = await self.clients.matchAll({ includeUncontrolled: true });
     for (const client of clients) {
       client.postMessage({ type: 'map-archive-refetch', pathname, phase,
-        bytes: Number.isFinite(bytes) ? bytes : null });
+        bytes: Number.isFinite(bytes) ? bytes : null,
+        loaded: Number.isFinite(loaded) ? loaded : null });
     }
   } catch (error) { /* nonfatal: the download still proceeds */ }
+}
+
+// Store the download through a counting stream so the page's chip can tick
+// (field, 2026-08-27: a 24 MB restore showed a number that never moved).
+// The re-wrapped Response drops the encoding/length headers — the body here
+// is already decoded, and the chunker measures the archive from its actual
+// bytes and the PMTiles header, never from these headers.
+function countedCachePut(cache, fullRequest, fetched, pathname, total) {
+  if (!fetched.body) return cache.put(fullRequest, fetched.clone());
+  let loaded = 0, lastSent = 0;
+  const reader = fetched.body.getReader();
+  const headers = new Headers(fetched.headers);
+  headers.delete('Content-Encoding');
+  headers.delete('Content-Length');
+  const counted = new Response(new ReadableStream({
+    pull(controller) {
+      return reader.read().then(({ done, value }) => {
+        if (done) { controller.close(); return; }
+        loaded += value.byteLength;
+        if (loaded - lastSent >= 1500000) {
+          lastSent = loaded;
+          notifyArchiveRefetch(pathname, 'downloading', total, loaded);
+        }
+        controller.enqueue(value);
+      });
+    },
+    cancel(reason) { return reader.cancel(reason); },
+  }), { status: 200, statusText: fetched.statusText, headers });
+  return cache.put(fullRequest, counted);
 }
 
 function fetchAndCacheFullArchive(cache, pathname, fullRequest) {
@@ -535,9 +565,9 @@ function fetchAndCacheFullArchive(cache, pathname, fullRequest) {
         if (fetched.status !== 200 || fetched.headers.get('Content-Range')) {
           throw new Error(`full archive fetch returned HTTP ${fetched.status} for ${pathname}`);
         }
-        notifyArchiveRefetch(pathname, 'downloading',
-          Number(fetched.headers.get('Content-Length')));
-        await cache.put(fullRequest, fetched.clone());
+        const total = Number(fetched.headers.get('Content-Length'));
+        notifyArchiveRefetch(pathname, 'downloading', total, 0);
+        await countedCachePut(cache, fullRequest, fetched, pathname, total);
         const stored = await cache.match(fullRequest, {
           ignoreVary: true, ignoreSearch: true,
         });
