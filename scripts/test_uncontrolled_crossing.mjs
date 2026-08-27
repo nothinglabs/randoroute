@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+// Crossing a failing road where nothing stops its traffic must cost more
+// than crossing at a signal. Field, 2026-08-27: a Phinney Ridge route took
+// three uncontrolled crossings of failing arterials because the router
+// could not tell a signal from a gap in traffic — the graph carried no
+// control data at all. Now it does (edgeLimitedDir bits 2/3), and the
+// worker charges crossUncontrolled*Sec once per uncontrolled crossing.
+//
+// Everything here RUNS the worker on the real Washington graph: the graph
+// must actually carry control bits at plausible density, and the penalty
+// function must charge exactly the transitions the spec names — no charge
+// at a controlled node, no charge arriving on a failing edge, no charge
+// once the weight is zeroed, and a real charge at an uncontrolled
+// fail-through node found in the shipped data.
+import { appDefaultRules, check, done, routerWorker } from './testlib/harness.mjs';
+
+const worker = routerWorker();
+check('worker loads the graph', worker.ready);
+
+const rules = JSON.stringify(appDefaultRules());
+
+const density = worker.run(`(() => ({
+  controlled: nodeControlledCount, nodes: N,
+}))()`);
+// Seattle alone holds ~1,400 signal junctions and ~4,400 signalised ped
+// crossings; statewide, anything under a few thousand controlled GRAPH
+// nodes means the stamping pass lost its data.
+check('the graph carries traffic-control nodes at plausible density',
+  density.controlled > 5000, JSON.stringify(density));
+
+// Find real specimens by scanning the graph the worker actually loaded:
+// an uncontrolled node that a failing road runs through, entered and left
+// on passing edges, and a controlled node of the same shape.
+const probe = worker.run(`(() => {
+  const rules = ${rules};
+  const touch = nodeFailTouch(rules);
+  const passArcsAt = (u) => {
+    const found = [];
+    for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+      const ei = outEdge[a];
+      if (edgeLevelFor(ei, rules, eA[ei] === u) !== 4) found.push(ei);
+    }
+    return found;
+  };
+  const specimen = (wantControlled) => {
+    for (let u = 0; u < N; u++) {
+      if (touch[u] < 2 || !!nodeControlled[u] !== wantControlled) continue;
+      const pass = passArcsAt(u);
+      if (pass.length < 2) continue;
+      return { node: u, inEdge: pass[0], outEdge: pass[1] };
+    }
+    return null;
+  };
+  const un = specimen(false);
+  const con = specimen(true);
+  if (!un || !con) return { un, con };
+  return {
+    un, con,
+    unPenalty: uncontrolledCrossPenaltyS(un.inEdge, un.node, un.outEdge, rules, 'balanced'),
+    unPenaltyLow: uncontrolledCrossPenaltyS(un.inEdge, un.node, un.outEdge, rules, 'low'),
+    conPenalty: uncontrolledCrossPenaltyS(con.inEdge, con.node, con.outEdge, rules, 'balanced'),
+    // Arriving ON the failing road: riding along it is the multipliers' job.
+    alongPenalty: (() => {
+      for (let a = outStart[un.node]; a < outStart[un.node + 1]; a++) {
+        const ei = outEdge[a];
+        if (edgeLevelFor(ei, rules, eA[ei] === un.node) === 4) {
+          return uncontrolledCrossPenaltyS(ei, un.node, un.outEdge, rules, 'balanced');
+        }
+      }
+      return null;
+    })(),
+  };
+})()`);
+check('the shipped graph holds both specimen shapes',
+  !!(probe.un && probe.con), JSON.stringify({ un: probe.un, con: probe.con }));
+check('an uncontrolled crossing of a failing road is charged',
+  probe.unPenalty === 45, `balanced charge ${probe.unPenalty}`);
+check('low-stress diverts further than balanced for the same crossing',
+  probe.unPenaltyLow === 90, `low-stress charge ${probe.unPenaltyLow}`);
+check('the same crossing at a controlled node is free',
+  probe.conPenalty === 0, `controlled charge ${probe.conPenalty}`);
+check('arriving on the failing road itself is never charged here',
+  probe.alongPenalty === 0, `along charge ${probe.alongPenalty}`);
+
+// The weight is a rider control: zero must turn the charge off.
+const zeroed = worker.run(`(() => {
+  const saved = activeWeights.crossUncontrolledBalancedSec;
+  const rules = ${rules};
+  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledBalancedSec: 0 });
+  const off = uncontrolledCrossPenaltyS(${probe.un?.inEdge}, ${probe.un?.node},
+    ${probe.un?.outEdge}, rules, 'balanced');
+  useWeights(DEFAULT_WEIGHTS);
+  return { off, restored: activeWeights.crossUncontrolledBalancedSec === saved };
+})()`);
+check('zeroing the weight silences the charge', zeroed.off === 0 && zeroed.restored,
+  JSON.stringify(zeroed));
+
+done();

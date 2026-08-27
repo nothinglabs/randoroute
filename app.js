@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.853';
+const APP_VERSION = '2026-08-26.854';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -185,6 +185,11 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   climbKneePct: 4, climbCostAt10Pct: 7.84,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
+  // Crossing a failing road with no signal or all-way stop, once per
+  // crossing. Sized against the detour to a controlled crossing; the values
+  // and their rationale live with the worker's copy.
+  crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
+  crossUncontrolledLowStressSec: 90,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 // Weights the rider tuned under the old names, so a saved custom set is
@@ -230,7 +235,8 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic',
+  'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
   if (!Number.isFinite(value)) return null;
@@ -15770,6 +15776,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Below 1 rewards road that clears your rules with room to spare. Direct mode does not use this.' },
     { key: 'freeway', label: 'Freeway, absolute last resort', min: 5, max: 100, step: 1,
       hint: 'Only reachable where a freeway shoulder is legally open to bikes and nothing else connects.' },
+    { base: 'crossUncontrolled', suffix: 'Sec', label: 'Cross a failing road with no signal (seconds)', min: 0, max: 120, step: 5,
+      hint: 'Charged once per crossing of a failing road at a junction with no traffic signal or all-way stop. Crossing at a signal is free, so this is how far out of the way the router will go to reach one. Needs a map pack built with control data; older packs skip the charge.' },
   ]],
   ['Bike infrastructure and quiet streets', 'Bonuses, not rules. Below 1 makes a mile feel shorter to the router, so it will ride further to use one.', [
     // The floors sit below the defaults on purpose. When the shipped default IS

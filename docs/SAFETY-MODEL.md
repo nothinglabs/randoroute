@@ -1341,7 +1341,40 @@ The identical expression is used by A*'s admissible lower bound in
 `edgeCostFloor`. The two must never diverge: that breaks the search rather than
 the price, and `test_route_potential.mjs` is what proves it has not happened.
 | turns | `turn*Sec` | fewer manoeuvres |
+| uncontrolled crossing of a failing road | `crossUncontrolled*Sec` | cross at a signal instead |
 | route diversity | `diversity*` | keeps the six offered routes genuinely different |
+
+### Crossing a failing road: controlled is free, uncontrolled is charged
+
+A short failing run bounded by passing neighbors (≤ 40 m, `CROSSING_MAX_M`)
+is reclassified as a road *crossing*: it does not count as failing mileage
+and is exempt from "Only show routes fully matching". That stands. What the
+crossing pays now depends on whether anything makes the crossed road's
+traffic stop.
+
+The graph carries every traffic control from OSM — `highway=traffic_signals`,
+signalised pedestrian crossings, and all-way stops (a plain minor-road stop
+sign does not count: the failing road's traffic never stops for it). A graph
+node is *controlled* when a control sits on it or within 35 m
+(`CONTROL_MATCH_M` in `build_graph.py`), which covers signals mapped on the
+approaches and the far carriageway of a divided arterial. The fact rides in
+`edgeLimitedDir` bits 2/3, one per endpoint, so no graph-format change was
+needed.
+
+Crossing a failing road at a **controlled** node costs nothing beyond the
+crossed pavement itself. At an **uncontrolled** node the route pays
+`crossUncontrolled*Sec` once per crossing (defaults 20/45/90 s by mode, a
+rider-editable weight, 0 turns it off) — sized so the router diverts up to
+about that many seconds of detour to cross at a signal, and no further. Two
+shapes are recognised: entering the failing road's own short pavement from a
+passing edge, and passing straight through a shared junction node that two or
+more failing edges touch. Arriving on a failing edge never pays it — riding
+*along* the road is the level-4 multipliers' job. Freeway edges are excluded
+from the through-node count (their only shared nodes with surface streets
+are ramp mouths, where traffic merges rather than crosses). A graph built
+before the control bits existed disables the charge entirely rather than
+treating every signalised crossing as uncontrolled. The charge is additive
+and outside the A* lower bound, which stays admissible by omission.
 
 ### Bonuses
 

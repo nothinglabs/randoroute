@@ -31,7 +31,12 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
      16=oneway a->b, 32=ferry crossing, 64=designated bike route),
   edgeShoulderAB i8[E], edgeShoulderBA i8[E]
     (-128 permanent prohibition, -1 unknown, else ft),
-  edgeLimitedDir u8[E] (bit 0 = a->b, bit 1 = b->a),
+  edgeLimitedDir u8[E] (bit 0 = a->b, bit 1 = b->a; bit 2 = traffic control
+                        at node A, bit 3 = at node B -- a signal or all-way
+                        stop within CONTROL_MATCH_M, see there. The byte is
+                        read with explicit masks everywhere, which is what
+                        lets the control bits ride in it without a format
+                        bump),
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
   edgeFacility u8[E] (low nibble = a->b rung: 0=none, 1=shared lane,
                       2=bike lane, 3=buffered lane, 4=separated lane,
@@ -273,6 +278,17 @@ EDGE_URBAN = 64
 # router-worker.js builds a segment's flags as `eFlags[ei] | 128` for
 # limited-access, so bit 7 there already means something else to the UI.
 EDGE_DISMOUNT_TAG = 128
+# A crossing is "controlled" when the crossed road's traffic is made to stop:
+# a signal (highway=traffic_signals, or a signalised pedestrian crossing
+# node), or an all-way stop. A plain minor-road stop sign does not qualify --
+# the through road's traffic never stops for it. Signals are frequently
+# mapped a few metres up each approach rather than on the junction node
+# itself, so a graph node counts as controlled when any control node sits
+# within this radius: wide enough to span a divided arterial's carriageway
+# pair, narrow enough not to leak onto the next city-grid junction (~80 m
+# spacing). The fact lands in edgeLimitedDir bits 2/3 (per endpoint); the
+# router derives its per-node view from those at load.
+CONTROL_MATCH_M = 35
 # Three DEM pixels. Shorter than this a structure's end-to-end rise is noise,
 # not slope -- see structure_climb().
 STRUCTURE_MIN_GRADE_M = 80
@@ -1524,6 +1540,22 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     refcount = {}
     kept_ways = 0
     last_way_id = [0]
+    control_nodes = {}       # osm node id -> (lon, lat) of a traffic control
+
+    def collect_control_node(obj):
+        # See CONTROL_MATCH_M for what counts as a control and why.
+        t = obj.tags
+        if not t:
+            return
+        hw = t.get('highway')
+        if hw == 'traffic_signals' \
+                or (hw == 'stop' and t.get('stop') == 'all') \
+                or (hw == 'crossing'
+                    and ('traffic_signals' in (t.get('crossing') or '')
+                         or t.get('crossing:signals') == 'yes')):
+            loc = obj.location
+            if loc.valid():
+                control_nodes[obj.id] = (loc.lon, loc.lat)
 
     def count_way_refs(obj):
         nonlocal kept_ways
@@ -1553,11 +1585,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             refcount[refs[-1]] += 1
 
     class RefcountHandler(osmium.SimpleHandler):
+        def node(self, obj):
+            collect_control_node(obj)
+
         def way(self, obj):
             count_way_refs(obj)
 
     RefcountHandler().apply_file(src, locations=False)
-    print(f'  kept {kept_ways:,} ways, {len(refcount):,} referenced nodes', flush=True)
+    print(f'  kept {kept_ways:,} ways, {len(refcount):,} referenced nodes, '
+          f'{len(control_nodes):,} traffic-control nodes', flush=True)
 
     # ---- pass 2: build edges split at junctions
     phase('pass 2: building edges...')
@@ -2134,6 +2170,59 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         print(f'  stitched {stitched:,} same-name seams (<= {STITCH_MAX_M} m)',
               flush=True)
     stitch_named_seams()
+
+    # ---- stamp traffic-control bits (edgeLimitedDir bits 2/3, one per
+    # endpoint). Runs BEFORE the walk-component prune on purpose: node ids in
+    # node_index are still valid here, and the per-edge byte is copied through
+    # the prune untouched. Two ways a graph node earns the bit: it IS a
+    # control node (signals are usually tagged on the junction node itself),
+    # or a control node sits within CONTROL_MATCH_M (signals mapped on the
+    # approaches, and the far carriageway of a divided arterial).
+    def stamp_control_nodes():
+        controlled = bytearray(len(node_lon))
+        matched_exact = 0
+        for osmid in control_nodes:
+            gi = node_index.get(osmid)
+            if gi is not None and not controlled[gi]:
+                controlled[gi] = 1
+                matched_exact += 1
+        # Spatial pass: hash control nodes into cells a bit larger than the
+        # radius, probe the 3x3 neighbourhood around each graph node.
+        cell_deg = 0.0006          # ~50 m of latitude
+        grid = {}
+        for lon, lat in control_nodes.values():
+            grid.setdefault((int(lon / cell_deg), int(lat / cell_deg)),
+                            []).append((lon, lat))
+        matched_near = 0
+        for gi in range(len(node_lon)):
+            if controlled[gi]:
+                continue
+            lon = node_lon[gi]; lat = node_lat[gi]
+            cx, cy = int(lon / cell_deg), int(lat / cell_deg)
+            lon_m = 111320 * math.cos(math.radians(lat))
+            hit = False
+            for dx in (-1, 0, 1):
+                if hit:
+                    break
+                for dy in (-1, 0, 1):
+                    for clon, clat in grid.get((cx + dx, cy + dy), ()):
+                        if (math.hypot((clon - lon) * lon_m,
+                                       (clat - lat) * 110540)
+                                <= CONTROL_MATCH_M):
+                            controlled[gi] = 1
+                            matched_near += 1
+                            hit = True
+                            break
+                    if hit:
+                        break
+        for i in range(len(eA)):
+            bits = (4 if controlled[eA[i]] else 0) | (8 if controlled[eB[i]] else 0)
+            if bits:
+                eLimitedDir[i] |= bits
+        print(f'  traffic control: {matched_exact:,} junction nodes tagged '
+              f'directly, {matched_near:,} within {CONTROL_MATCH_M} m',
+              flush=True)
+    stamp_control_nodes()
 
     # ---- prune pure walk-link components.
     # Walk links exist to CONNECT: a footbridge or park path that joins two

@@ -45,6 +45,12 @@ let eBearingA, eBearingB;
 let eFacilityGap;
 let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
+// Traffic control (a signal or all-way stop) at or within a few metres of the
+// node, derived at load from edgeLimitedDir bits 2/3 -- see the crossing
+// penalty at uncontrolledCrossPenaltyS. Zero controlled nodes means a graph
+// built before the bits existed; the penalty stands down entirely then rather
+// than treating every signalised crossing in the state as uncontrolled.
+let nodeControlled = null, nodeControlledCount = 0;
 let inGiant;
 // Partition-composite sidecars. An ordinary graph leaves these null and keeps
 // the historical one-state behavior.
@@ -463,6 +469,13 @@ function loadGraph(buf) {
   nodeHasLand = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
     if (!(eFlags[i] & 32)) { nodeHasLand[eA[i]] = 1; nodeHasLand[eB[i]] = 1; }
+  }
+  nodeControlled = new Uint8Array(N);
+  nodeControlledCount = 0;
+  for (let i = 0; i < E; i++) {
+    const ld = eLimitedDir[i];
+    if ((ld & 4) && !nodeControlled[eA[i]]) { nodeControlled[eA[i]] = 1; nodeControlledCount++; }
+    if ((ld & 8) && !nodeControlled[eB[i]]) { nodeControlled[eB[i]] = 1; nodeControlledCount++; }
   }
   postMessage({ type: 'progress', phase: 'engine', detail: 'Connecting the statewide bicycle network…' });
   // The graph contains thousands of tiny disconnected fragments (private
@@ -1049,8 +1062,8 @@ const VERDICT_SIDEWALK_FALLBACK = 16;
 // answers. With one slot, every relaxation of the discovery searches missed and
 // rebuilt the facts object -- an eighth of the router's whole running time.
 const verdictSlots = [
-  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0 },
-  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0 },
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0, failTouch: null },
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0, failTouch: null },
 ];
 function useVerdictSlot(slot, rules) {
   if (!slot.cache) slot.cache = new Uint8Array(2 * E);
@@ -1064,9 +1077,33 @@ function useVerdictSlot(slot, rules) {
     slot.generation = (slot.generation + 1) & 7;
     if (!slot.generation) { slot.cache.fill(0); slot.generation = 1; }
     slot.key = key;
+    slot.failTouch = null;
   }
   slot.rules = rules;
   return slot;
+}
+// How many distinct failing edges touch each node under this rule set,
+// saturated at 2. 2+ means a road failing the rider's rules runs THROUGH the
+// node -- the topological signature of a crossing (a divided arterial's
+// single carriageway alone contributes its arriving and departing edge).
+// Lives on the verdict slot: levels are a safety-rules fact, the slot already
+// keys and evicts by exactly those, and the identity fast path keeps this out
+// of the relaxation loop's budget. The one eager O(E) pass warms the slot's
+// verdict bytes it would have computed lazily anyway. Freeways are excluded
+// -- their only shared nodes with a surface street are ramp mouths, where
+// traffic merges rather than crosses -- and ferries never fail.
+function nodeFailTouch(rules) {
+  const slot = verdictSlotFor(rules);
+  if (slot.failTouch) return slot.failTouch;
+  const counts = new Uint8Array(N);
+  for (let i = 0; i < E; i++) {
+    if (eFlags[i] & (4 | 32)) continue;
+    if (edgeLevelFor(i, rules, true) !== 4 && edgeLevelFor(i, rules, false) !== 4) continue;
+    if (counts[eA[i]] < 2) counts[eA[i]]++;
+    if (counts[eB[i]] < 2) counts[eB[i]]++;
+  }
+  slot.failTouch = counts;
+  return counts;
 }
 function useVerdictCache(rules) { useVerdictSlot(verdictSlots[0], rules); }
 // Identity is the fast path, taken on every relaxation. Anything else is a rule
@@ -1352,6 +1389,14 @@ const DEFAULT_WEIGHTS = Object.freeze({
   climbKneePct: 4, climbCostAt10Pct: 7.84,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
+  // Crossing a failing road with no signal or all-way stop (seconds, once per
+  // crossing; see uncontrolledCrossPenaltyS). Sized against the detour to a
+  // controlled crossing: a Seattle-grid signal two blocks over costs ~50 s
+  // round trip, so balanced diverts about that far and low-stress nearly twice
+  // as far. Controlled crossings are free by design -- the rider asked for the
+  // difference, not a blanket crossing tax (field, 2026-08-27).
+  crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
+  crossUncontrolledLowStressSec: 90,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 // One place decides how a mode names its weights. Everything that used to spell
@@ -1380,7 +1425,8 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic',
+  'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
   if (!Number.isFinite(value)) return null;
@@ -1850,6 +1896,38 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
   return base;
 }
 
+// Crossing a road that FAILS the rider's rules where nothing makes its
+// traffic stop means finding a gap that never has to open. The graph carries
+// where a signal or all-way stop is (nodeControlled, from edgeLimitedDir
+// bits 2/3); everywhere else this charges a flat entry once per crossing, so
+// the router now spends up to that many seconds of detour to reach a
+// controlled crossing instead. Controlled crossings stay free. Two shapes of
+// crossing, matching how OSM maps them:
+//   - the failing road's own short pavement (a CROSSING_MAX_M run -- divided
+//     arterials, median islands): charged on entering it from a non-failing
+//     edge, once per run;
+//   - a plain shared junction node: both the incoming and outgoing edge pass,
+//     while >= 2 failing edges touch the node -- a failing road runs through.
+// Riding ALONG a failing road is priced per metre by the level-4 multipliers,
+// so a transition arriving on a failing edge charges nothing here. Turning
+// onto a parallel non-failing edge at the shared node is charged like the
+// straight-through crossing -- shared nodes between a crossing street and a
+// parallel facility are rare enough that bearing analysis is not worth its
+// cost. A graph without control bits (built before they existed) disables
+// the charge entirely rather than pricing every signalised crossing in the
+// state as uncontrolled.
+function uncontrolledCrossPenaltyS(incomingEdge, node, outgoingEdge, rules, mode) {
+  if (!nodeControlledCount || !(incomingEdge >= 0) || nodeControlled[node]) return 0;
+  if (edgeLevelFor(incomingEdge, rules, eB[incomingEdge] === node) === 4) return 0;
+  const outForward = eA[outgoingEdge] === node;
+  const crossing = edgeLevelFor(outgoingEdge, rules, outForward) === 4
+    ? eLen[outgoingEdge] <= CROSSING_MAX_M && !(eFlags[outgoingEdge] & 4)
+    : nodeFailTouch(rules)[node] >= 2;
+  if (!crossing) return 0;
+  return activeWeights[mode === 'direct' ? 'crossUncontrolledDirectSec'
+    : mode === 'low' ? 'crossUncontrolledLowStressSec' : 'crossUncontrolledBalancedSec'];
+}
+
 // DEM elevations are stored as whole meters, while OSM can split a road into
 // graph fragments only a few meters long, where quantization turns into
 // impossible grades. The credibility rules (MIN_REPORTED_GRADE_M and friends)
@@ -2074,7 +2152,10 @@ function edgeCost(ei, forward, ctx) {
   cost += dismountEntryPenaltyS(ctx.incomingEdge, ei);
   cost += freewayEntryPenaltyS(ctx.incomingEdge, ei);
   cost += facilityGapEntryPenaltyS(ctx.incomingEdge, ei);
-  if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
+  if (ctx.fromNode != null) {
+    cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
+    cost += uncontrolledCrossPenaltyS(ctx.incomingEdge, ctx.fromNode, ei, ctx.rules, ctx.mode);
+  }
   return cost;
 }
 
@@ -2084,7 +2165,8 @@ function edgeCost(ei, forward, ctx) {
  * per arc), `steep`/`surf` the per-arc additive terms, `divOk` whether an
  * alternative-corridor diversity penalty may apply. What stays out is exactly
  * what depends on more than the arc and the search config: the diversity
- * factor itself (per candidate), the dismount/traffic-conflict entry charges and turn friction
+ * factor itself (per candidate), the dismount/traffic-conflict entry charges,
+ * turn friction and the uncontrolled-crossing charge
  * (per transition). edgeCost() above recombines them in the original order,
  * so the cached path and the reference path price an edge identically. */
 let partsSteep = 0, partsSurf = 0, partsDivOk = 0;
@@ -2664,8 +2746,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)
           && !provisionalCrossing) continue;
       // The arc-deterministic price, cached per search configuration; the
-      // transition terms (diversity per candidate, dismount entry and turn
-      // friction per arrival) are applied live, exactly as edgeCost() does.
+      // transition terms (diversity per candidate, dismount entry, turn
+      // friction and the uncontrolled-crossing charge per arrival) are
+      // applied live, exactly as edgeCost() does.
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
       let mulC = cMul[a];
@@ -2700,6 +2783,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       cost += freewayEntryPenaltyS(incomingEdge, ei);
       cost += facilityGapEntryPenaltyS(incomingEdge, ei);
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
+      cost += uncontrolledCrossPenaltyS(incomingEdge, u, ei, rules, mode);
       if (!(cost < Infinity)) continue;
       const nd = du + cost;
       if (Math.abs(searchStamp[a]) !== generation || nd < searchDist[a]) {
@@ -4721,6 +4805,7 @@ function trimRoutingCaches() {
     slot.rules = null;
     slot.key = null;
     slot.noShoulderMax = 0;
+    slot.failTouch = null;
   }
   return { before, after: routingCacheStats(), candidatesRetained: !!lastCandidates };
 }
