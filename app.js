@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.867';
+const APP_VERSION = '2026-08-26.868';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -190,6 +190,10 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   crossUncontrolledDirectSec: 10, crossUncontrolledBalancedSec: 20,
   crossUncontrolledLowStressSec: 20,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+  // The facility-neutral diversity round's strength: 0 turns the round off,
+  // 0.5 halves the facility pull for its one extra search, 1 removes it for
+  // that search. Rationale with the worker's copy.
+  facilityNeutralStrength: 0.5,
 });
 // Weights the rider tuned under the old names, so a saved custom set is
 // carried across the rename instead of silently snapping back to defaults.
@@ -230,11 +234,14 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // return to. Anything below 1 would make a steep metre cheaper than a gentle
   // one, so the floor is 1 rather than 0.
   climbCostAt10Pct: Object.freeze([1, 40]),
+  // A search-lens fraction, not a road multiplier: above 1 the lens would
+  // INVERT the facility preference for its probe.
+  facilityNeutralStrength: Object.freeze([0, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'facilityNeutralStrength',
   'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
@@ -15976,6 +15983,8 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'diversityBalanced', label: 'Second option, balanced', min: 1.05, max: 3, step: .05 },
     { key: 'diversitySafer', label: 'Second option, safer', min: 1.05, max: 3, step: .05 },
     { key: 'diversityWide', label: 'Wide search', min: 1.05, max: 4, step: .05 },
+    { key: 'facilityNeutralStrength', label: 'Extra option: reduce trail pull', min: 0, max: 1, step: .05,
+      hint: 'One extra search with the pull of bike lanes, trails and signed routes reduced this far toward neutral, surfacing routes that lose only because facility miles are priced shorter. 0 turns it off. Safety pricing of the routes you see is never affected.' },
   ]],
 ];
 

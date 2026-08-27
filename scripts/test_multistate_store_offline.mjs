@@ -99,6 +99,36 @@ try {
     offline === catalogue.partitions.length, String(offline));
   await page.context().setOffline(false);
 
+  // A corrupted cached catalogue — a truncated 20+ MB write — used to fail
+  // its SHA check identically on every attempt, with no way out but clearing
+  // site data (field, 2026-08-27: "Route unavailable ... failed its SHA-256
+  // check"). The context must evict the bad bytes, refetch, and repair the
+  // stored copy so the next OFFLINE session inherits the good ones.
+  // The refetch goes to the app origin, which in this synthetic environment
+  // has no catalogue of its own — serve the fixture's bytes there.
+  await page.route('**/maps/partition-catalogue.json*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: catalogueBytes }));
+  const healed = await page.evaluate(async () => {
+    const cache = await caches.open(DATA_CACHE_NAME);
+    const key = (await cache.keys()).find((request) =>
+      request.url.includes('partition-catalogue'));
+    await cache.put(key, new Response('{"corrupt": true}'));
+    const context = await MapStore.routingContext(['state-a', 'state-b', 'state-c']);
+    return { partitions: context.catalogue.partitions.length };
+  });
+  await page.unroute('**/maps/partition-catalogue.json*');
+  check('a corrupted cached catalogue self-heals from the network',
+    healed.partitions === catalogue.partitions.length, JSON.stringify(healed));
+  await page.context().setOffline(true);
+  const healedOffline = await page.evaluate(async () => {
+    const context = await MapStore.routingContext(['state-a', 'state-b', 'state-c']);
+    return context.catalogue.partitions.length;
+  });
+  check('the repaired catalogue serves the next offline session',
+    healedOffline === catalogue.partitions.length, String(healedOffline));
+  await page.context().setOffline(false);
+
   const failedUpdate = await page.evaluate(async ({ url }) => {
     const before = MapStore.installedEntry('state-b');
     const brokenFile = { dataset: 'places', path: 'missing.json', bytes: 20 };

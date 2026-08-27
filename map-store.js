@@ -356,20 +356,39 @@
       }
       const request = catalogueRequest(acquisition.catalogue);
       let response = null;
+      let cache = null;
       if (root.caches) {
         // WKWebView may reject Cache Storage operations on a capacitor://
         // origin; a failed lookup falls through to fetch rather than failing
         // the whole multi-state plan.
         try {
-          response = await (await root.caches.open(root.DATA_CACHE_NAME)).match(request, {
+          cache = await root.caches.open(root.DATA_CACHE_NAME);
+          response = await cache.match(request, {
             ignoreVary: false, ignoreSearch: false,
           });
-        } catch (error) { response = null; }
+        } catch (error) { cache = null; response = null; }
       }
+      const fromCache = !!response;
       if (!response) response = await fetch(request);
       if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
-      await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
-        acquisition.catalogue.path);
+      try {
+        await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
+          acquisition.catalogue.path);
+      } catch (error) {
+        // The request URL is hash-keyed, so a cached copy that fails its
+        // check is a truncated or corrupted WRITE, never merely stale — and
+        // it would fail identically forever (field, 2026-08-27, desktop:
+        // "Route unavailable" on every attempt). Evict it, refetch, verify
+        // the network copy, and repair the stored one so the next offline
+        // session inherits the good bytes rather than the corrupt ones.
+        if (!fromCache) throw error;
+        try { await cache?.delete(request); } catch (evictError) { /* nonfatal */ }
+        response = await fetch(request);
+        if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
+        await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
+          acquisition.catalogue.path);
+        try { await cache?.put(request, response.clone()); } catch (storeError) { /* nonfatal */ }
+      }
       const catalogue = await response.json();
       root.MultiStateRouting?.validatePartitionCatalogue(catalogue);
       return {

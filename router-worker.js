@@ -1474,6 +1474,11 @@ const DEFAULT_WEIGHTS = Object.freeze({
   crossUncontrolledDirectSec: 10, crossUncontrolledBalancedSec: 20,
   crossUncontrolledLowStressSec: 20,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+  // How far the facility-neutral diversity round moves the facility
+  // discounts toward neutral for its one extra search (log-space exponent
+  // 1-s): 0 skips the round entirely, 0.5 halves the pull, 1 removes it for
+  // that search. Never touches the pricing of any offered route.
+  facilityNeutralStrength: 0.5,
 });
 // One place decides how a mode names its weights. Everything that used to spell
 // out `mode === 'low' ? 'Low' : ...` inline now calls this, so a future mode
@@ -1497,11 +1502,14 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // return to. Anything below 1 would make a steep metre cheaper than a gentle
   // one, so the floor is 1 rather than 0.
   climbCostAt10Pct: Object.freeze([1, 40]),
+  // A search-lens fraction, not a road multiplier: above 1 the lens would
+  // INVERT the facility preference for its probe.
+  facilityNeutralStrength: Object.freeze([0, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'facilityNeutralStrength',
   'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
@@ -5045,10 +5053,15 @@ function addPreferredRouteSpectrumCandidates(raw, points, rules, forceDesig, for
 const FACILITY_NEUTRAL_KEYS = Object.freeze(['facilityShared', 'facilityLane',
   'facilityBuffered', 'facilitySeparated', 'facilityPath', 'strongDesignated']);
 function facilityNeutralWeights(base) {
+  // The rider's facilityNeutralStrength slider: 0 returns the weights
+  // unchanged, which makes the round's signature match the main weights and
+  // the round skip itself — that IS the off switch.
+  const strength = Math.min(1, Math.max(0, base.facilityNeutralStrength ?? 0));
   const weights = { ...base };
+  if (!strength) return weights;
   for (const key of FACILITY_NEUTRAL_KEYS) {
     if (Number.isFinite(weights[key]) && weights[key] > 0) {
-      weights[key] = +Math.sqrt(weights[key]).toFixed(4);
+      weights[key] = +Math.pow(weights[key], 1 - strength).toFixed(4);
     }
   }
   return weights;
@@ -5142,11 +5155,13 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
 
   endPhase('corridors');
-  // The facility-neutral round (see facilityNeutralWeights above). Runs
-  // unconditionally: the <5-distinct trigger above would skip it exactly on
-  // the trips where one magnetic corridor owns every profile, which is
-  // where it earns its keep. Weights are restored before anything else
-  // prices or scores — only this one search sees the lens.
+  // The facility-neutral round (see facilityNeutralWeights above). Not
+  // gated on the <5-distinct trigger: that would skip it exactly on the
+  // trips where one magnetic corridor owns every profile, which is where
+  // it earns its keep. The rider's facilityNeutralStrength slider at 0
+  // makes the lens equal the main weights, and the signature check below
+  // skips the search. Weights are restored before anything else prices or
+  // scores — only this one search sees the lens.
   {
     const mainSignature = weightsSignature;
     const savedWeights = activeWeights;
