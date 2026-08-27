@@ -1400,6 +1400,45 @@ before the control bits existed disables the charge entirely rather than
 treating every signalised crossing as uncontrolled. The charge is additive
 and outside the A* lower bound, which stays admissible by omission.
 
+### The walked sidewalk escape at a route's own endpoints
+
+A route that starts or ends ON a failing road gets its first and last
+150 ft on foot (rider direction, 2026-08-27): the rider walks to the door
+and locks up anyway, so the router should not contort the whole route — or
+mark it "not fully matching" — over a stub nobody rides.
+
+A failing edge qualifies (`walkAccessGate` + the positional test in
+`routeLeg`) when it touches a node within 150 ft (`WALK_ACCESS_RADIUS_M`,
+46 m) of the leg's own snapped endpoint, is at most a block long
+(`WALK_ACCESS_EDGE_MAX_M`, 120 m), is not a freeway or ferry, and has a
+sidewalk to walk on: the tagged sidewalk-present bit, or Census-urban
+context without an explicit `sidewalk=no`. The urban half is deliberate —
+OSM sidewalk tagging reaches only 23.5% of Washington's failing edges
+while urban arterials nearly always have one, and the explicit-no bit
+still blocks the true negatives; the cost of occasionally trusting an
+unmapped sidewalk is bounded by this being 150 ft the rider planned to
+walk regardless.
+
+A qualifying edge is priced as **walking** (`V_DISMOUNT`, 1.15 m/s — no
+fail multipliers, no climb or surface additives, transition charges kept)
+and reported as a **caution-level dismount** stretch: amber, walker
+markers, `dismount` caution cause, its meters in the walking total rather
+than the failing total. Under *Only show routes fully matching* the stub
+no longer even reads as a violation, which is the freebie. Walking is
+slow (0.87 s/m), so the escape is self-limiting — any rideable
+alternative beats it on price — and it cannot leak a mid-route shortcut
+because only the endpoint neighborhood qualifies. Legality is untouched:
+an edge the pricing chain excludes stays excluded, and a prohibited
+direction has no arc to price. The walk price sits far above
+`edgeCostFloor`'s best-case ride, so every cached A* bound stays
+admissible with no keying change. Via points are leg endpoints, so a stop
+mid-journey earns the same escape.
+
+This supersedes nothing: the wider requireSafe terminal-access carve-out
+(300 m / 800 m, ×30, still reported failing) remains for failing endpoint
+blocks that have no sidewalk at all — walking is for where a sidewalk
+exists; the carve-out is for where the door is otherwise unreachable.
+
 ### Bonuses
 
 Two multipliers are discounts rather than penalties, and they follow three rules.

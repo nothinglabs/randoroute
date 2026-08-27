@@ -127,6 +127,33 @@ function edgeMeasures(i) {
 // ones, so the exemption can never leak a failing shortcut into mid-route.
 const ACCESS_RADIUS_M = 300;   // ~1,000 ft around each leg endpoint
 const ACCESS_EDGE_MAX_M = 800; // a qualifying edge must itself be short
+// The walked sidewalk escape (field direction, 2026-08-27): a route that
+// starts or ends ON a failing road gets its first/last block on foot. The
+// rider walks to the door and locks up anyway, so a failing edge that
+// touches a node within 150 ft of the leg's own endpoint — and that has a
+// sidewalk to walk on — is priced as WALKING (V_DISMOUNT, no fail
+// multipliers) and reported as a caution-level dismount stretch rather
+// than failing mileage. "Has a sidewalk" is the tagged present bit, or
+// Census-urban context without an explicit sidewalk=no: OSM sidewalk
+// tagging reaches only 23.5% of failing edges statewide, while urban
+// arterials nearly always have one — the explicit-no bit still blocks the
+// true negatives. Walking is slow (0.87 s/m), so the escape is
+// self-limiting: any rideable alternative beats it on price, and it can
+// never leak a mid-route shortcut because only the endpoint neighborhood
+// qualifies. Both radius and edge cap sit far inside the requireSafe
+// access exemption above, so a walk-access edge is always already
+// admitted to a fully-matching search.
+const WALK_ACCESS_RADIUS_M = 46;    // 150 ft around each leg endpoint
+const WALK_ACCESS_EDGE_MAX_M = 120; // about one city block
+// The positional half (near a leg endpoint) lives in routeLeg; this half is
+// pure edge fact: short, walkable-beside (never a freeway or ferry), and
+// carrying a sidewalk to walk on. Callers gate on the failing verdict
+// themselves.
+function walkAccessGate(ei) {
+  return eLen[ei] <= WALK_ACCESS_EDGE_MAX_M && !(eFlags[ei] & (4 | 32))
+    && ((eOfficial[ei] & EDGE_SIDEWALK)
+      || ((eOfficial[ei] & (EDGE_URBAN | EDGE_SIDEWALK_NO)) === EDGE_URBAN));
+}
 // A failing edge this short, between passing neighbors, is a road CROSSING —
 // the few meters of a busy road's own pavement at a signal or trail crossing —
 // not riding along the failing road. Crossings are never rule violations.
@@ -2565,9 +2592,18 @@ function edgeCostFloor(i, forward) {
     climb = (priced * climbSteepness(priced, eLen[i])
       + Math.max(0, asc - netAsc) * 0.5) * climbRate;
   }
-  return (edgeTimeS(i, forward) + climb) * m
+  const floor = (edgeTimeS(i, forward) + climb) * m
     + steepUphillAvoidanceS(i, forward, mode) + surfacePreferenceS(i, rules)
     + facilityGapDistancePenaltyS(i);
+  // A walk-eligible edge can be traversed at walking price when it sits at a
+  // leg's endpoint, and a failing edge's ride floor (base time times the
+  // minimum fail multiplier) sits ABOVE that. The floor cannot know where
+  // the endpoints are — it feeds bound caches keyed by rules alone — so for
+  // these edges it must cover the cheaper of the two traversals everywhere.
+  // Passing edges ride below walking pace, so min() moves nothing there;
+  // only short failing sidewalk edges get the lower floor, which weakens
+  // the potential immeasurably and keeps it admissible.
+  return walkAccessGate(i) ? Math.min(floor, eLen[i] / V_DISMOUNT) : floor;
 }
 
 // Keyed by goal node, mode and the bound signature, so a potential is only ever
@@ -2723,6 +2759,18 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const terminalAccessEdge = (ei) =>
     eLen[ei] <= ACCESS_EDGE_MAX_M && !(eFlags[ei] & 4)
     && (nearTerminal(eA[ei]) || nearTerminal(eB[ei]));
+  // The walked sidewalk escape (see WALK_ACCESS_RADIUS_M). Planar distance:
+  // at 46 m scale the flat-earth error is nanometres, and this runs inside
+  // the relax loop for every failing arc.
+  const walkKx = 111320 * Math.cos(goalLat * Math.PI / 180), walkKy = 110540;
+  const nearWalkTerminal = (n) => {
+    const dxs = (nodeLon[n] - startLon) * walkKx, dys = (nodeLat[n] - startLat) * walkKy;
+    if (dxs * dxs + dys * dys <= WALK_ACCESS_RADIUS_M * WALK_ACCESS_RADIUS_M) return true;
+    const dxg = (nodeLon[n] - goalLon) * walkKx, dyg = (nodeLat[n] - goalLat) * walkKy;
+    return dxg * dxg + dyg * dyg <= WALK_ACCESS_RADIUS_M * WALK_ACCESS_RADIUS_M;
+  };
+  const walkAccessEdge = (ei) => walkAccessGate(ei)
+    && (nearWalkTerminal(eA[ei]) || nearWalkTerminal(eB[ei]));
   // Turn costs depend on how the rider arrived at an intersection, so search
   // directed-edge states rather than collapsing every arrival into one node.
   // This preserves optimal A* behavior while allowing a simpler route to beat
@@ -2872,17 +2920,29 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         // run of the same request could disagree in the last float digit.
         mulC = cMul[a];
       }
-      let cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
-        ? mulC * diversityFactor : mulC;
-      if (progressPenaltySecPerM > 0) {
-        const awayM = progressDistanceM(v) - progressFromGoalM;
-        if (awayM > 0) cost += awayM * progressPenaltySecPerM;
+      let cost;
+      if (actualLevel === 4 && mulC < Infinity && walkAccessEdge(ei)) {
+        // Walked sidewalk escape: real walking time, no fail multipliers,
+        // no climb or surface additives (walking pace shrugs at both). The
+        // transition charges below still apply — arrival friction is real
+        // on foot too. The mulC guard keeps this a price change, never a
+        // legality change: an edge the chain excludes stays excluded.
+        // Walking (0.87 s/m) sits far above edgeCostFloor's best ride, so
+        // every cached bound stays admissible untouched.
+        cost = eLen[ei] / V_DISMOUNT;
+      } else {
+        cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
+          ? mulC * diversityFactor : mulC;
+        if (progressPenaltySecPerM > 0) {
+          const awayM = progressDistanceM(v) - progressFromGoalM;
+          if (awayM > 0) cost += awayM * progressPenaltySecPerM;
+        }
+        // An exempted terminal-access block is a last resort, never a shortcut
+        // (multiplicative, so applying it here equals applying it inside the
+        // chain; the additive terms below are rightly exempt).
+        if (rules.requireSafe && actualLevel === 4) cost *= 30;
+        cost += cAdd[a];
       }
-      // An exempted terminal-access block is a last resort, never a shortcut
-      // (multiplicative, so applying it here equals applying it inside the
-      // chain; the additive terms below are rightly exempt).
-      if (rules.requireSafe && actualLevel === 4) cost *= 30;
-      cost += cAdd[a];
       cost += dismountEntryPenaltyS(incomingEdge, ei);
       cost += freewayEntryPenaltyS(incomingEdge, ei);
       cost += facilityGapEntryPenaltyS(incomingEdge, ei);
@@ -2957,7 +3017,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
     else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
     distM += eLen[ei];
-    let segTimeS = edgeTimeS(ei, forward);
+    // Same predicate and same walking time the search priced this arc with,
+    // so the reported route cannot disagree with the one the search chose.
+    const walkAccess = walkAccessEdge(ei) && edgeLevelFor(ei, rules, forward) === 4;
+    let segTimeS = walkAccess ? eLen[ei] / V_DISMOUNT : edgeTimeS(ei, forward);
     if (eFlags[ei] & 32) {
       if (nodeHasLand[fromNode]) segTimeS += activeWeights.ferryWaitMin * 60;
       ferryM += eLen[ei];
@@ -2974,7 +3037,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (edgeFacility(ei, forward) >= 2) facilityM += eLen[ei];
     if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
-    if (isDismountEdge(ei)) dismountM += eLen[ei];
+    if (isDismountEdge(ei) || walkAccess) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
         && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
@@ -2984,13 +3047,18 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     // segments, matching the amber it is drawn with and the walker markers
     // over it -- unless the road fails outright anyway. When dismount is what
     // elevated the level, it is also the cause the Concerns list names
-    // ('dismount' is already in SafetyModel.CAUTION_CAUSES).
+    // ('dismount' is already in SafetyModel.CAUTION_CAUSES). A walked
+    // sidewalk escape reports the same way from the other side: the road
+    // fails, but the rider walks it, so the stretch is a caution-level
+    // dismount rather than failing mileage — that is the freebie.
     const dismountHere = isDismountEdge(ei);
     const facilityGap = isFacilityGapEdge(ei);
-    const level = (dismountHere || facilityGap) && verdict.level < 3 ? 3 : verdict.level;
+    const level = walkAccess ? 3
+      : (dismountHere || facilityGap) && verdict.level < 3 ? 3 : verdict.level;
     const cautionCause = level !== 3 ? null
-      : (facilityGap ? 'facility-gap'
-        : (verdict.level < 3 ? 'dismount' : (verdict.caution || (dismountHere ? 'dismount' : null))));
+      : (walkAccess ? 'dismount'
+        : facilityGap ? 'facility-gap'
+          : (verdict.level < 3 ? 'dismount' : (verdict.caution || (dismountHere ? 'dismount' : null))));
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
@@ -3022,7 +3090,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // one side of a two-way street must not describe the other side's ride.
       facility: edgeFacility(ei, forward), facilityOther: edgeFacility(ei, !forward),
       official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
-      dismount: dismountHere, facilityGap, level, cautionCause,
+      // walkAccess rides the dismount display channel (amber, walker
+      // markers) but keeps its own flag so slicing can re-derive levels
+      // without losing which segs were endpoint walks.
+      dismount: dismountHere || walkAccess, walkAccess, facilityGap, level, cautionCause,
       surface: eSurface[ei] & 15, surfaceLabel: SURFACE_LABEL[eSurface[ei] & 15] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
@@ -3206,9 +3277,14 @@ function routeFragment(source, startEdge, endEdge, rules) {
     const ei = sourceEdgeIds[index];
     const forward = eA[ei] === nodeIds[index];
     const rawLevel = edgeLevel(ei, rules, forward);
-    const dismount = isDismountEdge(ei);
+    // A walked sidewalk escape is positional — it depended on the ORIGINAL
+    // leg's endpoints — so the slice preserves the source seg's flag rather
+    // than re-deriving what it cannot know.
+    const walkAccess = !!seg.walkAccess;
+    const dismount = isDismountEdge(ei) || walkAccess;
     const facilityGap = isFacilityGapEdge(ei);
-    const level = (dismount || facilityGap) && rawLevel < 3 ? 3 : rawLevel;
+    const level = walkAccess ? 3
+      : (dismount || facilityGap) && rawLevel < 3 ? 3 : rawLevel;
     return {
       ...seg,
       c0: seg.c0 - coordStart,
@@ -3217,8 +3293,9 @@ function routeFragment(source, startEdge, endEdge, rules) {
       hazC1: seg.hazC1 == null ? null : seg.hazC1 - coordStart,
       dismount, facilityGap, level,
       cautionCause: level !== 3 ? null
-        : (facilityGap ? 'facility-gap'
-          : (rawLevel < 3 ? 'dismount' : (seg.cautionCause || (dismount ? 'dismount' : null)))),
+        : (walkAccess ? 'dismount'
+          : facilityGap ? 'facility-gap'
+            : (rawLevel < 3 ? 'dismount' : (seg.cautionCause || (dismount ? 'dismount' : null)))),
     };
   });
   const ferryRanges = [];
@@ -3233,7 +3310,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     const forward = eA[ei] === fromNode;
     const seg = segs[index];
     distM += eLen[ei];
-    let segTimeS = edgeTimeS(ei, forward);
+    let segTimeS = seg.walkAccess ? eLen[ei] / V_DISMOUNT : edgeTimeS(ei, forward);
     if (eFlags[ei] & 32) {
       if (nodeHasLand[fromNode]) segTimeS += activeWeights.ferryWaitMin * 60;
       ferryM += eLen[ei];
@@ -3251,7 +3328,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     if (edgeFacility(ei, forward) >= 2) facilityM += eLen[ei];
     if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
-    if (isDismountEdge(ei)) dismountM += eLen[ei];
+    if (isDismountEdge(ei) || seg.walkAccess) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
         && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
@@ -3259,8 +3336,9 @@ function routeFragment(source, startEdge, endEdge, rules) {
     // Same dismount-as-caution elevation as the primary route builder above,
     // so a rebuilt summary cannot disagree with the original one.
     const rawLevel = edgeLevel(ei, rules, forward);
-    const level = (isDismountEdge(ei) || isFacilityGapEdge(ei)) && rawLevel < 3
-      ? 3 : rawLevel;
+    const level = seg.walkAccess ? 3
+      : (isDismountEdge(ei) || isFacilityGapEdge(ei)) && rawLevel < 3
+        ? 3 : rawLevel;
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     hazardM += Number(seg.hazardLenM) || 0;
