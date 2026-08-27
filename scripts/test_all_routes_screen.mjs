@@ -216,6 +216,27 @@ const ferryStats = await pg.evaluate(() => candidateStatLine({
 check('a ferry-heavy candidate reports riding-only percentages, never over 100',
   ferryStats.pass === 80 && ferryStats.caution === 10 && ferryStats.fail === 10,
   JSON.stringify(ferryStats));
+// Safety in the character lines (field, 2026-08-26): heavy failing mileage
+// outranks every other trait — a 24% fail route once described only its
+// speed — counts pluralize properly, and no line talks about "the search".
+const safetyDescs = await pg.evaluate(() => {
+  const mk = (over) => ({ distM: 16093, timeS: 3600, ferryM: 0, trailM: 0,
+    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
+    failM: 0, levelM: [0, 0, 16093, 0, 0], ...over });
+  const set = [
+    mk({ profileId: 'dirty', timeS: 3000, failM: 4000, levelM: [0, 0, 10093, 2000, 4000] }),
+    mk({ profileId: 'one', failM: 1609, levelM: [0, 0, 12484, 2000, 1609] }),
+    mk({ profileId: 'clean' }),
+  ];
+  const descs = candidateRouteDescriptions(set);
+  return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
+});
+check('a heavy-fail route leads with the failure share, even when quickest',
+  /% of this fails your safety rules$/.test(safetyDescs.dirty), JSON.stringify(safetyDescs));
+check('a single flagged mile reads singular',
+  /1 flagged mile your rules reject$/.test(safetyDescs.one), JSON.stringify(safetyDescs));
+check('descriptions never talk about the search itself',
+  !/search/i.test(Object.values(safetyDescs).join(' ')), JSON.stringify(safetyDescs));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
 // (field screenshot, 2026-08-26). Title and stats must share the content

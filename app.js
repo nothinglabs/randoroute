@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.850';
+const APP_VERSION = '2026-08-26.851';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11720,13 +11720,24 @@ function candidateRouteDescriptions(all) {
   const holds = (f, key, best, margin) => facts.length > 1 && f[key] === best(key)
     && facts.filter((g) => g[key] === f[key]).length === 1
     && Math.abs(max(key) - min(key)) > margin;
+  // "1 flagged miles" read as a bug (field screenshot): every counted noun
+  // pluralizes properly.
+  const miles = (n) => `${n} mile${n === 1 ? '' : 's'}`;
   const lines = (f) => {
     const c = f.c;
     const out = [];
+    // Heavy failing mileage outranks every other trait — a route that fails
+    // a fifth of your rules is defined by that, not by being quickest
+    // (field, 2026-08-26: a 24% fail route described only its speed).
+    if (f.failPct >= 0.2) {
+      out.push(`${Math.round(f.failPct * 100)}% of this fails your safety rules`);
+    } else if (f.failMi >= 5) {
+      out.push(`Rides ${miles(Math.round(f.failMi))} that fail your rules`);
+    }
     if (c.timeS === minTime && facts.length > 1) {
-      if (f.trailPct >= 0.45) out.push(`Quickest here, still ${Math.round(f.trailMi)} miles on trails`);
+      if (f.trailPct >= 0.45) out.push(`Quickest here, still ${miles(Math.round(f.trailMi))} on trails`);
       if (f.resPct >= 0.2) out.push('Quickest, leaning on quiet residential connector streets');
-      out.push('The quickest route this search could build');
+      out.push('Quickest, mostly ordinary roads the whole way');
     }
     if (holds(f, 'trailMi', max, 2)) {
       out.push(`Most trail miles: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} off-street`);
@@ -11741,27 +11752,34 @@ function candidateRouteDescriptions(all) {
       out.push('No flagged road at all on this one');
     }
     if (holds(f, 'desigMi', max, 2)) {
-      out.push(`Follows signed bike routes for ${Math.round(f.desigMi)} miles`);
+      out.push(`Follows signed bike routes for ${miles(Math.round(f.desigMi))}`);
     }
     // Significant flagged or caution mileage is a route-defining fact
     // (field ask, 2026-08-26): say it ahead of composition when present —
     // and a clean or nearly clean route says THAT (same field ask).
     if (f.failMi >= 2 || f.failPct >= 0.08) {
-      out.push(`Rides ${Math.max(1, Math.round(f.failMi))} flagged miles your rules reject`);
+      const n = Math.max(1, Math.round(f.failMi));
+      out.push(`Rides ${n} flagged mile${n === 1 ? '' : 's'} your rules reject`);
     }
     if (f.cautionMi >= 3 || f.cautionPct >= 0.15) {
-      out.push(`${Math.max(1, Math.round(f.cautionMi))} caution miles need extra care here`);
+      const n = Math.max(1, Math.round(f.cautionMi));
+      out.push(`${n} caution mile${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} extra care here`);
     }
     if (f.failMi === 0) out.push('Every mile of this meets your rules');
     else if (f.failMi <= 0.5) {
       out.push('Only one short flagged stretch, otherwise clean');
+    }
+    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) {
+      out.push('Protected riding for over half the way');
     }
     if (f.ferry) out.push('Includes a ferry crossing along the way');
     if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
     else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary street riding');
     if (f.lanePct >= 0.3) out.push('Bike lanes carry much of this route');
     if (f.resPct >= 0.3) out.push('Mostly quiet residential streets the whole way');
-    if (f.unpavedMi >= 0.5) out.push(`About ${Math.round(f.unpavedMi)} unpaved miles; otherwise paved riding`);
+    if (f.unpavedMi >= 0.5) {
+      out.push(`About ${Math.round(f.unpavedMi)} unpaved mile${Math.round(f.unpavedMi) === 1 ? '' : 's'}; otherwise paved riding`);
+    }
     if (holds(f, 'ftPerMi', max, 20)) {
       out.push(`The hilliest option, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
     }
@@ -11774,7 +11792,7 @@ function candidateRouteDescriptions(all) {
     if (f.resPct >= 0.15) out.push('Quiet residential streets shape much of this');
     if (f.lanePct >= 0.15) out.push('Bike lanes along good stretches of this');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
-      out.push('Among the flatter choices this search found');
+      out.push('Among the flatter choices on offer here');
     }
     if (facts.length > 1 && f.mi <= min('mi') * 1.03) {
       out.push('Nearly the shortest distance on offer here');
