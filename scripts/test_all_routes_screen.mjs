@@ -273,11 +273,14 @@ const cautionAndHills = await pg.evaluate(() => {
     mk({ profileId: 'cleanish', ascentM: 700 }),
     mk({ profileId: 'dirty', timeS: 7000, failM: 5000,
       levelM: [0, 0, 19140, 8047, 5000] }),
-    mk({ profileId: 'traffic', timeS: 7100, highStressM: 6437 }),
+    mk({ profileId: 'traffic', timeS: 7100, highStressM: 6437,
+      trafficCautionM: 6437 }),
+    mk({ profileId: 'passing', timeS: 7150, highStressM: 12875,
+      levelM: [0, 0, 32187, 0, 0] }),
   ];
   const d = candidateRouteDescriptions(set);
   return { cleanish: d.get('cleanish'), dirty: d.get('dirty'),
-    traffic: d.get('traffic') };
+    traffic: d.get('traffic'), passing: d.get('passing') };
 });
 check('a fail-clean route with caution says both without contradiction',
   /No roads fail your rules/.test(cautionAndHills.cleanish)
@@ -292,6 +295,12 @@ check('after a fail mention the caution joins with "and", not "though"',
   JSON.stringify(cautionAndHills));
 check('caution that is mostly official traffic stress says so',
   /need caution, mostly heavy traffic/.test(cautionAndHills.traffic),
+  JSON.stringify(cautionAndHills));
+// Field, 2026-08-27: four car markers on a "meets rules" stretch and the
+// line said nothing about traffic — the official rating is reported at
+// every level, so long high-stress stretches are named even when they pass.
+check('long high-stress stretches are named even when the rules pass them',
+  /with 8 miles in heavy traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen

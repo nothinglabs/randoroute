@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.883';
+const APP_VERSION = '2026-08-26.884';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11953,6 +11953,7 @@ function candidateRouteDescriptions(all) {
       cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
       cautionPct: ((c.levelM || [])[3] || 0) / ridingM,
       trafficMi: (c.highStressM || 0) / 1609.344,
+      trafficCautionMi: (c.trafficCautionM || 0) / 1609.344,
       unpavedMi: (c.unpavedM || 0) / 1609.344,
       ferry: (c.ferryM || 0) > 0,
       ascentFt: (c.ascentM || 0) * 3.28084,
@@ -11971,8 +11972,8 @@ function candidateRouteDescriptions(all) {
   // Larger stretches of traffic get named (field ask, 2026-08-27): when the
   // official traffic-stress rating caused at least half a route's caution
   // mileage and spans 3+ miles, the caution mention says so.
-  const trafficNote = (f) => (f.trafficMi >= 3 && f.trafficMi >= f.cautionMi * 0.5
-    ? ', mostly heavy traffic' : '');
+  const trafficNote = (f) => (f.trafficCautionMi >= 3
+    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ', mostly heavy traffic' : '');
   const lines = (f) => {
     const c = f.c;
     const out = [];
@@ -12086,6 +12087,14 @@ function candidateRouteDescriptions(all) {
       const joiner = cleanClaim && !tails.some((t) => t.includes('flagged'))
         ? 'though' : 'and';
       tails.push(`${joiner} ${miles(Math.round(f.cautionMi))} need caution${trafficNote(f)}`);
+    }
+    // Long stretches on officially high-stress roads are worth a word even
+    // when the rider's rules pass them (field, 2026-08-27: four car markers
+    // on a "meets rules" stretch and the line said nothing about traffic) —
+    // unless a caution mention already named the traffic.
+    if ((f.trafficMi >= 5 || (f.trafficMi >= 3 && f.trafficMi >= f.mi * 0.25))
+        && !/traffic/i.test(line) && !tails.some((t) => /traffic/.test(t))) {
+      tails.push(`with ${miles(Math.round(f.trafficMi))} in heavy traffic`);
     }
     if (!safetyLine) {
       if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
@@ -12243,9 +12252,10 @@ function clearCandidatePortfolio() {
    moved up from the chooser, where it covered the route stats). The text
    is the same description the All Routes screen shows for this candidate —
    one source, so the pill can never disagree with the list. Skipped during
-   turn navigation. A tap on the pill dismisses it instantly and replays
-   the tap on whatever it covered, so reaching for the start field works on
-   the first touch. */
+   turn navigation. A tap dismisses the pill and nothing else: it used to
+   replay the tap on the covered start/destination card, which opened the
+   place search over the route the rider was trying to look at (field,
+   2026-08-27 — the tap should land them on the map showing the route). */
 let routeDescToastTimer = null;
 function hideRouteDescriptionToast() {
   clearTimeout(routeDescToastTimer);
@@ -12275,17 +12285,8 @@ function showRouteDescriptionToast(option) {
   clearTimeout(routeDescToastTimer);
   routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 3000);
 }
-document.getElementById('routeDescToast')?.addEventListener('click', (event) => {
-  const host = event.currentTarget;
+document.getElementById('routeDescToast')?.addEventListener('click', () => {
   hideRouteDescriptionToast();
-  // Replay the tap on what the pill covered: hide, hit-test, forward.
-  host.style.pointerEvents = 'none';
-  const below = document.elementFromPoint(event.clientX, event.clientY);
-  host.style.pointerEvents = '';
-  if (below && below !== host) {
-    below.click();
-    if (typeof below.focus === 'function') below.focus();
-  }
 });
 
 function activateRouteOption(option, updateNavigation = false) {

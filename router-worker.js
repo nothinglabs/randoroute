@@ -3114,6 +3114,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // markers) but keeps its own flag so slicing can re-derive levels
       // without losing which segs were endpoint walks.
       dismount: dismountHere || walkAccess, walkAccess, facilityGap, level, cautionCause,
+      // The official traffic-stress rating, reported at every level: a road
+      // the rider's rules pass is still worth counting as traffic mileage.
+      highStress: verdict.highStress ? 1 : 0,
       surface: eSurface[ei] & 15, surfaceLabel: SURFACE_LABEL[eSurface[ei] & 15] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
@@ -3864,10 +3867,15 @@ function candidateSummary(candidate) {
     unpavedM: candidate.unpavedM || 0,
     ferryM: candidate.ferryM || 0,
     ascentM: candidate.ascentM || 0,
-    // Caution mileage the official traffic-stress rating caused, so the
-    // description layer can say a caution-heavy route is mostly heavy
-    // traffic (field ask, 2026-08-27).
+    // Traffic mileage for the description layer (field asks, 2026-08-27):
+    // highStressM is every mile carrying the official traffic-stress rating
+    // — a road the rider's rules pass still rides in that traffic — and
+    // trafficCautionM is the subset where that rating is what caused the
+    // caution, so a caution mention can say "mostly heavy traffic" without
+    // claiming passing miles as caution.
     highStressM: (candidate.segs || []).reduce((sum, seg) =>
+      sum + (seg.highStress ? (Number(seg.lenM) || 0) : 0), 0),
+    trafficCautionM: (candidate.segs || []).reduce((sum, seg) =>
       sum + (seg.cautionCause === 'high-stress' ? (Number(seg.lenM) || 0) : 0), 0),
     suggestionScore: recommendationScoreBreakdown(candidate),
     safetyEquivalentM: candidate.failM + (candidate.dismountM || 0) * 3,
