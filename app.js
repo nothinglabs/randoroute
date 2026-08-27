@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.879';
+const APP_VERSION = '2026-08-26.880';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1337,7 +1337,12 @@ function syncMapBootStatus() {
   const downloading = mapRestore.active.size > 0;
   if (downloading) {
     const names = [...mapRestore.active.entries()].map(([path, p]) => {
-      const file = (path.split('/').pop() || '').replace('.pmtiles', '');
+      // maps/<state>/<file>.pmtiles — name the state, riders have several.
+      const segments = path.split('/').filter(Boolean);
+      const stateId = segments[segments.indexOf('maps') + 1] || '';
+      const stateName = stateNames([stateId])[0] || '';
+      const file = `${stateName ? stateName + ' ' : ''}`
+        + (segments.pop() || '').replace('.pmtiles', '');
       if (p.bytes && p.loaded) {
         return `${file} · ${Math.min(99, Math.round(100 * p.loaded / p.bytes))}% of ${Math.max(1, Math.round(p.bytes / 1048576))} MB`;
       }
