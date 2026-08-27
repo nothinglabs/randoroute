@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.888';
+const APP_VERSION = '2026-08-26.889';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12017,7 +12017,7 @@ function candidateRouteDescriptions(all) {
     }
     if (f.ferry) out.push('Includes a ferry crossing along the way');
     if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
-    else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary street riding');
+    else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary road riding');
     if (f.lanePct >= 0.3) out.push('Bike lanes carry much of this route');
     if (f.resPct >= 0.3) out.push('Mostly quiet residential streets the whole way');
     if (f.unpavedMi >= 0.5) {
@@ -12029,7 +12029,7 @@ function candidateRouteDescriptions(all) {
     // Mid-tier composition, so a middling candidate still reads as a route
     // rather than a time delta.
     if (f.trailMi >= 3 && f.trailPct < 0.35) {
-      out.push(`${Math.round(f.trailMi)} trail miles woven into street riding`);
+      out.push(`${Math.round(f.trailMi)} trail miles woven into road riding`);
     }
     if (f.desigMi >= 3) out.push(`Signed bike routes for ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
     if (f.resPct >= 0.15) out.push('Quiet residential streets shape much of this');
@@ -12042,8 +12042,8 @@ function candidateRouteDescriptions(all) {
     }
     const slowerMin = Math.round((c.timeS - minTime) / 60);
     if (slowerMin >= 5) out.push(`About ${slowerMin} minutes slower than the quickest`);
-    out.push(`A ${Math.round(f.mi)}-mile mix of ordinary streets`);
-    out.push('An ordinary mixed-street route between your points');
+    out.push(`A ${Math.round(f.mi)}-mile mix of ordinary roads`);
+    out.push('An ordinary mixed-road route between your points');
     return out;
   };
   // Every description states presence or lack of fails and caution (field
