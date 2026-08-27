@@ -236,6 +236,50 @@ check('the pill stays out of turn navigation', !descToast.nav.visible,
 check('a tap dismisses the pill instantly',
   descToast.tap.beforeTap && !descToast.tap.afterTap, JSON.stringify(descToast.tap));
 
+/* ------- tapping a letter fits the map to that route */
+const letterZoom = await page.evaluate(async () => {
+  const mkOption = (id, coords) => ({ ok: true, coords, segs: [], distM: 15000,
+    timeS: 3000, failM: 0, optimization: { label: id, profileId: id } });
+  const a = mkOption('Route A', [[-122.42, 47.58], [-122.35, 47.62], [-122.30, 47.68]]);
+  const b = mkOption('Route B', [[-122.42, 47.58], [-122.28, 47.60]]);
+  routing.options = [a, b];
+  routing.last = b;
+  routing.allCandidates = [];
+  renderRouteOptionControls();
+  // An earlier section's computeRoute() against the stub worker never got a
+  // reply, so the chooser still wears its loading class; the real flow
+  // clears it when options arrive.
+  document.getElementById('routeOptions').classList.remove('loading');
+  // Poll the outcome, not the event: the fit animates, and other camera
+  // settles can fire moveend before it finishes.
+  const waitContained = async (coords) => {
+    for (let i = 0; i < 40; i++) {
+      const bounds = map.getBounds();
+      if (coords.every((c) => bounds.contains(c))) return true;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    return false;
+  };
+  // Re-query per tap: activating a route rebuilds the chooser buttons, and
+  // a detached button's click no longer bubbles to the delegated handler.
+  const letterA = () => [...document.querySelectorAll('[data-route-option]')]
+    .find((btn) => Number(btn.dataset.routeOption) === 0);
+  map.jumpTo({ center: [-120.5, 46.6], zoom: 12 });
+  letterA().click();
+  const tapContains = await waitContained(a.coords);
+  // Retapping the active letter must bring a panned-away route back too.
+  map.jumpTo({ center: [-120.5, 46.6], zoom: 12 });
+  letterA().click();
+  const retapContains = await waitContained(a.coords);
+  routing.options = [];
+  routing.last = null;
+  return { tapContains, retapContains };
+});
+check('tapping a letter fits the map to that route',
+  letterZoom.tapContains, JSON.stringify(letterZoom));
+check('retapping the active letter brings the route back into view',
+  letterZoom.retapContains, JSON.stringify(letterZoom));
+
 /* ------- everyday and advanced routing options live in deliberate homes */
 const ui = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };

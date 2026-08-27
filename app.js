@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.884';
+const APP_VERSION = '2026-08-26.885';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12347,12 +12347,18 @@ function buildRoutingPanel() {
     if (!button || button.disabled || choices.classList.contains('loading')) return;
     const option = routing.options[Number(button.dataset.routeOption)];
     if (!option) return;
-    // Retapping the active letter replays its description pill (field ask,
-    // 2026-08-27) without recomputing or redrawing anything.
-    if (option === routing.last) { showRouteDescriptionToast(option); return; }
+    // Retapping the active letter replays its description pill and brings
+    // the route back into view (field asks, 2026-08-27) without recomputing
+    // or redrawing anything.
+    if (option === routing.last) {
+      showRouteDescriptionToast(option);
+      fitRouteOptionBounds(option);
+      return;
+    }
     // Leaving the shared route recomputes with the receiver's own settings.
     if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
     activateRouteOption(option);
+    fitRouteOptionBounds(option);
   });
   renderRouteOptionControls();
 
@@ -12526,6 +12532,40 @@ function fitRouteBounds(route) {
   const lats = [route.s[1], route.e[1], ...(route.v || []).map((p) => p[1]), ...(route.b || []).map((p) => p[1])];
   map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
     { padding: 60, maxZoom: 13 });
+}
+
+// Tapping a route letter shows that route (field ask, 2026-08-27): fit the
+// camera to the option's actual geometry — endpoint bounds alone crop a
+// route that bulges — kept clear of the start/destination card above and
+// the chooser panel below.
+function fitRouteOptionBounds(option) {
+  const coords = option?.coords;
+  if (!coords || coords.length < 2 || !map?.fitBounds) return;
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+  for (const c of coords) {
+    if (c[0] < minLon) minLon = c[0];
+    if (c[0] > maxLon) maxLon = c[0];
+    if (c[1] < minLat) minLat = c[1];
+    if (c[1] > maxLat) maxLat = c[1];
+  }
+  const viewH = map.getContainer()?.clientHeight || 0;
+  const bar = document.getElementById('routeBar')?.getBoundingClientRect();
+  const panel = document.getElementById('panel')?.getBoundingClientRect();
+  const clamp = (px) => Math.max(60, Math.min(px, viewH * 0.4));
+  const padding = {
+    left: 44,
+    right: 44,
+    top: clamp(bar && bar.bottom > 0 ? bar.bottom + 16 : 60),
+    bottom: clamp(panel && viewH > panel.top ? viewH - panel.top + 16 : 60),
+  };
+  const bounds = [[minLon, minLat], [maxLon, maxLat]];
+  try {
+    map.fitBounds(bounds, { padding, maxZoom: 13 });
+  } catch (error) {
+    // A tiny viewport can reject the DOM-derived padding; the plain fit
+    // still shows the route.
+    map.fitBounds(bounds, { padding: 60, maxZoom: 13 });
+  }
 }
 
 function loadSharedRouteIntoPlanner(shared) {
