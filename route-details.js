@@ -1320,7 +1320,7 @@ if (!hasRoute) {
   summaryCard.hidden = false;
   const tripNotes = [
     details.routeStateIds?.length > 1
-      ? `<span class="route-summary-trip-note"><b>States</b> ${details.routeStateIds.map((stateId) => routeStateConfig(stateId)?.name || stateId).join(' → ')}</span>` : '',
+      ? `<span class="route-summary-trip-note">${details.routeStateIds.map((stateId) => routeStateConfig(stateId)?.name || stateId).join(' → ')}</span>` : '',
     routeStats.ferryM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⛴︎</span><b>Ferry</b> ${fmtMi(routeStats.ferryM)} mi</span>` : '',
     routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠︎</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
   ].filter(Boolean).join('');

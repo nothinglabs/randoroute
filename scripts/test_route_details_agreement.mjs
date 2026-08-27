@@ -156,7 +156,7 @@ check('route details attribute speed and stress facts to each source state',
     && /Washington · WSDOT rates it/.test(jurisdiction.concerns)
     && /Oregon · ODOT rates it/.test(jurisdiction.concerns), JSON.stringify(jurisdiction));
 check('multi-state summary and route-number interpretation follow the segment jurisdiction',
-  /States Washington → Oregon/.test(jurisdiction.states)
+  /Washington → Oregon/.test(jurisdiction.states)
     && jurisdiction.routeNumbers.washington
     && jurisdiction.routeNumbers.oregon
     && !jurisdiction.routeNumbers.wrongState, JSON.stringify(jurisdiction));

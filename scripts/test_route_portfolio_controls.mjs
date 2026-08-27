@@ -236,6 +236,29 @@ check('the pill centers over the card and across the screen',
   descToast.shown.centered, JSON.stringify(descToast.shown));
 check('the pill carries a dismiss mark',
   descToast.shown.hasClose, JSON.stringify(descToast.shown));
+
+/* ------- the details header carries the same description */
+const detailsDesc = await page.evaluate(() => {
+  const candidate = { profileId: 'p-toast', label: 'Route A', presented: true,
+    distM: 9000, timeS: 2000, failM: 0, trailM: 5000, facilityM: 6000,
+    desigM: 0, residentialM: 500, freewayM: 0, limitedAccessM: 0,
+    ferryM: 0, ascentM: 40, levelM: [0, 3000, 0, 0, 0] };
+  routing.allCandidates = [candidate];
+  routing.last = { ok: true, coords: [[0, 0]], segs: [], distM: 9000,
+    timeS: 2000, failM: 0,
+    optimization: { label: 'Route A', profileId: 'p-toast' } };
+  openRouteDetails();
+  const desc = document.getElementById('routeDetailsDialogDesc');
+  const out = { text: desc?.textContent, hidden: desc?.hidden,
+    expected: candidateRouteDescriptions([candidate]).get('p-toast') };
+  document.getElementById('routeDetailsDialog')?.close();
+  routing.allCandidates = [];
+  routing.last = null;
+  return out;
+});
+check('the details header shows the route description',
+  !detailsDesc.hidden && detailsDesc.text === detailsDesc.expected,
+  JSON.stringify(detailsDesc));
 check('the pill stays out of turn navigation', !descToast.nav.visible,
   JSON.stringify(descToast.nav));
 check('a tap dismisses the pill instantly',

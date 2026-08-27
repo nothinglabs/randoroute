@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.892';
+const APP_VERSION = '2026-08-26.893';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6442,6 +6442,18 @@ function openRouteDetails(detailTab = null, concernId = null) {
   }
   const title = document.getElementById('routeDetailsDialogTitle');
   if (title) title.textContent = dialogTitle;
+  // The route's plain-language line rides beside the title as two small
+  // lines (field ask, 2026-08-27) — the same text the pill shows, one
+  // source, so they can never disagree.
+  const desc = document.getElementById('routeDetailsDialogDesc');
+  if (desc) {
+    const profileId = routing.last.optimization?.profileId;
+    const all = routing.allCandidates || [];
+    const text = !turnNav.active && profileId && all.length
+      ? candidateRouteDescriptions(all).get(profileId) : null;
+    desc.textContent = text || '';
+    desc.hidden = !text;
+  }
   frame.title = dialogTitle;
   routeDetailsPanelWasOpen = mobileNavMedia.matches
     && document.body.classList.contains('panel-open');
