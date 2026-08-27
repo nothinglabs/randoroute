@@ -1985,6 +1985,42 @@ function uncontrolledCrossPenaltyS(incomingEdge, node, outgoingEdge, rules, mode
   return crossing ? sec : 0;
 }
 
+// Debug surface for the field: every uncontrolled crossing of a failing
+// road along a finished path, detected exactly as the charge above does but
+// INDEPENDENT of the weights — the rider needs to SEE these intersections
+// whether or not the avoidance switch is on. Returns [lon, lat] pairs from
+// the segs a public candidate already carries.
+function debugUncontrolledCrossingsFor(segs, rules) {
+  if (!nodeControlledCount || !Array.isArray(segs)) return [];
+  const out = [];
+  let lastNode = -1;
+  for (let k = 1; k < segs.length; k++) {
+    const e1 = segs[k - 1]?.localEdgeIndex, e2 = segs[k]?.localEdgeIndex;
+    if (!(e1 >= 0) || !(e2 >= 0) || e1 === e2) continue;
+    let u = -1;
+    for (const n1 of [eA[e1], eB[e1]]) {
+      if (n1 === eA[e2] || n1 === eB[e2]) u = n1;
+    }
+    if (u < 0 || u === lastNode || nodeControlled[u]) continue;
+    if (edgeLevelFor(e1, rules, eB[e1] === u) === 4) continue;
+    let crossing;
+    if (edgeLevelFor(e2, rules, eA[e2] === u) === 4) {
+      crossing = eLen[e2] <= CROSSING_MAX_M && !(eFlags[e2] & 4);
+    } else {
+      const touch = nodeFailTouch(rules);
+      if (touch.count[u] < 2) continue;
+      const inName = eName[e1], outName = eName[e2];
+      const crosses = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== inName && nm !== outName;
+      crossing = crosses(touch.name1[u]) || crosses(touch.name2[u]);
+    }
+    if (!crossing) continue;
+    lastNode = u;
+    out.push([nodeLon[u], nodeLat[u]]);
+    if (out.length >= 200) break;
+  }
+  return out;
+}
+
 // DEM elevations are stored as whole meters, while OSM can split a road into
 // graph fragments only a few meters long, where quantization turns into
 // impossible grades. The credibility rules (MIN_REPORTED_GRADE_M and friends)
@@ -5721,9 +5757,15 @@ onmessage = (ev) => {
         mode, prefDesig: !!m.prefDesignated,
         prefResidential: !!m.prefResidential,
       };
-      postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }),
+      const routePayload = { type: 'route', id: m.id,
+        ...publicCandidate({ ...r, _profile: profile }),
         blocksApplied: Array.isArray(m.blocks) ? m.blocks.length : 0,
-        frontierHits: publicFrontierHits() });
+        frontierHits: publicFrontierHits() };
+      if (m.debugUncontrolledCrossings) {
+        routePayload.uncontrolledCrossings =
+          debugUncontrolledCrossingsFor(routePayload.segs, m.rules);
+      }
+      postMessage(routePayload);
     } else if (m.type === 'partition-frontiers') {
       configurePartitionFrontiers(m.frontiers);
       postMessage({ type: 'partition-frontiers-ready', id: m.id,
@@ -5809,6 +5851,11 @@ onmessage = (ev) => {
       // a removed block still steering routes (2026-08-27) could not be told
       // apart from a request that silently carried the stale block; echoing
       // the count lets the app compare against its markers and say which.
+      if (m.debugUncontrolledCrossings && Array.isArray(result.options)) {
+        for (const option of result.options) {
+          option.uncontrolledCrossings = debugUncontrolledCrossingsFor(option.segs, m.rules);
+        }
+      }
       postMessage({ type: 'route-options', id: m.id, ...result,
         blocksApplied: Array.isArray(m.blocks) ? m.blocks.length : 0,
         frontierHits: publicFrontierHits() });

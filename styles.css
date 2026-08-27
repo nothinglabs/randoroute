@@ -2061,3 +2061,11 @@ body.settings-panel-active .settings-weights-pane .weights-body {
 .map-point-navigate-where { margin: 6px 0 10px; overflow: hidden; color: #40525d; font: 750 13px/1.3 system-ui; text-overflow: ellipsis; }
 .map-point-navigate-choices .readout-route-actions { grid-template-columns: 1fr; gap: 7px; margin: 0; }
 .map-point-navigate-choices .readout-route-actions button { min-height: 46px; font-size: 13.5px; }
+
+/* Debug: uncontrolled failing-crossing markers (Advanced > Debug toggle). */
+.debug-crossing-marker {
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  pointer-events: none;
+}

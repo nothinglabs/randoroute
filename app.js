@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.861';
+const APP_VERSION = '2026-08-26.862';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1005,6 +1005,11 @@ const uiPrefs = {
   // Display only: the warnings still exist in Route Details and the voice
   // guidance; this hides their badges on the map line.
   hideRouteWarningIcons: savedState?.hideRouteWarningIcons === true,
+  // Debug aid (field, 2026-08-27): 🐞 markers on every failing road the
+  // drawn route crosses at an uncontrolled intersection. Detection runs in
+  // the engine independent of the avoidance switch, so the rider can SEE
+  // the intersections whether or not they are being charged for.
+  debugUncontrolledCrossings: savedState?.debugUncontrolledCrossings === true,
 };
 
 // Voice guidance is a local device preference, not part of a shared route.
@@ -1257,6 +1262,7 @@ function saveStateNow() {
       showAdvancedTools: uiPrefs.showAdvancedTools,
       showRouteStops: uiPrefs.showRouteStops,
       hideRouteWarningIcons: uiPrefs.hideRouteWarningIcons,
+      debugUncontrolledCrossings: uiPrefs.debugUncontrolledCrossings,
       // Layered over whatever was already stored, not replacing it: a state
       // that ships no scored linework has no SOURCES, and writing its empty
       // set would reset the rider's layer toggles for every other state the
@@ -1290,6 +1296,13 @@ function saveStateSoon() {
   saveTimer = setTimeout(saveStateNow, 800);
 }
 window.addEventListener('pagehide', saveStateNow);
+// iOS can kill a suspended home-screen app without ever firing pagehide;
+// hidden is the signal it reliably delivers. Flushing there closes the
+// 800 ms debounce window in which a just-made change (a removed road
+// block — field, 2026-08-27) could be resurrected by the next restore.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveStateNow();
+});
 
 window.__setAppLaunchStatus?.('Opening local map data…');
 const constrainedMapRuntime = isConstrainedDevice() && !isMacDesktopSafari();
@@ -4746,6 +4759,7 @@ function multiStateWorkerRequest(type, id, points) {
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
       weights: { ...routingWeights },
+      debugUncontrolledCrossings: uiPrefs.debugUncontrolledCrossings,
     };
   }
   const rec = routing.sharedActive ? routing.sharedRecipe : null;
@@ -4757,6 +4771,7 @@ function multiStateWorkerRequest(type, id, points) {
     preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
     weights: rec?.weights ? { ...rec.weights } : { ...routingWeights },
     directProbeWeights: rec ? null : directLensRoutingWeights(),
+    debugUncontrolledCrossings: uiPrefs.debugUncontrolledCrossings,
   };
 }
 
@@ -9089,16 +9104,14 @@ function onRouterMessage(ev) {
     }
     // The engine echoes how many road blocks it searched with. A mismatch
     // against the markers on screen is the "removed block still steering
-    // routes" field report (2026-08-27) caught in the act — say so loudly,
-    // because silently wrong is what made it undiagnosable, and recompute
-    // once. One retry, not a loop: if the recompute still mismatches, show
-    // the result anyway with the warning standing.
+    // routes" field report (2026-08-27) caught in the act: log it and
+    // recompute once — silently, in the console only (a visible toast here
+    // confused more than it explained; field, same day). One retry, not a
+    // loop: if the recompute still mismatches, show the result anyway.
     if (typeof m.blocksApplied === 'number'
         && m.blocksApplied !== (routing.blocks?.length || 0)) {
       console.warn(`route computed with ${m.blocksApplied} road blocks; `
         + `${routing.blocks?.length || 0} are on the map`);
-      showRouteActionToast(`Route used ${m.blocksApplied} road block${m.blocksApplied === 1 ? '' : 's'}`
-        + ` but ${routing.blocks?.length || 0} are on the map`, { duration: 6000 });
       if (!routing.blockMismatchRetried) {
         routing.blockMismatchRetried = true;
         computeRoute();
@@ -9252,6 +9265,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
       weights: { ...routingWeights },
+      debugUncontrolledCrossings: uiPrefs.debugUncontrolledCrossings,
     });
   } else {
     routing.compareStartedAt = performance.now();
@@ -9277,6 +9291,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
       // without the rider knowing to ask. Not for shared routes -- those
       // reproduce the sender's exact search.
       directProbeWeights: rec ? null : directLensRoutingWeights(),
+      debugUncontrolledCrossings: uiPrefs.debugUncontrolledCrossings,
     });
   }
 }
@@ -10051,10 +10066,28 @@ function scheduleRouteDecorations(apply) {
   }, 250);
 }
 
+// 🐞 markers at every failing road the drawn route crosses uncontrolled —
+// the engine attaches the coordinates per option when the debug switch is
+// on, so this only ever renders what the search itself detected.
+let debugCrossingMarkers = [];
+function syncDebugCrossingMarkers() {
+  for (const marker of debugCrossingMarkers) marker.remove();
+  debugCrossingMarkers = [];
+  if (!uiPrefs.debugUncontrolledCrossings || !routeIsDisplayed) return;
+  for (const [lng, lat] of routing.last?.uncontrolledCrossings || []) {
+    const el = document.createElement('div');
+    el.className = 'debug-crossing-marker';
+    el.textContent = '🐞';
+    debugCrossingMarkers.push(new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([lng, lat]).addTo(map));
+  }
+}
+
 function drawRoute(coords, ferrySegs, segs) {
   const wasDisplayed = routeIsDisplayed;
   routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
   clearRouteHighlight();
+  syncDebugCrossingMarkers();
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
   // Ferry legs are drawn as white dashes on top of the route line, so the
@@ -16130,6 +16163,40 @@ function buildAdvancedRoutingOptions() {
   });
   grid.append(crossCard);
   syncAvoidUncontrolledCard();
+
+  // ---- Debug: development aids, off by default, deliberately last.
+  const debugHeading = document.createElement('h3');
+  debugHeading.textContent = 'Debug';
+  const debugNote = document.createElement('p');
+  debugNote.textContent = 'Development aids for chasing routing behavior in the field.';
+  host.append(debugHeading, debugNote);
+  const debugGrid = document.createElement('div');
+  debugGrid.className = 'weights-route-options-grid';
+  host.append(debugGrid);
+  const bugCard = document.createElement('label');
+  bugCard.className = 'weights-route-option';
+  bugCard.htmlFor = 'r-debugUncontrolledCrossings';
+  bugCard.innerHTML = `<input type="checkbox" id="r-debugUncontrolledCrossings"
+      ${uiPrefs.debugUncontrolledCrossings ? 'checked' : ''}>
+    <span class="weights-route-option-label">🐞 Mark failing intersections the route
+      crosses uncontrolled — shown whether or not the avoidance switch is on</span>
+    <small class="weights-route-option-state">On</small>`;
+  const bugInput = bugCard.querySelector('input');
+  const bugPaint = () => {
+    bugCard.classList.toggle('changed', uiPrefs.debugUncontrolledCrossings);
+    bugCard.querySelector('.weights-route-option-state').hidden =
+      !uiPrefs.debugUncontrolledCrossings;
+  };
+  bugInput.addEventListener('change', () => {
+    uiPrefs.debugUncontrolledCrossings = bugInput.checked;
+    bugPaint();
+    saveStateSoon();
+    // Existing results were computed without the coordinates; earn them.
+    if (bugInput.checked && !routing.last?.uncontrolledCrossings) scheduleReroute();
+    else syncDebugCrossingMarkers();
+  });
+  bugPaint();
+  debugGrid.append(bugCard);
 }
 // The switch's reading is derived from the weights, so a rider dragging one
 // of the three sliders flips it too. Looked up by id because the options

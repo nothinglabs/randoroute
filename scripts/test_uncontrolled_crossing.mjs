@@ -144,4 +144,25 @@ check('the Stone Way trip stays on the bike lane with the charge on',
   !!suggested && facilityShare > 0.7 && (suggested.failM || 0) < 100,
   suggested ? `facility ${(facilityShare * 100).toFixed(0)}%, fail ${Math.round(suggested.failM)}m, ${(suggested.distM / 1609).toFixed(1)}mi` : 'no route');
 
+// The 🐞 debug markers (field, 2026-08-27): with the charge fully OFF
+// (default zero weights), a debug-flagged request still returns each
+// option's uncontrolled failing crossings — detection is independent of
+// the avoidance switch, which is the whole point of the marker.
+const debugTrip = worker.post({ type: 'route-options', id: 992,
+  start: [-122.3300, 47.6800], end: [-122.3500, 47.6510],
+  rules: appDefaultRules(), debugUncontrolledCrossings: true });
+const lists = (debugTrip?.options || []).map((o) => o.uncontrolledCrossings);
+check('debug crossings ride on every option with the charge off',
+  lists.length > 0 && lists.every(Array.isArray)
+    && lists.some((list) => list.length > 0)
+    && lists.flat().every(([lng, lat]) =>
+      lng > -125 && lng < -116 && lat > 45 && lat < 50),
+  JSON.stringify(lists.map((list) => list?.length)));
+const plainTrip = worker.post({ type: 'route-options', id: 993,
+  start: [-122.3300, 47.6800], end: [-122.3500, 47.6510],
+  rules: appDefaultRules() });
+check('without the debug flag the payload stays clean',
+  (plainTrip?.options || []).every((o) => o.uncontrolledCrossings === undefined),
+  'flagless options must not carry crossings');
+
 done();
