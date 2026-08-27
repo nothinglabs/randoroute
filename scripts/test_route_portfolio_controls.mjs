@@ -194,6 +194,33 @@ check('selection continuity is by letter: same, closest, or the recommendation',
     && regeneration.recommendedWins === 'Route A',
   JSON.stringify(regeneration));
 
+/* ------- choosing a route surfaces its plain-language line as a pill */
+const descToast = await page.evaluate(() => {
+  const candidate = { profileId: 'p-toast', label: 'Route A', presented: true,
+    distM: 9000, timeS: 2000, failM: 0, trailM: 5000, facilityM: 6000,
+    desigM: 0, residentialM: 500, freewayM: 0, limitedAccessM: 0,
+    ferryM: 0, ascentM: 40, levelM: [0, 3000, 0, 0, 0] };
+  routing.allCandidates = [candidate];
+  const option = { ok: true, coords: [[0, 0]], segs: [], distM: 9000, timeS: 2000,
+    failM: 0, optimization: { label: 'Route A', profileId: 'p-toast' } };
+  const host = document.getElementById('routeDescToast');
+  activateRouteOption(option);
+  const shown = { text: host.textContent, visible: host.classList.contains('show') };
+  // Turn navigation must stay pill-free: the space belongs to guidance.
+  host.classList.remove('show');
+  turnNav.active = true;
+  activateRouteOption(option);
+  const nav = { visible: host.classList.contains('show') };
+  turnNav.active = false;
+  routing.allCandidates = [];
+  return { shown, nav, expected: candidateRouteDescriptions([candidate]).get('p-toast') };
+});
+check('choosing a route shows its description pill',
+  descToast.shown.visible && descToast.shown.text.length > 10
+    && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
+check('the pill stays out of turn navigation', !descToast.nav.visible,
+  JSON.stringify(descToast.nav));
+
 /* ------- everyday and advanced routing options live in deliberate homes */
 const ui = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.870';
+const APP_VERSION = '2026-08-26.871';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12080,6 +12080,32 @@ function clearCandidatePortfolio() {
   syncConsideredRoutesButton();
 }
 
+/* The plain-language line for the chosen route, as a fading pill anchored
+   under the Choose Route bar (field ask, 2026-08-27). The text is the same
+   description the All Routes screen shows for this candidate — one source,
+   so the pill can never disagree with the list. Skipped during turn
+   navigation, where a floating line under the chooser would sit over the
+   guidance banner. */
+let routeDescToastTimer = null;
+function showRouteDescriptionToast(option) {
+  const host = document.getElementById('routeDescToast');
+  if (!host || turnNav.active) return;
+  const profileId = option?.optimization?.profileId;
+  const all = routing.allCandidates || [];
+  const text = profileId && all.length
+    ? candidateRouteDescriptions(all).get(profileId) : null;
+  if (!text) { host.classList.remove('show'); return; }
+  const anchor = document.getElementById('routeOptions')?.getBoundingClientRect();
+  if (anchor && anchor.width) {
+    host.style.top = `${Math.round(anchor.bottom + 8)}px`;
+    host.style.left = `${Math.round(anchor.left)}px`;
+  }
+  host.textContent = text;
+  host.classList.add('show');
+  clearTimeout(routeDescToastTimer);
+  routeDescToastTimer = setTimeout(() => host.classList.remove('show'), 4000);
+}
+
 function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
   // Activating any route supersedes an in-flight candidate fetch. Without
@@ -12088,6 +12114,7 @@ function activateRouteOption(option, updateNavigation = false) {
   // the rider's LAST action lost.
   routing.candidateReqId = (routing.candidateReqId || 0) + 1;
   showRouteActionToast('');
+  if (!updateNavigation) showRouteDescriptionToast(option);
   const warningWasActive = routeHasDetailsWarning(routing.last);
   routing.last = option;
   // The shared route must not push the sender's profile onto the receiver.
