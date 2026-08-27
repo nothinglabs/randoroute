@@ -120,10 +120,10 @@ check('expert route switches sit above the weights in Advanced routing',
     && advancedOptions.removedTogglesGone
     && advancedOptions.preferredWeightLabel === 'Strong Preferred-route pull'
     && /moderate and neutral alternatives/.test(advancedOptions.preferredWeightHint)
-    && /never compounds/.test(advancedOptions.preferredWeightHint)
+    && /never stacks/.test(advancedOptions.preferredWeightHint)
     && advancedOptions.stressWeightLabel === 'Official traffic-stress rating'
-    && /normalized 1–4 Level of Traffic Stress/.test(advancedOptions.stressWeightHint)
-    && /coverage depends on the map pack/.test(advancedOptions.stressWeightHint)
+    && /normalized 1–4 traffic-stress/.test(advancedOptions.stressWeightHint)
+    && /[Cc]overage varies by pack/.test(advancedOptions.stressWeightHint)
     && /Independent of presets/.test(advancedOptions.note),
   JSON.stringify(advancedOptions));
 

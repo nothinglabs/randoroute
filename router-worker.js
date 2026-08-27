@@ -1479,6 +1479,10 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // 1-s): 0 skips the round entirely, 0.5 halves the pull, 1 removes it for
   // that search. Never touches the pricing of any offered route.
   facilityNeutralStrength: 0.5,
+  // How much different riding (miles, on the shorter of the two) makes two
+  // options genuinely different instead of one route offered twice. The
+  // default is the field-tuned 800 m the dedupe shipped with.
+  distinctRideMi: 0.5,
 });
 // One place decides how a mode names its weights. Everything that used to spell
 // out `mode === 'low' ? 'Low' : ...` inline now calls this, so a future mode
@@ -1505,6 +1509,9 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // A search-lens fraction, not a road multiplier: above 1 the lens would
   // INVERT the facility preference for its probe.
   facilityNeutralStrength: Object.freeze([0, 1]),
+  // Below ~250 ft everything reads as different and the portfolio fills
+  // with near-twins; above 2 mi short trips cannot offer alternatives.
+  distinctRideMi: Object.freeze([0.05, 2]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -3610,10 +3617,13 @@ function materialTradeoff(a, b) {
 // initial 2 mi, which collapsed too much), as a fraction capped at 25% so
 // very short trips can still offer close variants. Trips of ~12 miles and
 // up keep the old 4% behaviour exactly.
-const TWIN_MIN_DISTINCT_M = 800;
 function twinOverlapLimit(a, b) {
   const shorterM = Math.max(1, Math.min(a.distM, b.distM));
-  return 1 - Math.min(0.25, Math.max(0.04, TWIN_MIN_DISTINCT_M / shorterM));
+  // The rider's distinctRideMi slider; the 0.5 mi default is the 800 m
+  // this shipped with. The 25% cap keeps short trips able to offer close
+  // variants; the 4% floor keeps ~12 mi+ trips at the old behaviour.
+  const distinctM = activeWeights.distinctRideMi * 1609.344;
+  return 1 - Math.min(0.25, Math.max(0.04, distinctM / shorterM));
 }
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);

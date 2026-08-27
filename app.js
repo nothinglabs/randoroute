@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.869';
+const APP_VERSION = '2026-08-26.870';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -194,6 +194,10 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // 0.5 halves the facility pull for its one extra search, 1 removes it for
   // that search. Rationale with the worker's copy.
   facilityNeutralStrength: 0.5,
+  // How much different riding (miles, on the shorter of the two) makes two
+  // options genuinely different instead of one route offered twice. The
+  // default is the field-tuned 800 m the dedupe shipped with.
+  distinctRideMi: 0.5,
 });
 // Weights the rider tuned under the old names, so a saved custom set is
 // carried across the rename instead of silently snapping back to defaults.
@@ -237,6 +241,9 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // A search-lens fraction, not a road multiplier: above 1 the lens would
   // INVERT the facility preference for its probe.
   facilityNeutralStrength: Object.freeze([0, 1]),
+  // Below ~250 ft everything reads as different and the portfolio fills
+  // with near-twins; above 2 mi short trips cannot offer alternatives.
+  distinctRideMi: Object.freeze([0.05, 2]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -15898,14 +15905,14 @@ const WEIGHT_MODES = [
 const ROUTING_WEIGHT_GROUPS = [
   ['Roads that fail your rules', 'How far out of the way to go to avoid road your Limits already reject, and how much to seek out road that clears them comfortably.', [
     { base: 'failRoad', label: 'Avoid a failing road', min: 1, max: 60, step: .1,
-      hint: 'Multiplies time on any road your Limits fail. Higher = longer detours to dodge it. Never a ban: if failing pavement is unavoidable the route still returns, with those stretches flagged.' },
+      hint: 'Multiplies time on road your Limits fail. Higher = longer detours. Never a ban: unavoidable failing stretches still route, flagged.' },
     { base: 'comfyRoad', label: 'Seek out a comfortable road', min: .5, max: 1.2, step: .01, modes: ['Balanced', 'LowStress'],
       hint: 'Below 1 rewards road that clears your rules with room to spare. Direct mode does not use this.' },
     { key: 'freeway', label: 'Freeway, absolute last resort', min: 5, max: 100, step: 1,
       hint: 'Only reachable where a freeway shoulder is legally open to bikes and nothing else connects.' },
     { base: 'crossUncontrolled', suffix: 'Sec', label: 'Cross a failing road with no signal (seconds)', min: 0, max: 120, step: 5,
-      hint: 'Charged once per crossing of a failing road at a junction with no traffic signal or all-way stop. Crossing at a signal is free, so this is how far out of the way the router will go to reach one. 0 turns it off.' },
-  ]],
+      hint: 'Charged once per uncontrolled crossing of a failing road. A signal or all-way stop is free, so this is how far to detour to reach one. 0 turns it off.' },
+  ], 'Failing roads'],
   ['Bike infrastructure and quiet streets', 'Bonuses, not rules. Below 1 makes a mile feel shorter to the router, so it will ride further to use one.', [
     // The floors sit below the defaults on purpose. When the shipped default IS
     // the floor the slider only moves one way, so a rider who wants trails
@@ -15919,17 +15926,17 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'facilityLane', label: 'Bike lane', min: .25, max: 1.1, step: .01,
       hint: 'An ordinary striped lane.' },
     { key: 'facilityShared', label: 'Sharrow / shared-lane marking', min: .4, max: 1.2, step: .01,
-      hint: 'Paint in the traffic lane. Gives a modest route preference—even when the road still fails your rules.' },
+      hint: 'Paint in the traffic lane. A modest preference, even where the road fails your rules.' },
     { key: 'residential', label: 'Residential street', min: .4, max: 1.1, step: .01,
       hint: 'Applies to the OSM residential and living-street classes, not to anything merely signed 25 mph.' },
     { key: 'strongDesignated', label: 'Signed bike route, no infrastructure', min: .2, max: 1, step: .01,
-      hint: 'A route number on a sign, without physical infrastructure. Always applied to qualifying road; a recorded facility uses its own weight instead.' },
+      hint: 'A route number on a sign, no physical infrastructure. A recorded facility uses its own weight instead.' },
     { key: 'preferredRoute', label: 'Strong Preferred-route pull', min: .05, max: 1, step: .01,
-      hint: 'Controls the strongest candidate for routes you mark Preferred. The router also generates moderate and neutral alternatives. Applied once instead of the ordinary facility or designation bonus; it never compounds with a trail or bike-lane weight.' },
+      hint: 'The strongest candidate for routes you mark Preferred; moderate and neutral alternatives are also offered. Replaces the facility or designation bonus, never stacks with it.' },
     { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
       hint: 'Above 1: rideable on a mountain bike, avoided unless it is the only link.' },
-  ]],
-  ['Traffic volume', 'Priced from a measured vehicle count where the state or county has one, the FHWA functional class where it does not, and the OSM road tag only as a last resort. Thresholds match the "Road is busier than" setting in Limits. Any recorded bike facility clears these entirely.', [
+  ], 'Bike & quiet'],
+  ['Traffic volume', 'Measured counts first, FHWA class next, OSM tags last. Thresholds match "Road is busier than" in Limits. Any recorded bike facility clears these.', [
     { key: 'useMeasuredTraffic', label: 'Trust measurements over OSM road tags', min: 0, max: 1, step: .05,
       hint: 'Set to 0 to price traffic purely from OSM tags; 1 lets a measured count or official class override the tag.' },
     { base: 'busyLight', label: 'Light traffic', min: 1, max: 3, step: .01,
@@ -15938,26 +15945,26 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Over 6,000 vehicles/day, or an FHWA minor arterial.' },
     { base: 'busyHeavy', label: 'Heavy traffic', min: 1, max: 5, step: .01,
       hint: 'Over 15,000 vehicles/day, or an FHWA principal arterial and up.' },
-  ]],
-  ['Road size and stress rating', 'Two signals for roads where the speed limit has stopped telling you anything. Physical separation exempts an edge; paint halves the cost. The two are combined by taking the larger, not by multiplying.', [
+  ], 'Traffic'],
+  ['Road size and stress rating', 'For roads where the speed limit stops telling you anything. Separation exempts an edge, paint halves the cost, and the larger of the two applies.', [
     { base: 'wideRoad', label: 'Four or more lanes', min: 1, max: 4, step: .01,
       hint: 'Counts a centre turn lane, so three through lanes plus one qualifies.' },
     { base: 'stressedRoad', label: 'Official traffic-stress rating', min: 1, max: 4, step: .01,
-      hint: 'This map pack\'s normalized 1–4 Level of Traffic Stress rating. Applies at full weight to a 4 and half weight to a 3; coverage depends on the map pack.' },
-  ]],
+      hint: 'The map pack\'s normalized 1–4 traffic-stress rating: full weight at 4, half at 3. Coverage varies by pack.' },
+  ], 'Size & stress'],
   ['Speed', 'Both are per mile-per-hour, so they accumulate: 10 mph over comfort at 0.02 is a 20% cost.', [
     { base: 'speedOver', label: 'Each mph above your comfort speed', min: 0, max: .1, step: .002, modes: ['Balanced', 'LowStress'],
       hint: 'Direct mode ignores this. Trails and ferries are always exempt.' },
     { base: 'speedBelow', label: 'Each mph below comfort, with no shoulder or bike lane', min: 0, max: .1, step: .001,
       hint: 'A slow road with nowhere to ride is still a road with nowhere to ride. Bounded so it can never discount an edge below 25%.' },
-  ]],
+  ], 'Speed'],
   ['Limited access and curves', null, [
     { base: 'limitedAccess', label: 'Limited-access highway', min: 1, max: 8, step: .05,
-      hint: 'Ramps and interchanges rather than driveways. Priced separately from the traffic tiers above, which it is exempt from.' },
+      hint: 'Ramps and interchanges rather than driveways. Exempt from the traffic tiers; priced here instead.' },
     { base: 'curve', label: 'Sightline-limiting curve', min: 1, max: 20, step: .01, levels: [1, 2, 3],
       levelLabels: ['Gentle', 'Moderate', 'Sharp'],
-      hint: 'Severity measured from the road geometry. Compounds along a winding road, so the low-stress figures climb steeply.' },
-  ]],
+      hint: 'Severity measured from the road geometry. Compounds along a winding road.' },
+  ], 'Highways & curves'],
   ['Effort: hills, turns and ferries', 'These change estimated time as well as route choice.', [
     { key: 'uphillFactor', label: 'Uphill effort', min: 1, max: 15, step: .25,
       hint: 'How much climbing slows you. Affects the time estimate.' },
@@ -15968,29 +15975,28 @@ const ROUTING_WEIGHT_GROUPS = [
     { base: 'climb', suffix: 'SecPerM', label: 'Detour to avoid climbing (sec per m)', min: 0, max: 5, step: .05,
       hint: 'Above and beyond the time climbing costs. This is how much you dislike it.' },
     { key: 'climbKneePct', label: 'Grade where a climb starts to hurt (%)', min: 0, max: 9, step: .5,
-      hint: 'Below this, a metre climbed costs the same however it is taken. Raise it '
-        + 'if gentle grades do not bother you; lower it to start avoiding them sooner.' },
+      hint: 'Below this grade, every metre climbed costs the same. Raise it if gentle grades do not bother you.' },
     // Step .01, not .25: the default 7.84 is the value that makes the curve's
     // quadratic coefficient exactly 0.19, and a coarser step cannot reach it --
     // the slider would render at 7.75 while the weight held 7.84, and a rider
     // who dragged it could never get back.
     { key: 'climbCostAt10Pct', label: 'Cost of a 10% grade, per metre climbed', min: 1, max: 40, step: .01,
-      hint: 'How much worse a steep metre is than a gentle one, anchored at 10%. The whole '
-        + 'curve follows: at the default, 6% costs 1.8x and 12% costs 13x. Set it to 1 to '
-        + 'ignore steepness entirely and charge only for height gained.' },
+      hint: 'How much worse a steep metre is than a gentle one, anchored at 10%: at the default, 6% costs 1.8x and 12% costs 13x. 1 charges height alone.' },
     { base: 'turn', suffix: 'Sec', label: 'Cost of a turn (seconds)', min: 0, max: 90, step: 1,
       hint: 'Discourages zig-zag routes through a street grid.' },
     { key: 'ferryWaitMin', label: 'Ferry boarding wait (minutes)', min: 0, max: 60, step: 1,
       hint: 'Added once per ferry leg.' },
-  ]],
-  ['Alternative routes', 'Applied to edges an already-chosen option used, to push the next option onto genuinely different roads. Higher = more different, and more likely to be a worse route.', [
+  ], 'Hills & effort'],
+  ['Alternative routes', 'The probes that force different corridors (higher = more different, likelier worse), and how different two options must be to both be offered.', [
     { key: 'diversityQuick', label: 'Second option, quick', min: 1.05, max: 3, step: .05 },
     { key: 'diversityBalanced', label: 'Second option, balanced', min: 1.05, max: 3, step: .05 },
     { key: 'diversitySafer', label: 'Second option, safer', min: 1.05, max: 3, step: .05 },
     { key: 'diversityWide', label: 'Wide search', min: 1.05, max: 4, step: .05 },
     { key: 'facilityNeutralStrength', label: 'Extra option: reduce trail pull', min: 0, max: 1, step: .05,
-      hint: 'One extra search with the pull of bike lanes, trails and signed routes reduced this far toward neutral, surfacing routes that lose only because facility miles are priced shorter. 0 turns it off. Safety pricing of the routes you see is never affected.' },
-  ]],
+      hint: 'One extra search with the facility pull reduced this far toward neutral, finding routes that lose only because trail miles are priced shorter. 0 turns it off. Never changes the pricing of routes you see.' },
+    { key: 'distinctRideMi', label: 'Different riding to stay separate (miles)', min: .05, max: 2, step: .05,
+      hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
+  ], 'Alternatives'],
 ];
 
 // Every weight the editor can reach, so a test can prove none was orphaned by
@@ -16075,9 +16081,10 @@ function weightSlider(key, label, min, max, step) {
 function buildRoutingWeightsEditor() {
   const host = document.getElementById('routingWeightsEditor');
   host.replaceChildren();
-  for (const [title, blurb, items] of ROUTING_WEIGHT_GROUPS) {
+  for (const [index, [title, blurb, items]] of ROUTING_WEIGHT_GROUPS.entries()) {
     const group = document.createElement('section');
     group.className = 'weights-group';
+    group.id = `weightsGroup${index}`;
     const heading = document.createElement('h3');
     heading.textContent = title;
     group.append(heading);
@@ -16106,6 +16113,28 @@ function buildRoutingWeightsEditor() {
     }
     host.append(group);
   }
+  buildWeightsSubnav();
+}
+
+// The page holds ten sections; the sticky chip row jumps between them.
+// Rebuilt with the editor so a future group appears here by itself — the
+// short labels ride as each group tuple's fourth element.
+function buildWeightsSubnav() {
+  const nav = document.getElementById('weightsSubnav');
+  if (!nav) return;
+  nav.replaceChildren();
+  const chips = [['Options', 'advancedRoutingOptionsTitle'], ['Debug', 'weightsDebugHeading'],
+    ...ROUTING_WEIGHT_GROUPS.map(([, , , short], index) =>
+      [short || `Section ${index + 1}`, `weightsGroup${index}`])];
+  for (const [label, id] of chips) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.textContent = label;
+    chip.addEventListener('click', () =>
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    nav.append(chip);
+  }
+  nav.hidden = false;
 }
 
 // Route-shaping switches that are useful to expert tuners but add noise to
@@ -16165,6 +16194,7 @@ function buildAdvancedRoutingOptions() {
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');
+  debugHeading.id = 'weightsDebugHeading';
   debugHeading.textContent = 'Debug';
   const debugNote = document.createElement('p');
   debugNote.textContent = 'Development aids for chasing routing behavior in the field.';
