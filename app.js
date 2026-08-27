@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.860';
+const APP_VERSION = '2026-08-26.861';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9086,6 +9086,26 @@ function onRouterMessage(ev) {
       setRouteStatus(failure.reason);
       if (m.code === 'point-too-far') showPointTooFarPopup(m);
       return;
+    }
+    // The engine echoes how many road blocks it searched with. A mismatch
+    // against the markers on screen is the "removed block still steering
+    // routes" field report (2026-08-27) caught in the act — say so loudly,
+    // because silently wrong is what made it undiagnosable, and recompute
+    // once. One retry, not a loop: if the recompute still mismatches, show
+    // the result anyway with the warning standing.
+    if (typeof m.blocksApplied === 'number'
+        && m.blocksApplied !== (routing.blocks?.length || 0)) {
+      console.warn(`route computed with ${m.blocksApplied} road blocks; `
+        + `${routing.blocks?.length || 0} are on the map`);
+      showRouteActionToast(`Route used ${m.blocksApplied} road block${m.blocksApplied === 1 ? '' : 's'}`
+        + ` but ${routing.blocks?.length || 0} are on the map`, { duration: 6000 });
+      if (!routing.blockMismatchRetried) {
+        routing.blockMismatchRetried = true;
+        computeRoute();
+        return;
+      }
+    } else {
+      routing.blockMismatchRetried = false;
     }
     routing.options = m.options;
     routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];

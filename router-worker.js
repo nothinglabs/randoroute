@@ -5722,6 +5722,7 @@ onmessage = (ev) => {
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }),
+        blocksApplied: Array.isArray(m.blocks) ? m.blocks.length : 0,
         frontierHits: publicFrontierHits() });
     } else if (m.type === 'partition-frontiers') {
       configurePartitionFrontiers(m.frontiers);
@@ -5804,7 +5805,12 @@ onmessage = (ev) => {
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
         signature, m.weights || null, m.directProbeWeights || null));
+      // The engine's own count of blocks it searched with. A field report of
+      // a removed block still steering routes (2026-08-27) could not be told
+      // apart from a request that silently carried the stale block; echoing
+      // the count lets the app compare against its markers and say which.
       postMessage({ type: 'route-options', id: m.id, ...result,
+        blocksApplied: Array.isArray(m.blocks) ? m.blocks.length : 0,
         frontierHits: publicFrontierHits() });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from
