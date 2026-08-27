@@ -241,7 +241,9 @@ const letterZoom = await page.evaluate(async () => {
   const mkOption = (id, coords) => ({ ok: true, coords, segs: [], distM: 15000,
     timeS: 3000, failM: 0, optimization: { label: id, profileId: id } });
   const a = mkOption('Route A', [[-122.42, 47.58], [-122.35, 47.62], [-122.30, 47.68]]);
-  const b = mkOption('Route B', [[-122.42, 47.58], [-122.28, 47.60]]);
+  // Inside A's bbox on purpose: flipping to it after A's fit must not move
+  // the camera (field ask, 2026-08-27 — no dancing while flipping letters).
+  const b = mkOption('Route B', [[-122.41, 47.59], [-122.31, 47.65]]);
   routing.options = [a, b];
   routing.last = b;
   routing.allCandidates = [];
@@ -264,20 +266,44 @@ const letterZoom = await page.evaluate(async () => {
   // a detached button's click no longer bubbles to the delegated handler.
   const letterA = () => [...document.querySelectorAll('[data-route-option]')]
     .find((btn) => Number(btn.dataset.routeOption) === 0);
+  const letterB = () => [...document.querySelectorAll('[data-route-option]')]
+    .find((btn) => Number(btn.dataset.routeOption) === 1);
+  // The fit animates: wait for the camera to stop moving, not merely for
+  // the route to enter the frame, before judging later camera behavior.
+  const settled = async () => {
+    let last = null;
+    for (let i = 0; i < 40; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const now = [map.getZoom(), map.getCenter().lng, map.getCenter().lat];
+      if (last && now.every((v, j) => Math.abs(v - last[j]) < 1e-7)) return true;
+      last = now;
+    }
+    return false;
+  };
   map.jumpTo({ center: [-120.5, 46.6], zoom: 12 });
   letterA().click();
-  const tapContains = await waitContained(a.coords);
+  const tapContains = await waitContained(a.coords) && await settled();
+  // Flipping to an already-in-view route must not move the camera.
+  const before = { zoom: map.getZoom(), center: map.getCenter() };
+  letterB().click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const after = { zoom: map.getZoom(), center: map.getCenter() };
+  const steady = Math.abs(before.zoom - after.zoom) < 0.01
+    && Math.abs(before.center.lng - after.center.lng) < 0.0005
+    && Math.abs(before.center.lat - after.center.lat) < 0.0005;
   // Retapping the active letter must bring a panned-away route back too.
   map.jumpTo({ center: [-120.5, 46.6], zoom: 12 });
-  letterA().click();
-  const retapContains = await waitContained(a.coords);
+  letterB().click();
+  const retapContains = await waitContained(b.coords);
   routing.options = [];
   routing.last = null;
-  return { tapContains, retapContains };
+  return { tapContains, steady, before, after, retapContains };
 });
 check('tapping a letter fits the map to that route',
   letterZoom.tapContains, JSON.stringify(letterZoom));
-check('retapping the active letter brings the route back into view',
+check('flipping to an in-view route does not move the camera',
+  letterZoom.steady, JSON.stringify(letterZoom));
+check('retapping the active letter brings a panned-away route back',
   letterZoom.retapContains, JSON.stringify(letterZoom));
 
 /* ------- everyday and advanced routing options live in deliberate homes */

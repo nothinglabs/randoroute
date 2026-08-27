@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.885';
+const APP_VERSION = '2026-08-26.886';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9255,6 +9255,10 @@ function onRouterMessage(ev) {
     }
     routing.selectRecommendedNext = false;
     activateRouteOption(selected);
+    // Right after routing the selection frames itself (field ask,
+    // 2026-08-27) — but only when the rider is not already looking at it,
+    // so a settings-tweak recompute leaves their camera alone.
+    if (routeOptionOutOfView(selected)) fitRouteOptionBounds(selected);
     notifySnapDistance(selected);
     notifyPocketSnaps(m.snapNotes);
     // A quiet recompute (Settings holding the panel) ends with an answer, not
@@ -12283,7 +12287,7 @@ function showRouteDescriptionToast(option) {
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
-  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 3000);
+  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 4000);
 }
 document.getElementById('routeDescToast')?.addEventListener('click', () => {
   hideRouteDescriptionToast();
@@ -12347,18 +12351,18 @@ function buildRoutingPanel() {
     if (!button || button.disabled || choices.classList.contains('loading')) return;
     const option = routing.options[Number(button.dataset.routeOption)];
     if (!option) return;
-    // Retapping the active letter replays its description pill and brings
-    // the route back into view (field asks, 2026-08-27) without recomputing
-    // or redrawing anything.
+    // Retapping the active letter replays its description pill and, if the
+    // rider has panned or zoomed away, brings the route back into view
+    // (field asks, 2026-08-27) without recomputing or redrawing anything.
     if (option === routing.last) {
       showRouteDescriptionToast(option);
-      fitRouteOptionBounds(option);
+      if (routeOptionOutOfView(option)) fitRouteOptionBounds(option);
       return;
     }
     // Leaving the shared route recomputes with the receiver's own settings.
     if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
     activateRouteOption(option);
-    fitRouteOptionBounds(option);
+    if (routeOptionOutOfView(option)) fitRouteOptionBounds(option);
   });
   renderRouteOptionControls();
 
@@ -12534,13 +12538,9 @@ function fitRouteBounds(route) {
     { padding: 60, maxZoom: 13 });
 }
 
-// Tapping a route letter shows that route (field ask, 2026-08-27): fit the
-// camera to the option's actual geometry — endpoint bounds alone crop a
-// route that bulges — kept clear of the start/destination card above and
-// the chooser panel below.
-function fitRouteOptionBounds(option) {
+function routeOptionBBox(option) {
   const coords = option?.coords;
-  if (!coords || coords.length < 2 || !map?.fitBounds) return;
+  if (!coords || coords.length < 2) return null;
   let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
   for (const c of coords) {
     if (c[0] < minLon) minLon = c[0];
@@ -12548,6 +12548,35 @@ function fitRouteOptionBounds(option) {
     if (c[1] < minLat) minLat = c[1];
     if (c[1] > maxLat) maxLat = c[1];
   }
+  return { minLon, minLat, maxLon, maxLat };
+}
+
+// The camera moves only when the rider is actually away from the route: a
+// bbox corner off screen, or the route reduced to a sliver by a far-out
+// zoom. Flipping letters over mostly-overlapping options must not dance the
+// map (field ask, 2026-08-27) — after the first fit the later options are
+// already in view, so nothing moves.
+function routeOptionOutOfView(option) {
+  const box = routeOptionBBox(option);
+  if (!box || !map?.getBounds) return false;
+  const view = map.getBounds();
+  const corners = [[box.minLon, box.minLat], [box.maxLon, box.minLat],
+    [box.minLon, box.maxLat], [box.maxLon, box.maxLat]];
+  if (corners.some((corner) => !view.contains(corner))) return true;
+  const lonShare = (box.maxLon - box.minLon)
+    / Math.max(1e-9, view.getEast() - view.getWest());
+  const latShare = (box.maxLat - box.minLat)
+    / Math.max(1e-9, view.getNorth() - view.getSouth());
+  return Math.max(lonShare, latShare) < 0.2;
+}
+
+// Fit the camera to the option's actual geometry — endpoint bounds alone
+// crop a route that bulges — kept clear of the start/destination card above
+// and the chooser panel below.
+function fitRouteOptionBounds(option) {
+  const box = routeOptionBBox(option);
+  if (!box || !map?.fitBounds) return;
+  const { minLon, minLat, maxLon, maxLat } = box;
   const viewH = map.getContainer()?.clientHeight || 0;
   const bar = document.getElementById('routeBar')?.getBoundingClientRect();
   const panel = document.getElementById('panel')?.getBoundingClientRect();
