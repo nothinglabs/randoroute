@@ -99,24 +99,43 @@ try {
     offline === catalogue.partitions.length, String(offline));
   await page.context().setOffline(false);
 
-  // A corrupted cached catalogue — a truncated 20+ MB write — used to fail
-  // its SHA check identically on every attempt, with no way out but clearing
-  // site data (field, 2026-08-27: "Route unavailable ... failed its SHA-256
-  // check"). The context must evict the bad bytes, refetch, and repair the
-  // stored copy so the next OFFLINE session inherits the good ones.
-  // The refetch goes to the app origin, which in this synthetic environment
-  // has no catalogue of its own — serve the fixture's bytes there.
+  // Two ways a cached catalogue stops matching its pinned hash, told apart
+  // by what the NETWORK serves (field, 2026-08-27, desktop: the same
+  // "failed its SHA-256 check" on every attempt, two releases running).
+  // The app origin has no catalogue of its own in this synthetic
+  // environment, so each case decides what the refetch finds.
+  const catalogueKey = installed.catalogueKey;
+
+  // 1. The store has moved on — a partition rebuild replaced the published
+  //    catalogue, and this install's vintage is gone. Not corruption to
+  //    retry around: a typed maps-update error, never a raw SHA message.
+  await page.route('**/maps/partition-catalogue.json*', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: '{"published": "a newer catalogue"}' }));
+  const outdated = await page.evaluate(async ({ key }) => {
+    const cache = await caches.open(DATA_CACHE_NAME);
+    await cache.put(new Request(key), new Response('{"corrupt": true}'));
+    try {
+      await MapStore.routingContext(['state-a', 'state-b', 'state-c']);
+      return { threw: false };
+    } catch (error) { return { threw: true, code: error.code, message: error.message }; }
+  }, { key: catalogueKey });
+  await page.unroute('**/maps/partition-catalogue.json*');
+  check('an unrecoverable catalogue reports as a maps update, not a SHA message',
+    outdated.threw && outdated.code === 'routing-catalogue-outdated'
+      && /Update your maps/.test(outdated.message), JSON.stringify(outdated));
+
+  // 2. A truncated write with the store unchanged: evict, refetch, and
+  //    repair the stored copy so the next OFFLINE session inherits it.
   await page.route('**/maps/partition-catalogue.json*', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json',
       body: catalogueBytes }));
-  const healed = await page.evaluate(async () => {
+  const healed = await page.evaluate(async ({ key }) => {
     const cache = await caches.open(DATA_CACHE_NAME);
-    const key = (await cache.keys()).find((request) =>
-      request.url.includes('partition-catalogue'));
-    await cache.put(key, new Response('{"corrupt": true}'));
+    await cache.put(new Request(key), new Response('{"corrupt": true}'));
     const context = await MapStore.routingContext(['state-a', 'state-b', 'state-c']);
     return { partitions: context.catalogue.partitions.length };
-  });
+  }, { key: catalogueKey });
   await page.unroute('**/maps/partition-catalogue.json*');
   check('a corrupted cached catalogue self-heals from the network',
     healed.partitions === catalogue.partitions.length, JSON.stringify(healed));

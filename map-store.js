@@ -371,22 +371,36 @@
       const fromCache = !!response;
       if (!response) response = await fetch(request);
       if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
+      // A NETWORK copy that fails the installed acquisition's hash means the
+      // published catalogue has moved on — the store serves one catalogue
+      // path, so after a partition rebuild an install that missed the update
+      // can never fetch its own vintage again (field, 2026-08-27, desktop:
+      // the same "failed its SHA-256 check" on every attempt, two releases
+      // running). That is not corruption to retry around; it is a map update
+      // to offer.
+      const outdated = (cause) => {
+        const failure = new Error('Installed routing maps no longer match the'
+          + ' published data. Update your maps to route.');
+        failure.code = 'routing-catalogue-outdated';
+        failure.detail = { reason: cause?.message || String(cause) };
+        return failure;
+      };
       try {
         await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
           acquisition.catalogue.path);
       } catch (error) {
-        // The request URL is hash-keyed, so a cached copy that fails its
-        // check is a truncated or corrupted WRITE, never merely stale — and
-        // it would fail identically forever (field, 2026-08-27, desktop:
-        // "Route unavailable" on every attempt). Evict it, refetch, verify
-        // the network copy, and repair the stored one so the next offline
-        // session inherits the good bytes rather than the corrupt ones.
-        if (!fromCache) throw error;
+        // A CACHED copy that fails its check is a truncated or corrupted
+        // write (the request URL is hash-keyed, so it cannot merely be
+        // stale): evict it, refetch, verify the network copy, and repair the
+        // stored one so the next offline session inherits the good bytes.
+        if (!fromCache) throw outdated(error);
         try { await cache?.delete(request); } catch (evictError) { /* nonfatal */ }
         response = await fetch(request);
         if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
-        await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
-          acquisition.catalogue.path);
+        try {
+          await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
+            acquisition.catalogue.path);
+        } catch (secondError) { throw outdated(secondError); }
         try { await cache?.put(request, response.clone()); } catch (storeError) { /* nonfatal */ }
       }
       const catalogue = await response.json();

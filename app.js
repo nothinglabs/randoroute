@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.868';
+const APP_VERSION = '2026-08-26.869';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4906,6 +4906,11 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
     routing.routeRequestActive = false;
     setRouteOptionsLoading(false);
     const missingRouting = error.code === 'routing-acquisition-unavailable';
+    // The store publishes one catalogue: after a partition rebuild, an
+    // install that missed the update can never fetch its own vintage again.
+    // The cure is the update banner, not a SHA-256 message.
+    const outdatedRouting = error.code === 'routing-catalogue-outdated';
+    if (outdatedRouting) announceInstalledMapUpdates();
     const missingIds = [...new Set([...(error.detail?.missingStateIds || []),
       ...(error.detail?.missingRoutingStateIds || [])])];
     // A worker exception's raw message is not rider copy; the coordinator's
@@ -4919,7 +4924,7 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
       options: request.type === 'route-options' ? [] : undefined, reason,
       // The card offers the Maps screen directly: the cure for a missing
       // state map is a download, not rephrasing the route.
-      needsMaps: missingRouting } });
+      needsMaps: missingRouting || outdatedRouting } });
   }
 }
 
