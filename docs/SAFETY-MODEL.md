@@ -1372,8 +1372,15 @@ seconds of detour to cross at a signal, and no further; the switch reads
 back as on whenever any of the three sliders is nonzero. Two
 shapes are recognised: entering the failing road's own short pavement from a
 passing edge, and passing straight through a shared junction node that two or
-more failing edges touch. Arriving on a failing edge never pays it — riding
-*along* the road is the level-4 multipliers' job. Freeway edges are excluded
+more failing edges touch — where the failing road must be a **different
+road** (by name) from the one being ridden. That last clause is load-bearing:
+a street whose bike lane serves one direction *fails* ridden the other way,
+so without it a rider northbound on Stone Way's trusted lane was charged one
+uncontrolled crossing per driveway for crossing Stone Way itself, and the
+suggested route fled to a worse parallel street (field, 2026-08-27). Two
+unnamed roads meeting go uncharged — the accepted cost of using names to
+tell roads apart. Arriving on a failing edge never pays it — riding *along*
+the road is the level-4 multipliers' job. Freeway edges are excluded
 from the through-node count (their only shared nodes with surface streets
 are ramp mouths, where traffic merges rather than crosses). A graph built
 before the control bits existed disables the charge entirely rather than

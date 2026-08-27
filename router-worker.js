@@ -1108,28 +1108,45 @@ function useVerdictSlot(slot, rules) {
   slot.rules = rules;
   return slot;
 }
-// How many distinct failing edges touch each node under this rule set,
-// saturated at 2. 2+ means a road failing the rider's rules runs THROUGH the
-// node -- the topological signature of a crossing (a divided arterial's
+// Which failing roads touch each node under this rule set: a count of
+// distinct failing edges (saturated at 2) plus the first two distinct NAMES
+// among them. 2+ edges means a road failing the rider's rules runs THROUGH
+// the node -- the topological signature of a crossing (a divided arterial's
 // single carriageway alone contributes its arriving and departing edge).
-// Lives on the verdict slot: levels are a safety-rules fact, the slot already
-// keys and evicts by exactly those, and the identity fast path keeps this out
-// of the relaxation loop's budget. The one eager O(E) pass warms the slot's
-// verdict bytes it would have computed lazily anyway. Freeways are excluded
-// -- their only shared nodes with a surface street are ramp mouths, where
-// traffic merges rather than crosses -- and ferries never fail.
+// The names exist because of Stone Way (field, 2026-08-27): a street whose
+// bike lane serves one direction FAILS ridden the other way, so its own
+// edges put every mid-block node at count 2 -- and the charge then priced
+// riding ALONG the trusted lane as one uncontrolled crossing per driveway,
+// pushing the suggested route onto a worse parallel street. A crossing must
+// involve a failing road that is a DIFFERENT road from the one being
+// ridden, and the name is how the penalty tells (two unnamed roads meeting
+// go uncharged -- the acceptable miss).
+// Lives on the verdict slot: levels are a safety-rules fact, the slot
+// already keys and evicts by exactly those, and the identity fast path
+// keeps this out of the relaxation loop's budget. The one eager O(E) pass
+// warms the slot's verdict bytes it would have computed lazily anyway.
+// Freeways are excluded -- their only shared nodes with a surface street
+// are ramp mouths, where traffic merges rather than crosses -- and ferries
+// never fail.
+const FAIL_TOUCH_NO_NAME = 0xFFFFFFFF;
 function nodeFailTouch(rules) {
   const slot = verdictSlotFor(rules);
   if (slot.failTouch) return slot.failTouch;
-  const counts = new Uint8Array(N);
+  const count = new Uint8Array(N);
+  const name1 = new Uint32Array(N).fill(FAIL_TOUCH_NO_NAME);
+  const name2 = new Uint32Array(N).fill(FAIL_TOUCH_NO_NAME);
   for (let i = 0; i < E; i++) {
     if (eFlags[i] & (4 | 32)) continue;
     if (edgeLevelFor(i, rules, true) !== 4 && edgeLevelFor(i, rules, false) !== 4) continue;
-    if (counts[eA[i]] < 2) counts[eA[i]]++;
-    if (counts[eB[i]] < 2) counts[eB[i]]++;
+    const nm = eName[i];
+    for (const u of [eA[i], eB[i]]) {
+      if (count[u] < 2) count[u]++;
+      if (name1[u] === FAIL_TOUCH_NO_NAME) name1[u] = nm;
+      else if (name1[u] !== nm && name2[u] === FAIL_TOUCH_NO_NAME) name2[u] = nm;
+    }
   }
-  slot.failTouch = counts;
-  return counts;
+  slot.failTouch = { count, name1, name2 };
+  return slot.failTouch;
 }
 function useVerdictCache(rules) { useVerdictSlot(verdictSlots[0], rules); }
 // Identity is the fast path, taken on every relaxation. Anything else is a rule
@@ -1945,15 +1962,27 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
 // the charge entirely rather than pricing every signalised crossing in the
 // state as uncontrolled.
 function uncontrolledCrossPenaltyS(incomingEdge, node, outgoingEdge, rules, mode) {
-  if (!nodeControlledCount || !(incomingEdge >= 0) || nodeControlled[node]) return 0;
+  // Weight first: at 0 (the shipped default) the charge does no detection
+  // work and builds no cache at all.
+  const sec = activeWeights[mode === 'direct' ? 'crossUncontrolledDirectSec'
+    : mode === 'low' ? 'crossUncontrolledLowStressSec' : 'crossUncontrolledBalancedSec'];
+  if (!sec || !nodeControlledCount || !(incomingEdge >= 0) || nodeControlled[node]) return 0;
   if (edgeLevelFor(incomingEdge, rules, eB[incomingEdge] === node) === 4) return 0;
   const outForward = eA[outgoingEdge] === node;
-  const crossing = edgeLevelFor(outgoingEdge, rules, outForward) === 4
-    ? eLen[outgoingEdge] <= CROSSING_MAX_M && !(eFlags[outgoingEdge] & 4)
-    : nodeFailTouch(rules)[node] >= 2;
-  if (!crossing) return 0;
-  return activeWeights[mode === 'direct' ? 'crossUncontrolledDirectSec'
-    : mode === 'low' ? 'crossUncontrolledLowStressSec' : 'crossUncontrolledBalancedSec'];
+  let crossing;
+  if (edgeLevelFor(outgoingEdge, rules, outForward) === 4) {
+    crossing = eLen[outgoingEdge] <= CROSSING_MAX_M && !(eFlags[outgoingEdge] & 4);
+  } else {
+    // A failing road runs through — but it must be a DIFFERENT road from
+    // the one being ridden, or a directionally-failing street charges its
+    // own riders at every driveway (the Stone Way inversion, 2026-08-27).
+    const touch = nodeFailTouch(rules);
+    if (touch.count[node] < 2) return 0;
+    const inName = eName[incomingEdge], outName = eName[outgoingEdge];
+    const crosses = (nm) => nm !== FAIL_TOUCH_NO_NAME && nm !== inName && nm !== outName;
+    crossing = crosses(touch.name1[node]) || crosses(touch.name2[node]);
+  }
+  return crossing ? sec : 0;
 }
 
 // DEM elevations are stored as whole meters, while OSM can split a road into

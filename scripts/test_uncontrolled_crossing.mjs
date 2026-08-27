@@ -42,11 +42,17 @@ const probe = worker.run(`(() => {
     }
     return found;
   };
+  // A genuine crossing: the failing road through the node is a DIFFERENT
+  // road (by name) from the pair of passing edges being ridden.
   const specimen = (wantControlled) => {
     for (let u = 0; u < N; u++) {
-      if (touch[u] < 2 || !!nodeControlled[u] !== wantControlled) continue;
+      if (touch.count[u] < 2 || !!nodeControlled[u] !== wantControlled) continue;
       const pass = passArcsAt(u);
       if (pass.length < 2) continue;
+      const inName = eName[pass[0]], outName = eName[pass[1]];
+      const crossesRide = (nm) => nm !== FAIL_TOUCH_NO_NAME
+        && nm !== inName && nm !== outName;
+      if (!crossesRide(touch.name1[u]) && !crossesRide(touch.name2[u])) continue;
       return { node: u, inEdge: pass[0], outEdge: pass[1] };
     }
     return null;
@@ -91,5 +97,51 @@ check('the same crossing at a controlled node stays free',
   probe.on.con === 0, `controlled charge ${probe.on.con}`);
 check('arriving on the failing road itself is never charged here',
   probe.on.along === 0, `along charge ${probe.on.along}`);
+
+// The Stone Way inversion (field, 2026-08-27): a street whose bike lane
+// serves one direction FAILS ridden the other way, so its own edges put
+// every mid-block node at fail-touch 2. Riding ALONG it must charge
+// nothing — the failing road through the node is the road being ridden,
+// not one being crossed. Found by name in the real graph, driven through
+// the real charge with the opt-in weights active.
+const stoneWay = worker.run(`(() => {
+  const rules = ${rules};
+  const touch = nodeFailTouch(rules);
+  useWeights({ ...DEFAULT_WEIGHTS, crossUncontrolledDirectSec: 20,
+    crossUncontrolledBalancedSec: 45, crossUncontrolledLowStressSec: 90 });
+  let checked = 0, charged = 0;
+  for (let i = 0; i < E && checked < 200; i++) {
+    if (edgeName(i) !== 'Stone Way North') continue;
+    for (const u of [eA[i], eB[i]]) {
+      if (touch.count[u] < 2 || nodeControlled[u]) continue;
+      for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+        const other = outEdge[a];
+        if (other === i || edgeName(other) !== 'Stone Way North') continue;
+        if (edgeLevelFor(i, rules, eB[i] === u) === 4) continue;
+        checked++;
+        if (uncontrolledCrossPenaltyS(i, u, other, rules, 'balanced') > 0) charged++;
+      }
+    }
+  }
+  useWeights(DEFAULT_WEIGHTS);
+  return { checked, charged };
+})()`);
+check('riding along a directionally-failing street is never charged as crossing it',
+  stoneWay.checked > 10 && stoneWay.charged === 0, JSON.stringify(stoneWay));
+
+// And the trip that surfaced it: North 34th to Stone Way at 50th, with the
+// charge ON, must suggest a route that stays on the bike-lane corridor
+// rather than fleeing to a parallel street with failing pavement.
+const trip = worker.post({ type: 'route-options', id: 991,
+  start: [-122.3402, 47.6497], end: [-122.3399, 47.6648],
+  rules: appDefaultRules(),
+  weights: { crossUncontrolledDirectSec: 20, crossUncontrolledBalancedSec: 45,
+    crossUncontrolledLowStressSec: 90 } });
+const suggested = trip?.options?.[0];
+const facilityShare = suggested
+  ? (suggested.facilityM || 0) / Math.max(1, suggested.distM) : 0;
+check('the Stone Way trip stays on the bike lane with the charge on',
+  !!suggested && facilityShare > 0.7 && (suggested.failM || 0) < 100,
+  suggested ? `facility ${(facilityShare * 100).toFixed(0)}%, fail ${Math.round(suggested.failM)}m, ${(suggested.distM / 1609).toFixed(1)}mi` : 'no route');
 
 done();
