@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.856';
+const APP_VERSION = '2026-08-26.857';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11831,13 +11831,38 @@ function candidateRouteDescriptions(all) {
     out.push('An ordinary mixed-street route between your points');
     return out;
   };
+  // Field ask, 2026-08-27 ("use another 4 words"): a composition line may
+  // carry one extra fact as a short tail, budget 6-14 words in total. Safety
+  // lines stand alone — a failure share is not softened with scenery — and a
+  // tail never repeats the base line's own topic.
+  const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
+  const withDetail = (f, line) => {
+    if (/flag|fail|caution/i.test(line)) return line;
+    const tails = [];
+    if (f.failMi === 0 && !/rule|clean|meets/i.test(line)) {
+      tails.push('with every mile passing your rules');
+    } else if (f.failMi >= 1) {
+      tails.push(`with ${miles(Math.round(f.failMi))} flagged`);
+    }
+    if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
+      tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
+    }
+    if (f.ascentFt >= 800 && !/climb|flat|hill/i.test(line)) {
+      tails.push(`climbing ${Math.round(f.ascentFt / 100) * 100} feet overall`);
+    }
+    if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
+    for (const tail of tails) {
+      if (wordsOf(line) + wordsOf(tail) <= 14) return `${line}, ${tail}`;
+    }
+    return line;
+  };
   const used = new Set();
   const chosen = new Map();
   for (const f of facts) {
     const options = lines(f);
     const pick = options.find((line) => !used.has(line)) || options[options.length - 1];
     used.add(pick);
-    chosen.set(f.c.profileId, pick);
+    chosen.set(f.c.profileId, withDetail(f, pick));
   }
   return chosen;
 }

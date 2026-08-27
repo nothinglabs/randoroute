@@ -196,14 +196,16 @@ check('every row explains why it was built',
   rows.filter((r) => !r.hasWhy || r.whyLen <= 25).map((r) => r.label).join(', '));
 // The character line (field ask, 2026-08-26): a short glanceable phrase per
 // route, usually unique. The ceiling moved 8 -> 10 words the same day ("ok
-// to use a few more words"). "Usually" is the contract - collisions fall
+// to use a few more words"), then 10 -> 14 on 2026-08-27 ("use another 4
+// words"): a composition line may carry one extra fact as a tail, while
+// safety lines stand alone. "Usually" is the contract - collisions fall
 // through to a shared fallback rather than forcing awkward one-offs - so
 // the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-check('every row carries a 6-10 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 10),
+check('every row carries a 6-14 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 14),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 10).join(' | '));
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 14).join(' | '));
 check('character lines are usually unique across the set',
   new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
   `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
@@ -237,6 +239,24 @@ check('a single flagged mile reads singular',
   /1 flagged mile your rules reject$/.test(safetyDescs.one), JSON.stringify(safetyDescs));
 check('descriptions never talk about the search itself',
   !/search/i.test(Object.values(safetyDescs).join(' ')), JSON.stringify(safetyDescs));
+// The extra-fact tail (field, 2026-08-27): a clean quick route with real
+// trail mileage spends its wider budget on a second fact instead of
+// stopping at one, and stays within 14 words.
+const enriched = await pg.evaluate(() => {
+  const mk = (over) => ({ distM: 16093, timeS: 3600, ferryM: 0, trailM: 0,
+    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
+    failM: 0, levelM: [0, 0, 16093, 0, 0], ...over });
+  const set = [
+    mk({ profileId: 'quick', timeS: 3000, trailM: 6437, facilityM: 6437 }),
+    mk({ profileId: 'plain', distM: 17000 }),
+  ];
+  const d = candidateRouteDescriptions(set);
+  return { quick: d.get('quick'), plain: d.get('plain') };
+});
+const quickWords = enriched.quick.split(/\s+/).filter(Boolean).length;
+check('a composition line carries a second fact within the 14-word budget',
+  /, (with|climbing|plus)/.test(enriched.quick) && quickWords > 10 && quickWords <= 14,
+  JSON.stringify({ ...enriched, quickWords }));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
 // (field screenshot, 2026-08-26). Title and stats must share the content
