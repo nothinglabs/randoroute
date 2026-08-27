@@ -1,103 +1,103 @@
 {
- "id": "washington",
- "name": "Washington",
- "status": "released",
- "readiness": 8,
- "summary": "Full routing, tiles, safety enrichment and place search.",
- "bounds": {
-  "minLon": -124.9,
-  "maxLon": -116.8,
-  "minLat": 45.5,
-  "maxLat": 49.1
- },
- "defaultCenter": [
-  -122.3321,
-  47.6062
- ],
- "defaultZoom": 11,
- "stressAgency": "WSDOT",
- "restrictionAgency": "WSDOT",
- "speedAgency": "WSDOT",
- "facilitySourceName": "WSDOT Active Transportation Data",
- "stressLayerName": "WSDOT BLTS (state highways)",
- "restrictionLayerName": "Bikes prohibited (WSDOT)",
- "interstateRoutePrefixes": [
-  "005",
-  "082",
-  "090",
-  "182",
-  "205",
-  "405",
-  "705"
- ],
- "stateRoutePrefixes": [
-  "I",
-  "US",
-  "SR",
-  "WA"
- ],
- "facilityLevels": {
-  "Shared-Use Path": 5,
-  "Sidepath": 5,
-  "One-Way Separated Bike Lane": 4,
-  "Two-Way Separated Bike Lane": 4,
-  "Buffered Bike Lane": 3,
-  "Bike Lane": 2
- },
- "sourceCounts": {
-  "blts": 55271,
-  "bikeinfra": 37788,
-  "roads": 338650
- },
- "routeDirectionSuffixes": {
-  "i": "increasing mileposts",
-  "d": "decreasing mileposts"
- },
- "datasets": {
-  "ferries": true,
-  "graph": true,
-  "roads": true,
-  "regional": true,
-  "basemap": true,
-  "overlays": true,
-  "places": true,
-  "bikeroutes": true,
-  "restrictions": true,
-  "closures": true
- },
- "graphRawBytes": 149082781,
- "versions": {
-  "graph": "sha-ebeb4f83403a",
-  "roads": "sha-04504493c386",
-  "basemap": "sha-4d65ff4e15ee",
-  "overlays": "sha-04c278da789b",
-  "regional": "sha-4733ea11d53e"
- },
- "attribution": {
-  "extractName": "Washington",
-  "extractUrl": "https://download.geofabrik.de/north-america/us/washington.html",
-  "agencyHeading": "Washington transportation data",
-  "agencySources": [
-   {
-    "title": "WSDOT Bicycle and Pedestrian Level of Traffic Stress",
-    "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/2",
-    "note": "supplies state-highway bicycle stress, shoulder, access, speed, and facility attributes."
-   },
-   {
-    "title": "WSDOT Permanent Bicycle Restrictions",
-    "url": "https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip",
-    "note": "supplies official state-highway bicycle prohibitions."
-   },
-   {
-    "title": "WSDOT Roadway Characteristic Data",
-    "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/RoadwayCharacteristicData/FeatureServer/4",
-    "note": "supplies legal speed limits on state routes."
-   },
-   {
-    "title": "WSDOT Active Transportation Data",
-    "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/6",
-    "note": "supplies recorded shared lanes, bike lanes, buffered and separated lanes, and shared-use paths."
-   }
-  ]
- }
+  "id": "washington",
+  "name": "Washington",
+  "status": "released",
+  "readiness": 8,
+  "summary": "Full routing, tiles, safety enrichment and place search.",
+  "bounds": {
+    "minLon": -124.9,
+    "maxLon": -116.8,
+    "minLat": 45.5,
+    "maxLat": 49.1
+  },
+  "defaultCenter": [
+    -122.3321,
+    47.6062
+  ],
+  "defaultZoom": 11,
+  "stressAgency": "WSDOT",
+  "restrictionAgency": "WSDOT",
+  "speedAgency": "WSDOT",
+  "facilitySourceName": "WSDOT Active Transportation Data",
+  "stressLayerName": "WSDOT BLTS (state highways)",
+  "restrictionLayerName": "Bikes prohibited (WSDOT)",
+  "interstateRoutePrefixes": [
+    "005",
+    "082",
+    "090",
+    "182",
+    "205",
+    "405",
+    "705"
+  ],
+  "stateRoutePrefixes": [
+    "I",
+    "US",
+    "SR",
+    "WA"
+  ],
+  "facilityLevels": {
+    "Shared-Use Path": 5,
+    "Sidepath": 5,
+    "One-Way Separated Bike Lane": 4,
+    "Two-Way Separated Bike Lane": 4,
+    "Buffered Bike Lane": 3,
+    "Bike Lane": 2
+  },
+  "sourceCounts": {
+    "blts": 55271,
+    "bikeinfra": 37788,
+    "roads": 338650
+  },
+  "routeDirectionSuffixes": {
+    "i": "increasing mileposts",
+    "d": "decreasing mileposts"
+  },
+  "datasets": {
+    "ferries": true,
+    "graph": true,
+    "roads": true,
+    "regional": true,
+    "basemap": true,
+    "overlays": true,
+    "places": true,
+    "bikeroutes": true,
+    "restrictions": true,
+    "closures": true
+  },
+  "graphRawBytes": 149082781,
+  "versions": {
+    "graph": "sha-4f92cbeba2b8",
+    "roads": "sha-04504493c386",
+    "basemap": "sha-4d65ff4e15ee",
+    "overlays": "sha-04c278da789b",
+    "regional": "sha-4733ea11d53e"
+  },
+  "attribution": {
+    "extractName": "Washington",
+    "extractUrl": "https://download.geofabrik.de/north-america/us/washington.html",
+    "agencyHeading": "Washington transportation data",
+    "agencySources": [
+      {
+        "title": "WSDOT Bicycle and Pedestrian Level of Traffic Stress",
+        "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/2",
+        "note": "supplies state-highway bicycle stress, shoulder, access, speed, and facility attributes."
+      },
+      {
+        "title": "WSDOT Permanent Bicycle Restrictions",
+        "url": "https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip",
+        "note": "supplies official state-highway bicycle prohibitions."
+      },
+      {
+        "title": "WSDOT Roadway Characteristic Data",
+        "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/RoadwayCharacteristicData/FeatureServer/4",
+        "note": "supplies legal speed limits on state routes."
+      },
+      {
+        "title": "WSDOT Active Transportation Data",
+        "url": "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/6",
+        "note": "supplies recorded shared lanes, bike lanes, buffered and separated lanes, and shared-use paths."
+      }
+    ]
+  }
 }

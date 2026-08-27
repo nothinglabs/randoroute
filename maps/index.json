@@ -66,7 +66,7 @@
     "roads": "sha-2a9ec0dbb5bf",
     "basemap": "sha-24def659819d",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-096ff586d739",
+    "graph": "sha-62bc009dda45",
     "regional": "sha-fa4293d054c7"
    },
    "attribution": {
@@ -150,7 +150,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 37956136
+     "bytes": 37999949
     },
     {
      "dataset": "places",
@@ -161,12 +161,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-oregon-fb40fc1320f3b088",
+     "id": "map-oregon-81f56badc6214645",
      "kind": "state-map",
      "stateIds": [
       "oregon"
      ],
-     "totalBytes": 116264193,
+     "totalBytes": 116308006,
      "files": [
       {
        "dataset": "ferries",
@@ -206,7 +206,7 @@
       {
        "dataset": "graph",
        "path": "graph2.bin.gz",
-       "bytes": 37956136
+       "bytes": 37999949
       },
       {
        "dataset": "places",
@@ -217,536 +217,536 @@
     },
     {
      "acquisitionFormat": 1,
-     "id": "routing-oregon-5ac0931151e5faf1",
+     "id": "routing-oregon-3de16257141e4a8a",
      "kind": "routing-partitions",
      "stateIds": [
       "oregon"
      ],
-     "totalBytes": 53983891,
+     "totalBytes": 54030264,
      "compatibility": {
       "partitionCatalogueFormat": 1,
       "graphFormat": "bgp1-bgrc12",
-      "catalogueSha256": "5ac0931151e5faf13a1231700ea0d75938aa4d5c3e73e5f2b1b3113d21317e5c"
+      "catalogueSha256": "3de16257141e4a8a390dd297d96e222ff891cbfe3eeb0e69c5e16e9c2ea5a3c4"
      },
      "sourceStateDependencies": [
       {
        "stateId": "oregon",
-       "graphVersion": "sha-096ff586d739",
-       "sha256": "096ff586d7394a7dd695550a0a9f01b04dba7ee66fc99323e05b0d2c8eb44343"
+       "graphVersion": "sha-62bc009dda45",
+       "sha256": "62bc009dda45ed235a051e88ac46ad4acfe4cc4b131a641b241cb31673fd2574"
       },
       {
        "stateId": "washington",
-       "graphVersion": "sha-ebeb4f83403a",
-       "sha256": "ebeb4f83403ad83d628725cd627da2938a109a26f3da02c25fdac8a4b4eb0d62"
+       "graphVersion": "sha-4f92cbeba2b8",
+       "sha256": "4f92cbeba2b81c804db7e78e55f662e8a124cb79b8d362c68652b52214b7d6c3"
       }
      ],
      "catalogue": {
       "path": "partition-catalogue.json",
       "bytes": 23874710,
-      "sha256": "5ac0931151e5faf13a1231700ea0d75938aa4d5c3e73e5f2b1b3113d21317e5c",
+      "sha256": "3de16257141e4a8a390dd297d96e222ff891cbfe3eeb0e69c5e16e9c2ea5a3c4",
       "partitionCatalogueFormat": 1,
       "graphFormat": "bgp1-bgrc12"
      },
      "files": [
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-131.bin.gz",
-       "bytes": 7566,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-131.bin.gz",
+       "bytes": 7563,
        "rawBytes": 20746,
-       "sha256": "321df89e5a8ca0174b3441f328399053c57fb4fc6715a80b017b89be14d214b0",
+       "sha256": "53a83c26f49bed94f1a535e780d730a97454a89a64f48ccf39d28c9db107a128",
        "partitionId": "oregon/grid-1000000/0055-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-132.bin.gz",
-       "bytes": 406007,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-132.bin.gz",
+       "bytes": 406122,
        "rawBytes": 1201382,
-       "sha256": "8c09bc5585a6ad82d8845d9fefc34d57de22ff13d76e7996e20de32bfb974599",
+       "sha256": "a4439605d9b0138ebb1cc2657f62df4b48267868a617a51a0cc338499066a004",
        "partitionId": "oregon/grid-1000000/0055-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-133.bin.gz",
-       "bytes": 690792,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-133.bin.gz",
+       "bytes": 691182,
        "rawBytes": 2117099,
-       "sha256": "104ef5b5e9c186e170a7b3863ed8cae026df1b9c5695d1a2b0b7825427bc9bb4",
+       "sha256": "7e520aba5321de770218c8567729bc6ffecc3e51e1fa355c37547b9300f5f27f",
        "partitionId": "oregon/grid-1000000/0055-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-134.bin.gz",
-       "bytes": 434781,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-134.bin.gz",
+       "bytes": 435160,
        "rawBytes": 1383208,
-       "sha256": "4c5400889a03417a8cf2591e240b964c977a5b20d657f18a3b08fa5551519f6a",
+       "sha256": "ad9e559ec9dd7ccf8371031060b557335257fa23c6585d9dcbbae3e1b6964049",
        "partitionId": "oregon/grid-1000000/0055-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-135.bin.gz",
-       "bytes": 9797,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-135.bin.gz",
+       "bytes": 9796,
        "rawBytes": 30702,
-       "sha256": "70a5ad80085907090211e3e2d901d7b03752b1a3b282cd0b3d1c759d3c5155b0",
+       "sha256": "768e2f4d565b3eb1e06fc468b7df059c0805ac54f30a3e87e0eda39abd2ab728",
        "partitionId": "oregon/grid-1000000/0055-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0055-136.bin.gz",
-       "bytes": 1306,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0055-136.bin.gz",
+       "bytes": 1304,
        "rawBytes": 3842,
-       "sha256": "d2c97d753927930115fc60978ae4d988a3f346715f011e0bcd8d5d5ce453518d",
+       "sha256": "b2dc81995686254ea3737fada69ebf8806c61f100eba3f7725be1451128e3bac",
        "partitionId": "oregon/grid-1000000/0055-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-131.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-131.bin.gz",
        "bytes": 28394,
        "rawBytes": 82445,
-       "sha256": "a88aae84ee24a23262dae4c98092cb778b2cfa485e03fe5084cd00c433f42337",
+       "sha256": "b32cb1c13d0845dfbb98c0fc8ea9c2492edeef3d28c8a3f111502190e4916b2a",
        "partitionId": "oregon/grid-1000000/0056-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-132.bin.gz",
-       "bytes": 819168,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-132.bin.gz",
+       "bytes": 819653,
        "rawBytes": 2515248,
-       "sha256": "40194927d6ea75fae0a59347be328a44b3c7b4737cc5e6cfaa4568d9dbe37462",
+       "sha256": "294e369e153ba93d01873ae397005909d461a7c940352155179767840e11d247",
        "partitionId": "oregon/grid-1000000/0056-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-133.bin.gz",
-       "bytes": 984120,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-133.bin.gz",
+       "bytes": 985126,
        "rawBytes": 2933120,
-       "sha256": "5c2473339d0599f1bc3ad034bb9bbbf7336d0331a9a5bf61eaf7a908e16787a0",
+       "sha256": "64f8ad43d8d464d3cc5ebf8e2129002517d1695f7d7d6687dd938af4ca912477",
        "partitionId": "oregon/grid-1000000/0056-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-134.bin.gz",
-       "bytes": 3164264,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-134.bin.gz",
+       "bytes": 3169470,
        "rawBytes": 10138163,
-       "sha256": "55a884ca8a59d58ee760dbfdecccece6f78efa7a48076e6fa1e9314c8eb7f5f0",
+       "sha256": "062bc1f3728ff3f1d7bb5aff1568e0094b37e6fec1a8b236758e85447e387cc4",
        "partitionId": "oregon/grid-1000000/0056-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-135.bin.gz",
-       "bytes": 1724481,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-135.bin.gz",
+       "bytes": 1725522,
        "rawBytes": 5545738,
-       "sha256": "0bb33d1725c79f2e02498776001883cc0c513acd5389e3a4b0725ba492d6e2c8",
+       "sha256": "eb2d7bc9df45ccb4b3de0d879c1c992250620eb7da90e5d2fc2d7d98f901b8ae",
        "partitionId": "oregon/grid-1000000/0056-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0056-136.bin.gz",
-       "bytes": 432727,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0056-136.bin.gz",
+       "bytes": 433085,
        "rawBytes": 1324644,
-       "sha256": "a6e12474b0a6862ccae9b5837dacc2807575b8b8dbe0ef5d8d49e42b48ee9e5e",
+       "sha256": "9b153f65635ac859261057c9a37dd9b26aab8a5666fe0f45bb9285a2ec682b9b",
        "partitionId": "oregon/grid-1000000/0056-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-131.bin.gz",
-       "bytes": 17880,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-131.bin.gz",
+       "bytes": 17878,
        "rawBytes": 44404,
-       "sha256": "8ab96169c1b28463057fe69237337b99e5cdc9f6da5621e97653b1bf1a49172a",
+       "sha256": "ae597d98834ec7bc64119009187f08231f59cff546d800c9dacca9d7bb5fa4fc",
        "partitionId": "oregon/grid-1000000/0057-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-132.bin.gz",
-       "bytes": 1394407,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-132.bin.gz",
+       "bytes": 1396961,
        "rawBytes": 4396414,
-       "sha256": "1efc828ae285e8ff7996b21436b615916edcaffbb30c337a16c71946b0379df1",
+       "sha256": "037bdeb5c5cbd7bbb4202153071cf9082b3af5df8d7c2e52feb7498635451365",
        "partitionId": "oregon/grid-1000000/0057-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-133.bin.gz",
-       "bytes": 603028,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-133.bin.gz",
+       "bytes": 603050,
        "rawBytes": 1923332,
-       "sha256": "532c50fa6003a093519a8c15ef7b56817410319f511bf96691b1d7077ebca421",
+       "sha256": "1aa5e192e0df2f322b76ddb412c5855f4fc863a6705d18365860fab93f0befb0",
        "partitionId": "oregon/grid-1000000/0057-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-134.bin.gz",
-       "bytes": 1204717,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-134.bin.gz",
+       "bytes": 1206073,
        "rawBytes": 3779821,
-       "sha256": "6784b68ddd656a9fb9ad899d274f94554ce1cd9bfb35446c488e4badf6b23c8b",
+       "sha256": "e97bf610ec8bc0599d17b79315e886cbff5e0d265927bae033f73175df6c588e",
        "partitionId": "oregon/grid-1000000/0057-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-135.bin.gz",
-       "bytes": 9402031,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-135.bin.gz",
+       "bytes": 9432118,
        "rawBytes": 29695449,
-       "sha256": "407b662a1bddf2aa8be28707180f05399308a801b3221b46837732e7953b89c1",
+       "sha256": "2120085ef7646f6447a9356da99d6a65465656eb9ce3b08c1be438d8be86871b",
        "partitionId": "oregon/grid-1000000/0057-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0057-136.bin.gz",
-       "bytes": 100716,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0057-136.bin.gz",
+       "bytes": 100918,
        "rawBytes": 316585,
-       "sha256": "eae1e04555e8cbe3bd3b3771c4256bcf835209ce42820b4ddab470bc3336d657",
+       "sha256": "440d4855c774d568acdb1ac59de0438acab5e53acd942846f2be078b16a9ed05",
        "partitionId": "oregon/grid-1000000/0057-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0058-131.bin.gz",
-       "bytes": 14077,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0058-131.bin.gz",
+       "bytes": 14074,
        "rawBytes": 38668,
-       "sha256": "92d5e7f150375d379679bef0c8ed230c793a2a0735f4ef239c4a6f5767f47878",
+       "sha256": "bc73a83d0127e6ba20e6349afbd0481396b1c6417672d8f847c8242c047a5883",
        "partitionId": "oregon/grid-1000000/0058-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0058-132.bin.gz",
-       "bytes": 613837,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0058-132.bin.gz",
+       "bytes": 614385,
        "rawBytes": 1909196,
-       "sha256": "5d64896fd33e3ba9c27d0a526ad0bf6934368b412992fdbce96f53f8d0bc8021",
+       "sha256": "1b14ea0a712fb0a6bd793550d3f6fdf0cf5fd6f2cb35e25e5e9dcd032daa2c97",
        "partitionId": "oregon/grid-1000000/0058-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0058-133.bin.gz",
-       "bytes": 595428,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0058-133.bin.gz",
+       "bytes": 595452,
        "rawBytes": 1940309,
-       "sha256": "a0f4af1656d722167fa700ee375582dbc2133982429e9d9cc2d630cdba90fc33",
+       "sha256": "e27b854559552685f6fcf213ebc9ccab496cd16f07b21ed0a8e2500687743a5a",
        "partitionId": "oregon/grid-1000000/0058-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0058-134.bin.gz",
-       "bytes": 1820837,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0058-134.bin.gz",
+       "bytes": 1822196,
        "rawBytes": 6147482,
-       "sha256": "4c6cd86197e376d01681d3e97a6fde25f29c7a4b57ea0c50e02d3c151e61e28e",
+       "sha256": "abe70e6b7bdbe8d5bcd887a621618278c2b75e2683fd94866d42cb434d8c3e44",
        "partitionId": "oregon/grid-1000000/0058-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0058-135.bin.gz",
-       "bytes": 984486,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0058-135.bin.gz",
+       "bytes": 984780,
        "rawBytes": 3293300,
-       "sha256": "7308133011ae5b8cb47c35c20512b6bd0459d22437360cc97f28089b99dc93cd",
+       "sha256": "3c6976e8ce958960c0bfb69c1cf00bccdef6ea9935e90c8dd254b4aaef717861",
        "partitionId": "oregon/grid-1000000/0058-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0059-131.bin.gz",
-       "bytes": 23218,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0059-131.bin.gz",
+       "bytes": 23213,
        "rawBytes": 74675,
-       "sha256": "ac7eb2e2239749239faafb246fb5b6844d1711cca4add6d527658cc13ab378a6",
+       "sha256": "f8f0aacb94c2e58f14f984ae2c245bbebcae91bed621221c856d48f30de20775",
        "partitionId": "oregon/grid-1000000/0059-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0059-132.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0059-132.bin.gz",
        "bytes": 226551,
        "rawBytes": 748809,
-       "sha256": "a33985d84a6e298ea40f476f87a3ddecbf5bf789bded7cb1fb36aacd21491109",
+       "sha256": "ccb41480b4878c0bac28dd642314a697ac1b48fc85b1805c6883c433072141da",
        "partitionId": "oregon/grid-1000000/0059-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0059-133.bin.gz",
-       "bytes": 70435,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0059-133.bin.gz",
+       "bytes": 70436,
        "rawBytes": 207612,
-       "sha256": "c5a5015127fd20aba9e063000bcad044459ff365e3b8cbb94194b7f42c87bfb8",
+       "sha256": "da6db03342e3235fd28d9f4a05a1637962ce3e67440225ad41140f26853c2873",
        "partitionId": "oregon/grid-1000000/0059-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0059-134.bin.gz",
-       "bytes": 476418,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0059-134.bin.gz",
+       "bytes": 476415,
        "rawBytes": 1624514,
-       "sha256": "c989949364535515961227ed15779aebf15b52a7bc93b0d9ac5916fc0321821e",
+       "sha256": "f747874ab27a4a9ff3701e1b72d5162a5593e8a527312da08c7a45589778e679",
        "partitionId": "oregon/grid-1000000/0059-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0059-135.bin.gz",
-       "bytes": 282329,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0059-135.bin.gz",
+       "bytes": 282368,
        "rawBytes": 960543,
-       "sha256": "bc6dcbae6fc06047ef35f86d236dd143226c0c14c718190e87edf06144689995",
+       "sha256": "3d17fb5a326396435b78f99cfc51a418946a041d6eb8c3cc032d6d22a093255b",
        "partitionId": "oregon/grid-1000000/0059-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-131.bin.gz",
-       "bytes": 2106,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-131.bin.gz",
+       "bytes": 2105,
        "rawBytes": 4932,
-       "sha256": "221ce15b3a9ea97b3d2b79e90c72e2009e9c8ad50334a33639b038c40e9c8cfa",
+       "sha256": "425261e4e68b40d4159663d4f49cebe60ee7a500eb03ffb3fd17108c162fb62a",
        "partitionId": "oregon/grid-1000000/0060-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-132.bin.gz",
-       "bytes": 40158,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-132.bin.gz",
+       "bytes": 40156,
        "rawBytes": 115400,
-       "sha256": "c6882c4686a1c6a98a4a049025123d328bb9f26c6513a22d083ee0e947ca4ace",
+       "sha256": "7b4f7a20b98c9f21c2fbeeb47152ac7945144e30a96315710e8f51812990af57",
        "partitionId": "oregon/grid-1000000/0060-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-133.bin.gz",
-       "bytes": 87005,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-133.bin.gz",
+       "bytes": 87024,
        "rawBytes": 249050,
-       "sha256": "ffcc0a7660f729c823c1d96ed082c6a758bf31c79e59d21f1725138b426fd10a",
+       "sha256": "1a99ce3943d4b99bdf679b3aad84763c5f02047c3c1784442fd2a41299ed9bf5",
        "partitionId": "oregon/grid-1000000/0060-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-134.bin.gz",
-       "bytes": 231269,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-134.bin.gz",
+       "bytes": 231266,
        "rawBytes": 792797,
-       "sha256": "599537925a898520a94c5b69a0718d2703e3a58f4705119a51b0e38e8da7d83f",
+       "sha256": "8e21c0a97a1426d1c6375c260738850b463cdb228d5f7eb55b8ebafed4f29af3",
        "partitionId": "oregon/grid-1000000/0060-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-135.bin.gz",
-       "bytes": 434686,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-135.bin.gz",
+       "bytes": 434867,
        "rawBytes": 1353295,
-       "sha256": "2b14aaa549f486d661763e8ddbc07f206827a6c53f935c6b2b22819c3867fc66",
+       "sha256": "bedc830fe172e3dcaa60073c447944c4a7e42c2a43de89ca4c0c7cfd7cb35be5",
        "partitionId": "oregon/grid-1000000/0060-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0060-136.bin.gz",
-       "bytes": 811,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0060-136.bin.gz",
+       "bytes": 808,
        "rawBytes": 1666,
-       "sha256": "a5850927ea26f3b08e2efdb7f7e8f5b58ff0c14b7cdbe70a52b98d27945e8299",
+       "sha256": "e0ce19c161389cbd12e760135d2015caa3b88eea70f4482e2c821eec8f4ba8a2",
        "partitionId": "oregon/grid-1000000/0060-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-131.bin.gz",
-       "bytes": 1546,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-131.bin.gz",
+       "bytes": 1543,
        "rawBytes": 3294,
-       "sha256": "9ec3b6b017fe0f4dfae9bd2d9a1ca9b68922565c3084c4cbe7694d03fd189902",
+       "sha256": "8bde4130c62d9c8a8468cc938cefde364308cf112b0d3733b4ddeb3d2fe9a0f6",
        "partitionId": "oregon/grid-1000000/0061-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-132.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-132.bin.gz",
        "bytes": 41494,
        "rawBytes": 128151,
-       "sha256": "c7e1627e99207e52d5a8e90b7734d40f1214ede42d6971b5e709b1bd1ba70cb4",
+       "sha256": "4d6885a85b7d92ff67dc4cc92f1b68e98b0eaa5521f2e5bc7805c40734357b3e",
        "partitionId": "oregon/grid-1000000/0061-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-133.bin.gz",
-       "bytes": 92959,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-133.bin.gz",
+       "bytes": 92962,
        "rawBytes": 280460,
-       "sha256": "30fefd0881041e4d2b4d7cca8d80d9cc3ad1d809b2d09cd481b847d9186f9882",
+       "sha256": "0ed16c3288a632976fd6118c4c1a6208a03ed98da1b5609885af4f9eb08cd32c",
        "partitionId": "oregon/grid-1000000/0061-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-134.bin.gz",
-       "bytes": 381899,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-134.bin.gz",
+       "bytes": 381918,
        "rawBytes": 1216739,
-       "sha256": "d8d9b7cc8700885be0ba16e02b512e3ebba46b869c9417699320980581d455ae",
+       "sha256": "5c1daf724dbbfa56fbe4cd9272f12bab4555002310334524baac2e22511238cc",
        "partitionId": "oregon/grid-1000000/0061-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-135.bin.gz",
-       "bytes": 780846,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-135.bin.gz",
+       "bytes": 781193,
        "rawBytes": 2307986,
-       "sha256": "8ffb1eeb0b1fd88287f10ecf065dac27429a58679161106c550bc0e9d0bb942d",
+       "sha256": "2fb08616ed594d8eb47c3b59dead6dda80be0851c7b49b39cf55f08c4a648ccf",
        "partitionId": "oregon/grid-1000000/0061-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0061-136.bin.gz",
-       "bytes": 28804,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0061-136.bin.gz",
+       "bytes": 28870,
        "rawBytes": 84067,
-       "sha256": "35e5ebace5a87e83fecf24a853fd2644d6e1057a50bc4e4a91a3146d34f4c93a",
+       "sha256": "9412925621ebfcf649faa62358d079be93438f5236771220d19c0f998961b04b",
        "partitionId": "oregon/grid-1000000/0061-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-131.bin.gz",
-       "bytes": 4003,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-131.bin.gz",
+       "bytes": 4002,
        "rawBytes": 11147,
-       "sha256": "3a4598cda82864529925a978be00c47e66a72d9ac33afb4a3c4a9c3bce00212e",
+       "sha256": "82dd5a9d99853df8a35ccd4b8197b4aa4a024a487ae4c90610a6bd30beb1b2d6",
        "partitionId": "oregon/grid-1000000/0062-131",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-132.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-132.bin.gz",
        "bytes": 47338,
        "rawBytes": 131465,
-       "sha256": "c203f78fda0c02122fffebf35bc91fe16bc9ef0aa42cb728fc4755c7cad9124e",
+       "sha256": "8c797e24de460240495cc22ecd63212087f59bcd81b23cfc46e00f71c3a83ca8",
        "partitionId": "oregon/grid-1000000/0062-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-133.bin.gz",
-       "bytes": 160764,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-133.bin.gz",
+       "bytes": 160767,
        "rawBytes": 505276,
-       "sha256": "d14140cebcc76a641b1f2c3ef77e83fc0a34bf728eb143d4b2b8840433b0c366",
+       "sha256": "45375c837a31138d07620ceccd4cffffff14e512f73f38f454a2ddac85df8b70",
        "partitionId": "oregon/grid-1000000/0062-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-134.bin.gz",
-       "bytes": 409359,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-134.bin.gz",
+       "bytes": 409442,
        "rawBytes": 1270732,
-       "sha256": "6c0d56dbfe61409c3e3466b088328725add2ecb13060ee6bde05886a56361698",
+       "sha256": "340ba8948070a2520756447fc186bb86de3828fe848fb8465b0ed380d7ae173b",
        "partitionId": "oregon/grid-1000000/0062-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-135.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-135.bin.gz",
        "bytes": 557193,
        "rawBytes": 1681194,
-       "sha256": "d139bcc0a6bb24bc980017a9547a6c80d532a9f1a328ad97a1e3d129da932bd4",
+       "sha256": "381e3a87e432a2799004b5ade72f0195eafae76737a79310a09b553119edbbd6",
        "partitionId": "oregon/grid-1000000/0062-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0062-136.bin.gz",
-       "bytes": 3323,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0062-136.bin.gz",
+       "bytes": 3326,
        "rawBytes": 6177,
-       "sha256": "32e673510cf3f249aee176359010e509b48948f62165bbcc98021d0a2f631809",
+       "sha256": "a3b85930d0cacb0a164a99e062ded1c6c1d3195ce4cc1c4891497a911a09f404",
        "partitionId": "oregon/grid-1000000/0062-136",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0063-132.bin.gz",
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0063-132.bin.gz",
        "bytes": 2916,
        "rawBytes": 5195,
-       "sha256": "4fb927ac2726922626a5b3fd4f711f3ce8d89e14ed738cb5e779ad8103335651",
+       "sha256": "e2fcf3dc8841d6d1eb7eeac923b999b622594d42e427ea6db7a1c3aead690e6f",
        "partitionId": "oregon/grid-1000000/0063-132",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0063-133.bin.gz",
-       "bytes": 25806,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0063-133.bin.gz",
+       "bytes": 25807,
        "rawBytes": 78286,
-       "sha256": "41b7eef7ceca303ded5179954530a3197ffb3aeef148a520d2b91f870e3b2da1",
+       "sha256": "5b4bfe1eb396c6a4f54102ac9178dfd01f717c62b73fc2aabe7323083a0fafad",
        "partitionId": "oregon/grid-1000000/0063-133",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0063-134.bin.gz",
-       "bytes": 161830,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0063-134.bin.gz",
+       "bytes": 162045,
        "rawBytes": 544652,
-       "sha256": "31c012444ec9144f22973840226c59f58c7e59687c4b302d6682416a7b19313f",
+       "sha256": "264954dbe47f2d344113b6623557bb485e48ed0e87881157214869161a77251a",
        "partitionId": "oregon/grid-1000000/0063-134",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       },
       {
        "dataset": "graph-partition",
-       "path": "oregon/partitions/v1-096ff586d7394a7d-g1000000/grid-1000000-0063-135.bin.gz",
-       "bytes": 79268,
+       "path": "oregon/partitions/v1-62bc009dda45ed23-g1000000/grid-1000000-0063-135.bin.gz",
+       "bytes": 79267,
        "rawBytes": 259731,
-       "sha256": "87bd6e3a4a4ba60996833480ceb5d862790e80dcc12102553401c7d70ed17ed9",
+       "sha256": "8a133948005a82f48a11b21ffa19fa70dfb7668e06c4fbaf87a8b2f387e1f4cf",
        "partitionId": "oregon/grid-1000000/0063-135",
        "stateId": "oregon",
-       "sourceGraphVersion": "sha-096ff586d739"
+       "sourceGraphVersion": "sha-62bc009dda45"
       }
      ]
     }
@@ -1790,7 +1790,7 @@
    },
    "graphRawBytes": 149082781,
    "versions": {
-    "graph": "sha-ebeb4f83403a",
+    "graph": "sha-4f92cbeba2b8",
     "roads": "sha-04504493c386",
     "basemap": "sha-4d65ff4e15ee",
     "overlays": "sha-04c278da789b",
@@ -1867,7 +1867,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 59526816
+     "bytes": 59597754
     },
     {
      "dataset": "places",
@@ -1878,12 +1878,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-washington-9a448d3765866642",
+     "id": "map-washington-e2cced933eadb405",
      "kind": "state-map",
      "stateIds": [
       "washington"
      ],
-     "totalBytes": 150264449,
+     "totalBytes": 150335387,
      "files": [
       {
        "dataset": "ferries",
@@ -1928,7 +1928,7 @@
       {
        "dataset": "graph",
        "path": "graph2.bin.gz",
-       "bytes": 59526816
+       "bytes": 59597754
       },
       {
        "dataset": "places",
@@ -1939,436 +1939,436 @@
     },
     {
      "acquisitionFormat": 1,
-     "id": "routing-washington-5ac0931151e5faf1",
+     "id": "routing-washington-3de16257141e4a8a",
      "kind": "routing-partitions",
      "stateIds": [
       "washington"
      ],
-     "totalBytes": 71081123,
+     "totalBytes": 71152636,
      "compatibility": {
       "partitionCatalogueFormat": 1,
       "graphFormat": "bgp1-bgrc12",
-      "catalogueSha256": "5ac0931151e5faf13a1231700ea0d75938aa4d5c3e73e5f2b1b3113d21317e5c"
+      "catalogueSha256": "3de16257141e4a8a390dd297d96e222ff891cbfe3eeb0e69c5e16e9c2ea5a3c4"
      },
      "sourceStateDependencies": [
       {
        "stateId": "oregon",
-       "graphVersion": "sha-096ff586d739",
-       "sha256": "096ff586d7394a7dd695550a0a9f01b04dba7ee66fc99323e05b0d2c8eb44343"
+       "graphVersion": "sha-62bc009dda45",
+       "sha256": "62bc009dda45ed235a051e88ac46ad4acfe4cc4b131a641b241cb31673fd2574"
       },
       {
        "stateId": "washington",
-       "graphVersion": "sha-ebeb4f83403a",
-       "sha256": "ebeb4f83403ad83d628725cd627da2938a109a26f3da02c25fdac8a4b4eb0d62"
+       "graphVersion": "sha-4f92cbeba2b8",
+       "sha256": "4f92cbeba2b81c804db7e78e55f662e8a124cb79b8d362c68652b52214b7d6c3"
       }
      ],
      "catalogue": {
       "path": "partition-catalogue.json",
       "bytes": 23874710,
-      "sha256": "5ac0931151e5faf13a1231700ea0d75938aa4d5c3e73e5f2b1b3113d21317e5c",
+      "sha256": "3de16257141e4a8a390dd297d96e222ff891cbfe3eeb0e69c5e16e9c2ea5a3c4",
       "partitionCatalogueFormat": 1,
       "graphFormat": "bgp1-bgrc12"
      },
      "files": [
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0052-142.bin.gz",
-       "bytes": 2086,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0052-142.bin.gz",
+       "bytes": 2090,
        "rawBytes": 2464,
-       "sha256": "9c95d92f04766de5af491d1520353849d6f6602fd5c90f0bd94bd4990fd8724d",
+       "sha256": "24071cbf4d71d00bfbc0de677e109494b67588d76a49d15f296d72a9a092cd86",
        "partitionId": "washington/grid-1000000/0052-142",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0055-136.bin.gz",
-       "bytes": 229854,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0055-136.bin.gz",
+       "bytes": 230026,
        "rawBytes": 749328,
-       "sha256": "bb2bd74f4814a656dfb21693364af9f75f086e6608165f9743c006ad7dbbd0a7",
+       "sha256": "8cc06c740649857163c28dadadb26e00b8cfc5831b7c07b3aac118ae5fd129dd",
        "partitionId": "washington/grid-1000000/0055-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0055-137.bin.gz",
-       "bytes": 235641,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0055-137.bin.gz",
+       "bytes": 235723,
        "rawBytes": 782920,
-       "sha256": "64d714cc3e239d9b36c88bb3d90e9234420283f78758f39b1eec76824ebca008",
+       "sha256": "b2d7edd8cf3c241d788d2d367eea41bb2613c15aa0cb80141d37f372035db3ba",
        "partitionId": "washington/grid-1000000/0055-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0055-138.bin.gz",
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0055-138.bin.gz",
        "bytes": 145133,
        "rawBytes": 495418,
-       "sha256": "1f68c9e4601c86c0e4d467f3e63b7983721bd6d3c4b28ea2ceb5290047a29390",
+       "sha256": "247d0d9f4384bcf43689c21e92e6cc094f27dd9f96f6636e50dbfd7ff350eaac",
        "partitionId": "washington/grid-1000000/0055-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0056-136.bin.gz",
-       "bytes": 1367526,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0056-136.bin.gz",
+       "bytes": 1368287,
        "rawBytes": 3970710,
-       "sha256": "0c4dc02091acb2069f3552b12fe0d8d401afc4e8bf48f0393711f455bbcfdeaa",
+       "sha256": "1f0bc7fdc47b4542e98b353a0432fa110b1743273cb7f71296e00f6323011bd1",
        "partitionId": "washington/grid-1000000/0056-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0056-137.bin.gz",
-       "bytes": 762675,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0056-137.bin.gz",
+       "bytes": 762964,
        "rawBytes": 2269833,
-       "sha256": "967385a608b584ae9f545cbd15ec169da4958b6a5c4199d077957344186ff6ae",
+       "sha256": "37adea7e634e7cf4f5ca066baaaad6519c4ba5ab980c88be950e8e0ebd984d28",
        "partitionId": "washington/grid-1000000/0056-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0056-138.bin.gz",
-       "bytes": 641453,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0056-138.bin.gz",
+       "bytes": 641859,
        "rawBytes": 1954932,
-       "sha256": "ab45df0c38ff1d1f651899bd6b5e45ad31a54b35cdcdc472be13999f9ecada81",
+       "sha256": "f832ffd8d0461d601fdb4b622fbeddb317c2cc739877ae6d937de8e32dfebb16",
        "partitionId": "washington/grid-1000000/0056-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0057-135.bin.gz",
-       "bytes": 2877643,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0057-135.bin.gz",
+       "bytes": 2883350,
        "rawBytes": 8986296,
-       "sha256": "2810e1e0b1096b13a89fb27f6fa56cadbd598107865fc10c4b694b609cfc79a3",
+       "sha256": "bf9155d01c4227e9282b7a64b9627c8665f929937f5fdc85c18c97b5ed5945db",
        "partitionId": "washington/grid-1000000/0057-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0057-136.bin.gz",
-       "bytes": 2007107,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0057-136.bin.gz",
+       "bytes": 2008449,
        "rawBytes": 6116956,
-       "sha256": "d3f88c1199cd21cf4b60fac03dbc0415c57401054a231ea6bb871828c094548a",
+       "sha256": "a5bfff0fd0c5282e03301fa48065bfe30352369fa9179e43320a59f7ba02888b",
        "partitionId": "washington/grid-1000000/0057-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0057-137.bin.gz",
-       "bytes": 18937953,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0057-137.bin.gz",
+       "bytes": 18982262,
        "rawBytes": 60728499,
-       "sha256": "ef668fdc8e743b6b627d06205cf23970405f408a6b5c846f56660956cf1a8389",
+       "sha256": "8e6cc2a7612236b130f5dc068cdae1e2557e70121bf5c9314e124b222ac4a3d4",
        "partitionId": "washington/grid-1000000/0057-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0057-138.bin.gz",
-       "bytes": 3741464,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0057-138.bin.gz",
+       "bytes": 3747560,
        "rawBytes": 11694532,
-       "sha256": "4733bcafe22971f684243cc549caf039218658964031b796b2add6ea8b3c18ca",
+       "sha256": "c3cf85b51ff1167699b0681782e623099a7108ba30ac1ee02498b7e5c5c40025",
        "partitionId": "washington/grid-1000000/0057-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0057-139.bin.gz",
-       "bytes": 71347,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0057-139.bin.gz",
+       "bytes": 71487,
        "rawBytes": 243761,
-       "sha256": "8be65a9d49e0a280c0dbb76089fc79fa756d15b6e5afae59091828a13abbeb86",
+       "sha256": "125f3e5bc3a2fd998f60c600a7dcf85d89db6075ef87eb5de8c9f522341e4a9d",
        "partitionId": "washington/grid-1000000/0057-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0058-135.bin.gz",
-       "bytes": 642089,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0058-135.bin.gz",
+       "bytes": 642420,
        "rawBytes": 2124786,
-       "sha256": "0f09cfa589c5c4c5604438de582947b0f80e7b0f05c07ca5f0d40e714f6625f5",
+       "sha256": "cf3557f038fefa4a159661c2b7675b8e3ee17d042b3d6bd63694821553f9164d",
        "partitionId": "washington/grid-1000000/0058-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0058-136.bin.gz",
-       "bytes": 677916,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0058-136.bin.gz",
+       "bytes": 677917,
        "rawBytes": 2302884,
-       "sha256": "5706c54edbcaf711e20a53649e7e9871ff91852d848f6055d3b6931d10887c40",
+       "sha256": "0aa1ddb0f61080d940cb85d069a7eb4089a64e57ca0984f0e18b6d1402134e6a",
        "partitionId": "washington/grid-1000000/0058-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0058-137.bin.gz",
-       "bytes": 1632995,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0058-137.bin.gz",
+       "bytes": 1633480,
        "rawBytes": 5278139,
-       "sha256": "9b821a65ad8a8c5ad0292e06512567c6fee7008652a961618f994f2aa0b8bbaf",
+       "sha256": "71eadcf494ce26d6e716420d80afe3922d21b1d88493c87f3ebf1c76e125a626",
        "partitionId": "washington/grid-1000000/0058-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0058-138.bin.gz",
-       "bytes": 392855,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0058-138.bin.gz",
+       "bytes": 392953,
        "rawBytes": 1279958,
-       "sha256": "e1cb3c1eacf7624d8e11682fd4f049668c92e08b03feb71337f2a3d1c1d5a0fc",
+       "sha256": "43a8479feb552a5fd1d38df9d7ca6a95db2b961d710ccb08ff69aaf790ffef81",
        "partitionId": "washington/grid-1000000/0058-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0058-139.bin.gz",
-       "bytes": 1201,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0058-139.bin.gz",
+       "bytes": 1204,
        "rawBytes": 2719,
-       "sha256": "78943033c97706505b3b97b959211eafdb69b765b14540d0ec01b8cab58ed342",
+       "sha256": "0411233d820650eb09d72036e73c9e865e972e5c0d379096d4336e943122aeb2",
        "partitionId": "washington/grid-1000000/0058-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0059-135.bin.gz",
-       "bytes": 171159,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0059-135.bin.gz",
+       "bytes": 171202,
        "rawBytes": 518635,
-       "sha256": "f917c3d1c591877f665d7a7e03094bb0a81f585de445fde68f52526e6f51ad54",
+       "sha256": "b327f07d45a58f148225724959bd13d1c232d0bba30459a195df7dd252f166d7",
        "partitionId": "washington/grid-1000000/0059-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0059-136.bin.gz",
-       "bytes": 1088053,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0059-136.bin.gz",
+       "bytes": 1089418,
        "rawBytes": 3360109,
-       "sha256": "bcfdf643c5ca5d27ce40f83e943ec589f5326dc206f0913a20379ee5fc5412bc",
+       "sha256": "d43b7daac5344de537c926726af2373a51b448201d6796cbe1e46d0528a8b9d0",
        "partitionId": "washington/grid-1000000/0059-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0059-137.bin.gz",
-       "bytes": 1488152,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0059-137.bin.gz",
+       "bytes": 1489175,
        "rawBytes": 4782104,
-       "sha256": "cbec0f67199d27034bca599c3857c3ee38532641550688d1055458ffea40d718",
+       "sha256": "44f7559a0be50a10403778fb4995e1ea0fdb060cc78635ce523aeae8f4ab1060",
        "partitionId": "washington/grid-1000000/0059-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0059-138.bin.gz",
-       "bytes": 409927,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0059-138.bin.gz",
+       "bytes": 409933,
        "rawBytes": 1389582,
-       "sha256": "ba5ffa76e5d20733edfa085ecb01fb329db8189bf2a02e455695225c5d62f294",
+       "sha256": "371572f9b8da67d2e4ffda49f5443cd9e0bee230a3d6c7b1c7a85049826a45d5",
        "partitionId": "washington/grid-1000000/0059-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0059-139.bin.gz",
-       "bytes": 3256,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0059-139.bin.gz",
+       "bytes": 3260,
        "rawBytes": 10825,
-       "sha256": "000727765e5dedd3460aac9a63b0572f1c8d7dca7df99fc5ad446c9ecc00994d",
+       "sha256": "70e7c703c2d0ad460e1d70e137bf2aea8acd6c20a8383ae2d7a9c146802573d6",
        "partitionId": "washington/grid-1000000/0059-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0060-135.bin.gz",
-       "bytes": 110355,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0060-135.bin.gz",
+       "bytes": 110397,
        "rawBytes": 366264,
-       "sha256": "446bde6cfd1b92f6b2abd1dd03f25e2893ab219351bdeaad22ebee9c4fefe5a3",
+       "sha256": "7abe06f02c597fc874706ab55159d32a82692af2ce50999d26c514fca6ae0f74",
        "partitionId": "washington/grid-1000000/0060-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0060-136.bin.gz",
-       "bytes": 2035952,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0060-136.bin.gz",
+       "bytes": 2038474,
        "rawBytes": 6730292,
-       "sha256": "ec32f2c3545d53bdfa66d6966cf2be73919ab7b7a6e5747faa3ba1103b129fb0",
+       "sha256": "cbddaeaae1d6c93493c7aba6cab0f15113d6df7d6333cbac835480b1851d7756",
        "partitionId": "washington/grid-1000000/0060-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0060-137.bin.gz",
-       "bytes": 700453,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0060-137.bin.gz",
+       "bytes": 700610,
        "rawBytes": 2151921,
-       "sha256": "5e07fb78e64680f42656df32ec27ce5972bee6abd3ce0c1f8e82b5001bb21820",
+       "sha256": "bafed5d10f2d8889787b2e72e9cc9d60ee516db6893369dfc3a894a8c1bed7ba",
        "partitionId": "washington/grid-1000000/0060-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0060-138.bin.gz",
-       "bytes": 513860,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0060-138.bin.gz",
+       "bytes": 513893,
        "rawBytes": 1426842,
-       "sha256": "4f6c70bfeda25c743976378e251a639e5b20f37fcdabed244f9d1eac42ed325f",
+       "sha256": "c7403b861f050aa046234e20d1eda60c2e48d64507ed5e49987b1df5505282ab",
        "partitionId": "washington/grid-1000000/0060-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0060-139.bin.gz",
-       "bytes": 12299,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0060-139.bin.gz",
+       "bytes": 12303,
        "rawBytes": 42017,
-       "sha256": "49cc88bf5d9e1a2e15d42738bdc2749936b213f75c53d691c63005e0b51f00b8",
+       "sha256": "f5f61db852a2c8b9a9018987999b475561ff74c035df9db8175607b962efeb6f",
        "partitionId": "washington/grid-1000000/0060-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0061-135.bin.gz",
-       "bytes": 17827,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0061-135.bin.gz",
+       "bytes": 17839,
        "rawBytes": 46758,
-       "sha256": "243941ee0cf125b63d9a62426da49308b3f0f11159b5697942e38cfb4bb6445e",
+       "sha256": "91fe30368a2892a763ac60f883bcb6499e68a42c247576ad74d7b4ad65e20b95",
        "partitionId": "washington/grid-1000000/0061-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0061-136.bin.gz",
-       "bytes": 628884,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0061-136.bin.gz",
+       "bytes": 629248,
        "rawBytes": 1973189,
-       "sha256": "590e7d006b2010833c3222bdc3298c8f22508f1b06a92948b85b4ebae0175607",
+       "sha256": "7a792c970e3c97358c498bcf94cff61488e452e8ac8b8b56bb30772b501bb15f",
        "partitionId": "washington/grid-1000000/0061-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0061-137.bin.gz",
-       "bytes": 503977,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0061-137.bin.gz",
+       "bytes": 503995,
        "rawBytes": 1499245,
-       "sha256": "2023ddaf4ec5a013b5afd00b64c63b356dcc0415a4f723b739bd19dc8f17d6d7",
+       "sha256": "a1d097cc6bf742cfeba69b87948e76d7373dcd2098c3cc026e5ff5b1423789d1",
        "partitionId": "washington/grid-1000000/0061-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0061-138.bin.gz",
-       "bytes": 548041,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0061-138.bin.gz",
+       "bytes": 548103,
        "rawBytes": 1550134,
-       "sha256": "ae4557b18a9c8b236dace73d13e440f34215f5a2b6064e7a56e2c55df9f00e28",
+       "sha256": "fc9c8e5287da9acfe9778a0f68039e34b555f0d821d061a819ba292515c972e4",
        "partitionId": "washington/grid-1000000/0061-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0061-139.bin.gz",
-       "bytes": 23494,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0061-139.bin.gz",
+       "bytes": 23498,
        "rawBytes": 73392,
-       "sha256": "edcf06eddbf601e98bfebd84528fe609f0d12eaea1f63b1e5dd33d3e04a3a663",
+       "sha256": "8a36b52277d09afa4687e2c73d6a6d624828f764fdb760a78c29c4281ac878bd",
        "partitionId": "washington/grid-1000000/0061-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0062-135.bin.gz",
-       "bytes": 6708,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0062-135.bin.gz",
+       "bytes": 6711,
        "rawBytes": 14766,
-       "sha256": "a94c5438a02243d69cf553240ab8fbaed0289cc4d441978f6f08b1488e5c4afc",
+       "sha256": "c275d73cae88ed7bee0ea85ec3e2d024c3dc22d5eaa8b4d3f6d623253457aa32",
        "partitionId": "washington/grid-1000000/0062-135",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0062-136.bin.gz",
-       "bytes": 850577,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0062-136.bin.gz",
+       "bytes": 851159,
        "rawBytes": 2684907,
-       "sha256": "106648b8236914ce2e69ff17262a34a74683e4b1e12e14344138c669245cd455",
+       "sha256": "c14eedcf17f64a7a77ba381c472afe303e1d52013cd303a5e7e2907df7f758b4",
        "partitionId": "washington/grid-1000000/0062-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0062-137.bin.gz",
-       "bytes": 3070384,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0062-137.bin.gz",
+       "bytes": 3075352,
        "rawBytes": 9912092,
-       "sha256": "8a0e07926554a113fc23b0f4c8553a333753e092c2716290c0bc8b83af2e33f3",
+       "sha256": "b949f9a55c4c1cc83644ce8ca9d71a6f8ba123375c14e72629c7a6b78131acce",
        "partitionId": "washington/grid-1000000/0062-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0062-138.bin.gz",
-       "bytes": 631615,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0062-138.bin.gz",
+       "bytes": 631675,
        "rawBytes": 1862483,
-       "sha256": "3d2d60c6cb0f2181bd17663776457e20c969de88979681192f1dda82df62fead",
+       "sha256": "31a462ad780a7cd6ad2c29d84529db3a252c66524883816662c2263a42836a06",
        "partitionId": "washington/grid-1000000/0062-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0062-139.bin.gz",
-       "bytes": 4576,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0062-139.bin.gz",
+       "bytes": 4580,
        "rawBytes": 9474,
-       "sha256": "8b16469eb9274c95b5714164cbbb10c1d9df093f5a7c87d4e6ead05e7c6e89e7",
+       "sha256": "961d32e9b9e3527509c7566f503c031af0b65d26df2f8cfde6ce6796f7e87982",
        "partitionId": "washington/grid-1000000/0062-139",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0063-136.bin.gz",
-       "bytes": 13474,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0063-136.bin.gz",
+       "bytes": 13478,
        "rawBytes": 44807,
-       "sha256": "ac53743ecc6ac9ec0e61fc1f783ed823a2297293e39491ef311cae574f79ac7b",
+       "sha256": "d8cc991a895f8568217929702655910a06a3296f1b82bcfb0e623ada6229c822",
        "partitionId": "washington/grid-1000000/0063-136",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0063-137.bin.gz",
-       "bytes": 2837,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0063-137.bin.gz",
+       "bytes": 2841,
        "rawBytes": 4950,
-       "sha256": "8d255aa323d80d8acdbcb2c00d5e2683c4b9551e1234d1461244372e17d5e5cd",
+       "sha256": "10e3660f4df28d08fcac054bd4cf4826a951ae554113a7528e7fe82db72b3fe0",
        "partitionId": "washington/grid-1000000/0063-137",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       },
       {
        "dataset": "graph-partition",
-       "path": "washington/partitions/v1-ebeb4f83403ad83d-g1000000/grid-1000000-0063-138.bin.gz",
-       "bytes": 3615,
+       "path": "washington/partitions/v1-4f92cbeba2b81c80-g1000000/grid-1000000-0063-138.bin.gz",
+       "bytes": 3618,
        "rawBytes": 11320,
-       "sha256": "4be0dbdde4f5145c76b9fde617ac388e0c06791176463b48e1620a316ee99635",
+       "sha256": "b0e1e5064c90fd01b5f4991aa52122a6dbc70460193b300d5c8c350c278b4e6e",
        "partitionId": "washington/grid-1000000/0063-138",
        "stateId": "washington",
-       "sourceGraphVersion": "sha-ebeb4f83403a"
+       "sourceGraphVersion": "sha-4f92cbeba2b8"
       }
      ]
     }
