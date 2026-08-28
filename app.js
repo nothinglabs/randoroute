@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.905';
+const APP_VERSION = '2026-08-26.906';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12051,7 +12051,7 @@ function candidateRouteDescriptions(all) {
   // so it reads as the caution's cause — a trailing ", mostly heavy
   // traffic" sounded like it described the whole route (field, same day).
   const trafficNote = (f) => (f.trafficCautionMi >= 3
-    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (heavy traffic)' : '');
+    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
   const lines = (f) => {
     const c = f.c;
     const out = [];
@@ -12076,7 +12076,7 @@ function candidateRouteDescriptions(all) {
       out.push(`Most trail: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} miles off-street`);
     }
     if (holds(f, 'ascentFt', min, 250)) {
-      out.push(`Flattest by ${Math.round((max('ascentFt') - f.ascentFt) / 100) * 100} feet`);
+      out.push('Flattest option');
     }
     if (holds(f, 'mi', min, 1) && c.timeS !== minTime) {
       out.push('Shortest, not quickest');
@@ -12096,7 +12096,7 @@ function candidateRouteDescriptions(all) {
       out.push(`${miles(Math.round(f.unpavedMi))} unpaved`);
     }
     if (holds(f, 'ftPerMi', max, 20)) {
-      out.push(`Hilliest, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
+      out.push('Hilliest option');
     }
     // Mid-tier composition, so a middling candidate still reads as a route
     // rather than a time delta.
@@ -12167,7 +12167,8 @@ function candidateRouteDescriptions(all) {
     }
     // Scenery stays off the heavy-safety base lines, as before.
     if (!/flag|fail|caution/i.test(line)) {
-      if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
+      if (f.trailMi >= 2 && !/trail|off-street/i.test(line)
+        && !new RegExp(`\\b${Math.round(f.trailMi)}\\b`).test(line)) {
         tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
       }
       if (f.ferry && !/ferry/i.test(line)) tails.push('plus ferry');
@@ -12186,9 +12187,7 @@ function candidateRouteDescriptions(all) {
     // A route-defining climbing day is its own sentence at the end, outside
     // the tail budget, so it never crowds out a safety fact (field ask,
     // 2026-08-27: elevation gain as its own sentence).
-    if (f.ascentFt >= 2000 && !/climb|flat|hill/i.test(full)) {
-      full += `. Climbs ${Math.round(f.ascentFt / 100) * 100} feet`;
-    }
+    if (f.ascentFt >= 2000 && !/climb|flat|hill/i.test(full)) full += '. Hilly';
     return full;
   };
   const used = new Set();
@@ -12358,9 +12357,9 @@ function showRouteDescriptionToast(option) {
   const nav = document.getElementById('navStartButton')?.getBoundingClientRect();
   const vw = window.innerWidth, vh = window.innerHeight;
   if (panel && panel.width) {
-    const left = Math.round(Math.max(nav?.width ? nav.right + 6 : vw * 0.26, vw * 0.2));
+    const left = Math.round(Math.max(nav?.width ? nav.right + 5 : vw * 0.24, vw * 0.18));
     host.style.left = `${left}px`;
-    host.style.width = `${Math.max(180, Math.min(vw - left - 6, 660))}px`;
+    host.style.width = `${Math.max(180, Math.min(vw - left - 5, 700))}px`;
     host.style.removeProperty('min-height');
     const height = host.offsetHeight || 48;
     const phoneLayout = panel.top > vh * 0.5;

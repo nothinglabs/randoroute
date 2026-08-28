@@ -216,7 +216,7 @@ const descToast = await page.evaluate(() => {
   const placed = (phoneLayout
     ? pill.bottom <= panel.top - 2 && pill.bottom >= panel.top - 120
     : pill.top >= panel.bottom + 2)
-    && (!navBtn?.width || pill.left >= navBtn.right + 4)
+    && (!navBtn?.width || pill.left >= navBtn.right + 3)
     && pill.right <= window.innerWidth - 4 && pill.width >= 180;
   // Two lines of text, never three, and no ✕ taking width from the copy
   // (field ask, 2026-08-28). The clamp is measured, not read off the rule:
