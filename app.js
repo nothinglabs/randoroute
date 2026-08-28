@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.904';
+const APP_VERSION = '2026-08-26.905';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12358,9 +12358,9 @@ function showRouteDescriptionToast(option) {
   const nav = document.getElementById('navStartButton')?.getBoundingClientRect();
   const vw = window.innerWidth, vh = window.innerHeight;
   if (panel && panel.width) {
-    const left = Math.round(Math.max(nav?.width ? nav.right + 8 : vw * 0.28, vw * 0.22));
+    const left = Math.round(Math.max(nav?.width ? nav.right + 6 : vw * 0.26, vw * 0.2));
     host.style.left = `${left}px`;
-    host.style.width = `${Math.max(180, Math.min(vw - left - 8, 620))}px`;
+    host.style.width = `${Math.max(180, Math.min(vw - left - 6, 660))}px`;
     host.style.removeProperty('min-height');
     const height = host.offsetHeight || 48;
     const phoneLayout = panel.top > vh * 0.5;
