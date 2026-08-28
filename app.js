@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.918';
+const APP_VERSION = '2026-08-26.919';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12148,9 +12148,10 @@ function candidateRouteDescriptions(all) {
     let fills = 0;
     const spend = (family, text) => {
       if (fills >= 3 || family.test(line())) return;
-      // Three lines at the pill's ~36 characters a line. Past that the clamp
-      // eats the fact rather than showing it.
-      if (line().length + text.length + 2 > 108) return;
+      // Three lines at the pill's ~36 characters a line, less the riding time
+      // appended after these. Past that the clamp eats the fact rather than
+      // showing it.
+      if (line().length + text.length + 2 > 94) return;
       out.push(text);
       fills += 1;
     };
@@ -12171,15 +12172,17 @@ function candidateRouteDescriptions(all) {
       spend(/ vs |shortest/i, `${deltaMi > 0 ? '+' : '−'}${miText(Math.abs(deltaMi))}`
         + ` mi vs ${baseline.c.label}`);
     }
-    // Riding time: the row beneath the pill shows it, the pill does not, and
-    // it is what the extra miles are weighed against.
-    spend(/\dh\d|riding/i, `${formatCandidateHours(f.c.timeS)} riding`);
     const share = (mi) => Math.max(1.5, f.mi * 0.12) <= mi;
     if (share(f.laneMi)) spend(/lane|protected/i, `${miText(f.laneMi)} mi bike lanes`);
     if (share(f.resMi)) spend(/residential/i, `${miText(f.resMi)} mi residential`);
     if (f.desigMi >= 2) {
       spend(/trail|signed|protected|off-street/i, `${miText(f.desigMi)} mi signed`);
     }
+    // Riding time closes every description, always and last (field ask,
+    // 2026-08-28): the row beneath the pill shows it, the pill does not, and
+    // it is what the rest of the line is weighed against. Outside the filler
+    // budget, which reserves its room above.
+    out.push(`${formatCandidateHours(f.c.timeS)} riding`);
     return out;
   };
   const used = new Set();

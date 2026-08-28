@@ -210,6 +210,11 @@ const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
 // The pill fits about 36 characters a line and clamps at three, so a
 // description past ~125 characters loses its tail rather than showing it
 // (2026-08-28). Words are the readability bound, characters the layout one.
+// Riding time closes every description, always and last (field ask,
+// 2026-08-28) -- it is what the rest of the line is weighed against.
+check('every description ends with its riding time',
+  rows.every((r) => /, \d+h\d{2} riding$/.test(r.desc)),
+  JSON.stringify(rows.filter((r) => !/riding$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
 check('no description overruns the three lines it is given',
   rows.every((r) => r.desc.length <= 125),
   JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
