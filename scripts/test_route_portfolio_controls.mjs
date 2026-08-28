@@ -272,7 +272,14 @@ const detailsDesc = await page.evaluate(() => {
     optimization: { label: 'Route A', profileId: 'p-toast' } };
   openRouteDetails();
   const desc = document.getElementById('routeDetailsDialogDesc');
+  const head = desc?.closest('.route-details-dialog-head');
   const out = { text: desc?.textContent, hidden: desc?.hidden,
+    // Larger type, same header band: three lines of description must still
+    // fit inside the head rather than pushing it taller (field ask,
+    // 2026-08-28).
+    fontPx: desc ? parseFloat(getComputedStyle(desc).fontSize) : 0,
+    threeLines: desc ? Math.round(parseFloat(getComputedStyle(desc).lineHeight) * 3) : 0,
+    headHeight: head ? Math.round(head.getBoundingClientRect().height) : 0,
     expected: candidateRouteDescriptions([candidate]).get('p-toast') };
   document.getElementById('routeDetailsDialog')?.close();
   routing.allCandidates = [];
@@ -281,6 +288,9 @@ const detailsDesc = await page.evaluate(() => {
 });
 check('the details header shows the route description',
   !detailsDesc.hidden && detailsDesc.text === detailsDesc.expected,
+  JSON.stringify(detailsDesc));
+check('its three lines fit the header band without enlarging it',
+  detailsDesc.fontPx >= 12 && detailsDesc.threeLines <= detailsDesc.headHeight - 6,
   JSON.stringify(detailsDesc));
 check('the pill stays out of turn navigation', !descToast.nav.visible,
   JSON.stringify(descToast.nav));
