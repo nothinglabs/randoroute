@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.911';
+const APP_VERSION = '2026-08-26.912';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12151,14 +12151,27 @@ function candidateRouteDescriptions(all) {
     // What this route costs against the shortest option on the board goes
     // first: a bare total is filler, "+15 mi vs Route C" is a decision
     // (field ask, 2026-08-28).
+    // Distance is compared against the RECOMMENDED route (field ask,
+    // 2026-08-28): the star is the answer the rider is deciding against, so
+    // every other row is priced in its terms, above or below. Three tenths
+    // of a mile is worth naming -- on a board of 18-mile routes the whole
+    // spread between them is under a mile.
+    const baseline = facts.find((g) => g.c.recommended)
+      || facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
     const shortest = facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
-    const extraMi = f.mi - shortest.mi;
-    // Half a mile is worth naming: on a board of 18-mile routes the spread
-    // between them IS under a mile, and "no extra distance" is itself the
-    // fact a rider wants from the one they are looking at.
-    if (shortest === f) spend(/shortest/i, 'shortest here');
-    else if (extraMi >= 0.3 && shortest.c.label) {
-      spend(/ vs |shortest/i, `+${miText(extraMi)} mi vs ${shortest.c.label}`);
+    const deltaMi = f.mi - baseline.mi;
+    if (baseline === f) {
+      // The star cannot be priced against itself, so it is priced against
+      // the shortest option instead -- otherwise the one row a rider looks
+      // at hardest is the one carrying the least.
+      const overShortest = f.mi - shortest.mi;
+      if (shortest === f) spend(/shortest/i, 'shortest here');
+      else if (overShortest >= 0.3 && shortest.c.label) {
+        spend(/ vs |shortest/i, `+${miText(overShortest)} mi vs ${shortest.c.label}`);
+      }
+    } else if (Math.abs(deltaMi) >= 0.3 && baseline.c.label) {
+      spend(/ vs |shortest/i, `${deltaMi > 0 ? '+' : '−'}${miText(Math.abs(deltaMi))}`
+        + ` mi vs ${baseline.c.label}`);
     }
     const GREEN = /trail|signed|protected|off-street/i;
     if (f.trailMi >= 1) spend(GREEN, `${miText(f.trailMi)} mi trail`);
