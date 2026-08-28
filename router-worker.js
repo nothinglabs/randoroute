@@ -77,6 +77,98 @@ let suppressFrontierHitRecording = false;
 // makes every road edge through that location unavailable to the search.
 let activeRoadBlockEdges = null;
 
+/* ---------------------- TEMPORARY EXPERIMENT: the Roosevelt Bridge patch
+ * The University (Roosevelt) Bridge side paths are mapped bidirectional in
+ * OSM, but on the ground each side is a one-way lane continuing onto the
+ * street (field, 2026-08-27) — so the router happily rides out one side
+ * and back the other. Until the corrected OSM data rides a graph rebuild,
+ * the opt-in rule `rooseveltBridgePatch` prohibits the wrong direction of
+ * each side: east side northbound only, west side southbound only, riding
+ * with traffic. Selection is geometric — unnamed trail edges with a clear
+ * north-south component inside the bridge corridor — so it survives graph
+ * rebuilds, selects nothing outside Seattle, and leaves the tip connectors
+ * bidirectional. Application code carrying a state-specific fact breaks
+ * the working agreement on purpose here: a scoped experiment, to be
+ * DELETED once the OSM fix ships. Only the per-request relax loop consults
+ * it — never the floor or warm-cost caches, which persist across requests
+ * — so removing arcs only raises true costs and every bound stays
+ * admissible. */
+const ROOSEVELT_BRIDGE = {
+  lonMin: -122.3225, lonMax: -122.3176, latMin: 47.6513, latMax: 47.6553,
+  // Centerline south tip -> north end; the cross product's sign puts an
+  // edge midpoint on Eastlake's west or east side.
+  p0: [-122.3213, 47.65155], p1: [-122.3184, 47.6551],
+};
+let rooseveltPatchSets = null;
+let rooseveltPatchGraph = null;
+function rooseveltProhibited(ei, forward) {
+  if (rooseveltPatchGraph !== eA) {
+    rooseveltPatchGraph = eA;
+    const blockAB = new Set(), blockBA = new Set();
+    const B = ROOSEVELT_BRIDGE;
+    const dx = B.p1[0] - B.p0[0], dy = B.p1[1] - B.p0[1];
+    const lonMPerDeg = 111320 * Math.cos(B.p0[1] * Math.PI / 180);
+    // Candidates: unnamed trail edges within 25 m of the bridge centerline.
+    // The side paths sit 5-18 m off it; campus and I-5 paths a hundred
+    // metres out must never be touched.
+    const offsets = new Map();
+    for (let i = 0; i < eA.length; i++) {
+      if (!(eFlags[i] & 8) || edgeName(i)) continue;
+      const mLon = (nodeLon[eA[i]] + nodeLon[eB[i]]) / 2;
+      const mLat = (nodeLat[eA[i]] + nodeLat[eB[i]]) / 2;
+      if (mLat < B.latMin || mLat > B.latMax) continue;
+      const centerLon = B.p0[0] + (mLat - B.p0[1]) * dx / dy;
+      const offM = (mLon - centerLon) * lonMPerDeg;
+      if (Math.abs(offM) > 25) continue;
+      offsets.set(i, offM);
+    }
+    // Group into connected chains and side each CHAIN by its length-weighted
+    // mean offset: the centerline is an approximation, and a per-edge side
+    // test mis-sided one 120 m east-chain segment sitting on it, severing
+    // the whole northbound crossing (measured: the patched trip detoured
+    // 6 km around the bridge).
+    const seen = new Set();
+    for (const seed of offsets.keys()) {
+      if (seen.has(seed)) continue;
+      const chain = [];
+      const stack = [seed];
+      seen.add(seed);
+      while (stack.length) {
+        const e = stack.pop();
+        chain.push(e);
+        for (const n of [eA[e], eB[e]]) {
+          for (let a = outStart[n]; a < outStart[n + 1]; a++) {
+            const other = outEdge[a];
+            if (offsets.has(other) && !seen.has(other)) {
+              seen.add(other);
+              stack.push(other);
+            }
+          }
+        }
+      }
+      let lenSum = 0, weighted = 0;
+      for (const e of chain) { lenSum += eLen[e]; weighted += offsets.get(e) * eLen[e]; }
+      // A stub is a crossing or connector, not a side path.
+      if (lenSum < 150) continue;
+      const west = weighted / lenSum < 0;
+      for (const e of chain) {
+        const dLat = nodeLat[eB[e]] - nodeLat[eA[e]];
+        const dLonM = Math.abs(nodeLon[eB[e]] - nodeLon[eA[e]]);
+        // East-west jogs inside a chain stay two-way.
+        if (Math.abs(dLat) < dLonM) continue;
+        const abNorthbound = dLat >= 0;
+        // The west side rides southbound only, so its northbound traversal
+        // is the blocked one; the east side mirrors.
+        if (abNorthbound === west) blockAB.add(e);
+        else blockBA.add(e);
+      }
+    }
+    rooseveltPatchSets = { blockAB, blockBA };
+  }
+  return forward ? rooseveltPatchSets.blockAB.has(ei)
+    : rooseveltPatchSets.blockBA.has(ei);
+}
+
 const _dec = new TextDecoder();
 // The signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
 // PROHIBITED_SHOULDER (-128, from route-common.js) is reserved by the
@@ -2896,6 +2988,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
       if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
+      // The Roosevelt Bridge experiment: its side paths ride one-way (see
+      // rooseveltProhibited).
+      if (rules.rooseveltBridgePatch && rooseveltProhibited(ei, forward)) continue;
       // Technical mountain-bike paths are opt-in. Unlike a bicycle=no road,
       // they remain available to an informed rider, but never appear in an
       // ordinary road-bike route.

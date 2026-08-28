@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.895';
+const APP_VERSION = '2026-08-26.896';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -80,9 +80,14 @@ const ADVANCED_ROUTE_OPTION_DEFAULTS = Object.freeze({
   allowSidewalkFallback: true,
   allowMtbTrails: false,
   allowFerries: true,
+  // TEMPORARY EXPERIMENT (2026-08-27): ride the University/Roosevelt Bridge
+  // side paths one-way, with traffic, until the OSM one-way fix ships in a
+  // graph rebuild. Delete with the worker's rooseveltProhibited.
+  rooseveltBridgePatch: false,
 });
 const ADVANCED_ROUTE_RULE_KEYS = Object.freeze([
   'alwaysPreferBikeRoutes', 'allowSidewalkFallback', 'allowMtbTrails', 'allowFerries',
+  'rooseveltBridgePatch',
 ]);
 const ADVANCED_ROUTE_PREFERENCE_KEYS = Object.freeze(['prefDesig', 'prefResidential']);
 const DEFAULT_RULES = Object.freeze({
@@ -139,6 +144,7 @@ const DEFAULT_RULES = Object.freeze({
 const rules = {
   ...DEFAULT_RULES,
   allowFerries: ADVANCED_ROUTE_OPTION_DEFAULTS.allowFerries,
+  rooseveltBridgePatch: ADVANCED_ROUTE_OPTION_DEFAULTS.rooseveltBridgePatch,
   alwaysPreferBikeRoutes: ADVANCED_ROUTE_OPTION_DEFAULTS.alwaysPreferBikeRoutes,
 };
 // Top of the lanes slider means "no limit" rather than a literal count. It
@@ -16493,6 +16499,10 @@ function buildAdvancedRoutingOptions() {
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
+  // Temporary experiment; delete with the worker's rooseveltProhibited once
+  // the corrected OSM data ships in a graph rebuild.
+  add('rooseveltBridgePatch', 'Roosevelt Bridge patch (experiment): ride its side '
+    + 'paths one-way, with traffic', rules, scheduleReroute);
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');
