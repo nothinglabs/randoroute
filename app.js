@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.909';
+const APP_VERSION = '2026-08-26.910';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12135,6 +12135,28 @@ function candidateRouteDescriptions(all) {
     if (f.trailMi >= 2 && !/trail|protected|signed/i.test(phrase)) {
       out.push(`${miText(f.trailMi)} mi trail`);
     } else if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
+    // The pill is two lines whatever it holds, so a short description wastes
+    // one (field ask, 2026-08-28). Fill it from the facts this route has not
+    // spent yet -- never one the phrase or a condition already carries.
+    // Facts group into families that mean the same ride: trail mileage,
+    // signed-route mileage and "protected" are largely the same miles here,
+    // so a line that already carries one of them may not take another.
+    const line = () => `${phrase} — ${out.join(', ')}`;
+    const spend = (family, text) => {
+      if (line().length >= 62 || family.test(line())) return;
+      out.push(text);
+    };
+    const GREEN = /trail|signed|protected|off-street/i;
+    if (f.trailMi >= 1) spend(GREEN, `${miText(f.trailMi)} mi trail`);
+    if (f.desigMi >= 2) spend(GREEN, `${miText(f.desigMi)} mi signed`);
+    if (f.lanePct >= 0.1) {
+      spend(/lane|protected/i, `${Math.round(f.lanePct * 100)}% bike lanes`);
+    }
+    if (f.resPct >= 0.15) {
+      spend(/residential/i, `${Math.round(f.resPct * 100)}% residential`);
+    }
+    if (f.ferry) spend(/ferry/i, 'ferry');
+    spend(/mixed roads|mi total/i, `${Math.round(f.mi)} mi total`);
     return out;
   };
   const used = new Set();
@@ -12317,7 +12339,7 @@ function showRouteDescriptionToast(option) {
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
-  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 5000);
+  routeDescToastTimer = setTimeout(hideRouteDescriptionToast, 6000);
 }
 document.getElementById('routeDescToast')?.addEventListener('click', () => {
   hideRouteDescriptionToast();

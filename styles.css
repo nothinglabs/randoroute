@@ -873,7 +873,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
-#map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib { margin-right: 3px; }
+#map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib { margin-right: 0; }
 /* -------------------------------------------------------------- overlays */
 .readout {
   position: absolute; z-index: 20;
@@ -1573,8 +1573,11 @@ body.navigation-active #routeBar { display: none; }
      allowed a 258px box whose LEFT edge (340-258=82) sat 28px over Navigate
      (right edge 110). Measured, not estimated. 190px leaves ~30px of daylight
      even when a container's fonts run wide. */
+  /* The 190px budget covered a geolocate column to this control's right.
+     That column moved to the top left, so the only thing left to clear is
+     the Navigate button on the far side. */
   #map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib.maplibregl-compact-show {
-    box-sizing: border-box; max-width: calc(100vw - 190px);
+    box-sizing: border-box; max-width: calc(100vw - 130px);
   }
   #map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
     line-height: 1.15; white-space: normal; text-align: right;
@@ -1632,10 +1635,10 @@ body.navigation-active #routeBar { display: none; }
    while [open]: display on the bare class would force a closed dialog
    visible. */
 .route-details-dialog[open] { display: flex; flex-direction: column; }
-.route-details-dialog-head { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 14px; height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
+.route-details-dialog-head { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 14px; height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
 #routeDetailsDialogTitle { flex: none; }
 .route-details-dialog-desc { flex: 1; min-width: 0; color: #56707e; font: 550 11px/1.35 system-ui;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #routeDetailsFrame { display: block; width: 100%; flex: 1; min-height: 0; border: none; background: #f4f7f9; }
 @media (max-width: 720px) {
   .route-details-dialog { position: fixed; inset: 0; width: 100vw; height: var(--app-height, 100dvh); margin: 0; border-radius: 0; }
@@ -1812,7 +1815,7 @@ body.street-view-open #map { visibility: hidden; }
   box-shadow: 0 3px 12px rgba(0, 80, 130, .35); }
 .route-desc-toast { position: fixed; z-index: 64; box-sizing: border-box;
   display: flex; align-items: center; max-width: 96vw;
-  padding: 6px 9px; border-radius: 14px; background: rgba(28, 46, 58, .41);
+  padding: 6px 9px; border-radius: 14px; background: rgba(28, 46, 58, .51);
   color: #fff; font: 640 12.8px/1.32 system-ui; box-shadow: 0 4px 14px rgba(20, 35, 45, .28);
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
