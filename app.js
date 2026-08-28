@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.901';
+const APP_VERSION = '2026-08-26.902';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12052,63 +12052,63 @@ function candidateRouteDescriptions(all) {
     // a fifth of your rules is defined by that, not by being quickest
     // (field, 2026-08-26: a 24% fail route described only its speed).
     if (f.failPct >= 0.2) {
-      out.push(`${Math.round(f.failPct * 100)}% of this fails your safety rules`);
+      out.push(`${Math.round(f.failPct * 100)}% fails your rules`);
     }
     // Half-caution defines a route the same way heavy fail does (field,
     // 2026-08-27: a 50%-caution ride to Port Townsend read as "Quickest,
     // mostly ordinary roads" with the caution nowhere in the line).
     if (f.cautionPct >= 0.3) {
-      out.push(`${Math.round(f.cautionPct * 100)}% of this needs caution — ${miles(Math.round(f.cautionMi))}${trafficNote(f)}`);
+      out.push(`${Math.round(f.cautionPct * 100)}% needs caution — ${miles(Math.round(f.cautionMi))}${trafficNote(f)}`);
     }
     if (c.timeS === minTime && facts.length > 1) {
-      if (f.trailPct >= 0.45) out.push(`Quickest here, still ${miles(Math.round(f.trailMi))} on trails`);
-      if (f.resPct >= 0.2) out.push('Quickest, leaning on quiet residential connector streets');
-      out.push('Quickest, mostly ordinary roads the whole way');
+      if (f.trailPct >= 0.45) out.push(`Quickest, ${miles(Math.round(f.trailMi))} on trails`);
+      if (f.resPct >= 0.2) out.push('Quickest, mostly residential');
+      out.push('Quickest, mostly roads');
     }
     if (holds(f, 'trailMi', max, 2)) {
-      out.push(`Most trail miles: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} off-street`);
+      out.push(`Most trail: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} miles off-street`);
     }
     if (holds(f, 'ascentFt', min, 250)) {
-      out.push(`Flattest choice by roughly ${Math.round((max('ascentFt') - f.ascentFt) / 100) * 100} feet of climbing`);
+      out.push(`Flattest by ${Math.round((max('ascentFt') - f.ascentFt) / 100) * 100} feet`);
     }
     if (holds(f, 'mi', min, 1) && c.timeS !== minTime) {
-      out.push('Shortest distance, though not the quickest option');
+      out.push('Shortest, not quickest');
     }
     if (holds(f, 'desigMi', max, 2)) {
-      out.push(`Follows signed bike routes for ${miles(Math.round(f.desigMi))}`);
+      out.push(`${miles(Math.round(f.desigMi))} on signed bike routes`);
     }
     if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) {
-      out.push('Protected riding for over half the way');
+      out.push('Over 50% protected riding');
     }
-    if (f.ferry) out.push('Includes a ferry crossing along the way');
-    if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
-    else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary road riding');
-    if (f.lanePct >= 0.3) out.push('Bike lanes carry much of this route');
-    if (f.resPct >= 0.3) out.push('Mostly quiet residential streets the whole way');
+    if (f.ferry) out.push('Includes ferry');
+    if (f.trailPct >= 0.6) out.push('Nearly all off-street trail');
+    else if (f.trailPct >= 0.35) out.push('Half trail, half road');
+    if (f.lanePct >= 0.3) out.push(`${Math.round(f.lanePct * 100)}% bike lanes`);
+    if (f.resPct >= 0.3) out.push('Mostly residential streets');
     if (f.unpavedMi >= 0.5) {
-      out.push(`About ${Math.round(f.unpavedMi)} unpaved mile${Math.round(f.unpavedMi) === 1 ? '' : 's'}; otherwise paved riding`);
+      out.push(`${miles(Math.round(f.unpavedMi))} unpaved`);
     }
     if (holds(f, 'ftPerMi', max, 20)) {
-      out.push(`The hilliest option, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
+      out.push(`Hilliest, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
     }
     // Mid-tier composition, so a middling candidate still reads as a route
     // rather than a time delta.
     if (f.trailMi >= 3 && f.trailPct < 0.35) {
-      out.push(`${Math.round(f.trailMi)} trail miles woven into road riding`);
+      out.push(`${Math.round(f.trailMi)} trail miles among roads`);
     }
-    if (f.desigMi >= 3) out.push(`Signed bike routes for ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
-    if (f.resPct >= 0.15) out.push('Quiet residential streets shape much of this');
-    if (f.lanePct >= 0.15) out.push('Bike lanes along good stretches of this');
+    if (f.desigMi >= 3) out.push(`Signed routes ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
+    if (f.resPct >= 0.15) out.push('Part residential streets');
+    if (f.lanePct >= 0.15) out.push('Some bike lanes');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
-      out.push('Among the flatter choices on offer here');
+      out.push('Among the flatter choices');
     }
     if (facts.length > 1 && f.mi <= min('mi') * 1.03) {
-      out.push('Nearly the shortest distance on offer here');
+      out.push('Nearly the shortest');
     }
     const slowerMin = Math.round((c.timeS - minTime) / 60);
-    if (slowerMin >= 5) out.push(`About ${slowerMin} minutes slower than the quickest`);
-    out.push(`A ${Math.round(f.mi)}-mile mix of ordinary roads`);
-    out.push('An ordinary mixed-road route between your points');
+    if (slowerMin >= 5) out.push(`${slowerMin} min slower than quickest`);
+    out.push(`${Math.round(f.mi)} miles, mixed roads`);
+    out.push('Ordinary mixed-road route');
     return out;
   };
   // Every description states presence or lack of fails and caution (field
@@ -12156,14 +12156,14 @@ function candidateRouteDescriptions(all) {
     // four car markers on a "meets rules" stretch and the line said nothing
     // about traffic) — unless the caution mention already named it.
     if (f.trafficMi >= 3 && !/traffic/i.test(full)) {
-      tails.push(`with ${miles(Math.round(f.trafficMi))} in heavy traffic`);
+      tails.push(`with ${miles(Math.round(f.trafficMi))} heavy traffic`);
     }
     // Scenery stays off the heavy-safety base lines, as before.
     if (!/flag|fail|caution/i.test(line)) {
       if (f.trailMi >= 2 && !/trail|off-street/i.test(line)) {
         tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
       }
-      if (f.ferry && !/ferry/i.test(line)) tails.push('plus a ferry crossing');
+      if (f.ferry && !/ferry/i.test(line)) tails.push('plus ferry');
     }
     // At most two tails within the budget. A second "with" tail folds into
     // the first as "and": "with 4 miles in heavy traffic and 10 on trails".

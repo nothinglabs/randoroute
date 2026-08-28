@@ -242,7 +242,7 @@ const safetyDescs = await pg.evaluate(() => {
   return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
 });
 check('a heavy-fail route leads with the failure share, even when quickest',
-  /% of this fails your safety rules — 1\.2 miles caution/.test(safetyDescs.dirty),
+  /% fails your rules — 1\.2 miles caution/.test(safetyDescs.dirty),
   JSON.stringify(safetyDescs));
 check('a single failing mile reads singular in the safety clause',
   /1 mile fail, 1\.2 miles caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
@@ -310,7 +310,7 @@ check('caution that is mostly official traffic stress says so',
 // line said nothing about traffic — the official rating is reported at
 // every level, so long high-stress stretches are named even when they pass.
 check('high-stress stretches from 3 miles up are named even when the rules pass them',
-  /with 4 miles in heavy traffic/.test(cautionAndHills.passing),
+  /with 4 miles heavy traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
 check('crossing-sized fails read as a count, not vanishing mileage',
   /just 2 short fails, no caution/.test(cautionAndHills.dabs),
