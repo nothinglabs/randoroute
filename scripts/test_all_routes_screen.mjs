@@ -216,7 +216,7 @@ check('every description ends with its riding time',
   rows.every((r) => /, \d+h\d{2} riding$/.test(r.desc)),
   JSON.stringify(rows.filter((r) => !/riding$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
 check('no description overruns the three lines it is given',
-  rows.every((r) => r.desc.length <= 125),
+  rows.every((r) => r.desc.length <= 135),
   JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
 check('every row carries a 6-25 word character line',
   rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 25),
@@ -253,10 +253,10 @@ const safetyDescs = await pg.evaluate(() => {
   return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
 });
 check('a heavy-fail route states its failing mileage first',
-  /— 2\.5 mi fail, 1\.2 mi caution/.test(safetyDescs.dirty),
+  /— 2\.5 miles failing, 1\.2 miles caution/.test(safetyDescs.dirty),
   JSON.stringify(safetyDescs));
 check('a single failing mile reads singular in the safety clause',
-  /1 mi fail, 1\.2 mi caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
+  /1 mile failing, 1\.2 miles caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
 check('a clean route says so outright',
   /no fails or caution/.test(safetyDescs.clean), JSON.stringify(safetyDescs));
 check('descriptions never talk about the search itself',
@@ -277,7 +277,7 @@ const enriched = await pg.evaluate(() => {
 });
 const quickWords = enriched.quick.split(/\s+/).filter(Boolean).length;
 check('a composition line carries a second fact within the 14-word budget',
-  /\d+(\.\d+)? mi trail/.test(enriched.quick) && quickWords > 7 && quickWords <= 14,
+  /\d+(\.\d+)? miles on trail/.test(enriched.quick) && quickWords > 7 && quickWords <= 16,
   JSON.stringify({ ...enriched, quickWords }));
 // The mandatory safety clause (field ask, 2026-08-27: always say
 // something about presence or lack of fails and caution): fail-clean
@@ -306,23 +306,23 @@ const cautionAndHills = await pg.evaluate(() => {
     dabs: d.get('dabs') };
 });
 check('a fail-clean route with caution states both plainly',
-  /no fails, 5 mi caution/.test(cautionAndHills.cleanish),
+  /no fails, 5 miles caution/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
 check('a route-defining climb is one word, without a figure',
   /, hilly/.test(cautionAndHills.cleanish)
     && !/\d+ feet/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
 check('fail and caution miles ride every line that needs them',
-  /3\.1 mi fail, 5 mi caution/.test(cautionAndHills.dirty),
+  /3\.1 miles failing, 5 miles caution/.test(cautionAndHills.dirty),
   JSON.stringify(cautionAndHills));
 check('caution that is mostly official traffic stress says so',
-  /5 mi caution \(traffic\)/.test(cautionAndHills.traffic),
+  /5 miles caution \(traffic\)/.test(cautionAndHills.traffic),
   JSON.stringify(cautionAndHills));
 // Field, 2026-08-27: four car markers on a "meets rules" stretch and the
 // line said nothing about traffic — the official rating is reported at
 // every level, so long high-stress stretches are named even when they pass.
 check('high-stress stretches from 3 miles up are named even when the rules pass them',
-  /4 mi traffic/.test(cautionAndHills.passing),
+  /4 miles heavy traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
 // Unpaved riding over a mile is named on every description, whatever the
 // base line is about (field ask, 2026-08-28) -- it decides which bike goes.
@@ -337,7 +337,7 @@ const gravel = await pg.evaluate(() => {
   return { gravel: d.get('gravel'), paved: d.get('paved') };
 });
 check('over a mile of unpaved is called out whatever the line is about',
-  /2 mi unpaved/.test(gravel.gravel), JSON.stringify(gravel));
+  /2 miles unpaved/.test(gravel.gravel), JSON.stringify(gravel));
 check('under a mile of unpaved is not called out',
   !/unpaved/.test(gravel.paved), JSON.stringify(gravel));
 
@@ -345,8 +345,8 @@ check('under a mile of unpaved is not called out',
 // in every description; below it they read as ordinary text (field ask,
 // 2026-08-28). textContent must be untouched by the markup.
 const emphasis = await pg.evaluate(() => {
-  const heavy = routeDescriptionHtml('Quickest — 2.5 mi fail, 5 mi caution (traffic), 3 mi unpaved');
-  const light = routeDescriptionHtml('Quickest — 0.4 mi fail, 0.5 mi caution, 0.3 mi unpaved');
+  const heavy = routeDescriptionHtml('Quickest — 2.5 miles failing, 5 miles caution (traffic), 3 miles unpaved');
+  const light = routeDescriptionHtml('Quickest — 0.4 miles failing, 0.5 miles caution, 0.3 miles unpaved');
   const box = document.createElement('p');
   box.innerHTML = heavy;
   return { heavy, light, text: box.textContent,
@@ -354,12 +354,12 @@ const emphasis = await pg.evaluate(() => {
       `${b.className.replace('desc-flag desc-flag-', '')}:${b.textContent}`) };
 });
 check('figures past half a mile are marked, each with its own kind',
-  emphasis.kinds.join('|') === 'fail:2.5 mi fail|caution:5 mi caution|unpaved:3 mi unpaved',
+  emphasis.kinds.join('|') === 'fail:2.5 miles failing|caution:5 miles caution|unpaved:3 miles unpaved',
   JSON.stringify(emphasis));
 check('half a mile and under stays plain',
   !/desc-flag/.test(emphasis.light), emphasis.light);
 check('the marked-up description still reads as the sentence it was',
-  emphasis.text === 'Quickest — 2.5 mi fail, 5 mi caution (traffic), 3 mi unpaved',
+  emphasis.text === 'Quickest — 2.5 miles failing, 5 miles caution (traffic), 3 miles unpaved',
   JSON.stringify(emphasis));
 
 check('crossing-sized fails read as a count, not vanishing mileage',

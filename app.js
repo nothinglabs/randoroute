@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.919';
+const APP_VERSION = '2026-08-26.920';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12048,9 +12048,6 @@ function candidateRouteDescriptions(all) {
   const holds = (f, key, best, margin) => facts.length > 1 && f[key] === best(key)
     && facts.filter((g) => g[key] === f[key]).length === 1
     && Math.abs(max(key) - min(key)) > margin;
-  // "1 flagged miles" read as a bug (field screenshot): every counted noun
-  // pluralizes properly.
-  const miles = (n) => `${n} mile${n === 1 ? '' : 's'}`;
   // Larger stretches of traffic get named (field ask, 2026-08-27): when the
   // official traffic-stress rating caused at least half a route's caution
   // mileage and spans 3+ miles, the caution mention says so. Parenthesized
@@ -12069,6 +12066,12 @@ function candidateRouteDescriptions(all) {
     const n = Math.max(0.1, Math.round(x * 10) / 10);
     return n >= 9.95 ? String(Math.round(n)) : String(n);
   };
+  // Spelled out, not abbreviated: three lines leave room, and "mi" reads as
+  // a data label rather than a sentence (field ask, 2026-08-28).
+  const miles = (x) => {
+    const n = miText(x);
+    return `${n} ${n === '1' ? 'mile' : 'miles'}`;
+  };
   // Each option carries its KIND, and a board may spend a kind once. Keying
   // the dedupe on the text let five routes all read "Signed routes, N mi"
   // -- different numbers, same sentence (field review, 2026-08-28).
@@ -12080,19 +12083,27 @@ function candidateRouteDescriptions(all) {
     if (holds(f, 'mi', min, 1) && c.timeS !== minTime) add('shortest', 'Shortest');
     if (holds(f, 'ascentFt', min, 250)) add('flattest', 'Flattest');
     if (holds(f, 'ftPerMi', max, 20)) add('hilliest', 'Hilliest');
-    if (f.trailPct >= 0.6) add('trail-all', 'Nearly all trail');
-    if (holds(f, 'trailMi', max, 2)) add('trail-most', `Most trail, ${miText(f.trailMi)} mi`);
-    if (f.trailPct >= 0.35) add('trail-half', 'Half trail, half road');
-    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) add('protected', 'Over 50% protected');
-    if (f.lanePct >= 0.3) add('lanes', 'Mostly bike lanes');
-    if (f.resPct >= 0.3) add('residential', 'Mostly residential');
+    // The words have to match the measurement (field review, 2026-08-28:
+    // "nearly all trail" was firing at 60% and "half trail, half road" at
+    // 35%). Each band now says what its share actually is, and a route that
+    // fits none of them falls through to its trail MILEAGE, which cannot
+    // overstate anything.
+    if (f.trailPct >= 0.85) add('trail-all', 'Nearly all trail');
+    else if (f.trailPct >= 0.6) add('trail-most-share', 'Mostly trail');
+    if (holds(f, 'trailMi', max, 2)) add('trail-most', `Most trail, ${miles(f.trailMi)}`);
+    if (f.trailPct >= 0.4 && f.trailPct < 0.6) add('trail-half', 'Half trail, half road');
+    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) {
+      add('protected', 'Over half protected');
+    }
+    if (f.lanePct >= 0.5) add('lanes', 'Mostly bike lanes');
+    if (f.resPct >= 0.5) add('residential', 'Mostly residential');
     if (holds(f, 'desigMi', max, 2) || f.desigMi >= 3) {
-      add('signed', `Signed routes, ${miText(f.desigMi)} mi`);
+      add('signed', `Signed routes, ${miles(f.desigMi)}`);
     }
     if (f.ferry) add('ferry', 'Ferry route');
-    if (f.trailMi >= 2) add('trail-mi', `${miText(f.trailMi)} mi trail`);
-    if (f.lanePct >= 0.15) add('lanes-some', 'Some bike lanes');
-    if (f.resPct >= 0.15) add('res-part', 'Part residential');
+    if (f.trailMi >= 2) add('trail-mi', `${miles(f.trailMi)} on trail`);
+    if (f.lanePct >= 0.2) add('lanes-some', 'Part bike lanes');
+    if (f.resPct >= 0.2) add('res-part', 'Part residential');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
       add('flatter', 'Among the flatter');
     }
@@ -12104,7 +12115,7 @@ function candidateRouteDescriptions(all) {
       add('slower', slowerMin >= 90 ? `${(slowerMin / 60).toFixed(1)}h slower`
         : `${slowerMin} min slower`);
     }
-    add(`mixed-${Math.round(f.mi)}`, `${Math.round(f.mi)} mi, mixed roads`);
+    add(`mixed-${Math.round(f.mi)}`, `${Math.round(f.mi)} miles, mixed roads`);
     add('plain', 'Mixed roads');
     return out;
   };
@@ -12122,23 +12133,23 @@ function candidateRouteDescriptions(all) {
       out.push(failClean ? 'no fails'
         : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
           ? `just ${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
-          : `${miText(f.failMi)} mi fail`);
+          : `${miles(f.failMi)} failing`);
       out.push(cautionClean ? 'no caution'
-        : `${miText(f.cautionMi)} mi caution${trafficNote(f)}`);
+        : `${miles(f.cautionMi)} caution${trafficNote(f)}`);
     }
-    if (f.unpavedMi >= 1) out.push(`${miText(f.unpavedMi)} mi unpaved`);
+    if (f.unpavedMi >= 1) out.push(`${miles(f.unpavedMi)} unpaved`);
     // High-stress roads that did NOT become caution: the rating fails to
     // caution only where no painted lane carries it, so a busy road with a
     // lane is real exposure the caution figure never mentions.
     if (f.trafficMi >= 3 && !out.some((part) => /traffic/.test(part))) {
-      out.push(`${Math.round(f.trafficMi)} mi traffic`);
+      out.push(`${miles(Math.round(f.trafficMi))} heavy traffic`);
     }
     if (f.ascentFt >= 2000 && !/Flattest|Hilliest|flatter/.test(phrase)) out.push('hilly');
     // A ferry is a mode change, not a detail: it is named whenever the
     // phrase does not already say so.
     if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
     if (f.trailMi >= 2 && !/trail|protected|signed/i.test(phrase)) {
-      out.push(`${miText(f.trailMi)} mi trail`);
+      out.push(`${miles(f.trailMi)} on trail`);
     }
     // Three lines of room, filled in order of what decides a ride, and only
     // while the line stays inside them. Each fact must also be worth its
@@ -12169,14 +12180,14 @@ function candidateRouteDescriptions(all) {
       // that). It says only whether it is also the shortest.
       if (shortest === f) spend(/shortest/i, 'shortest here');
     } else if (Math.abs(deltaMi) >= 0.3 && baseline.c.label) {
-      spend(/ vs |shortest/i, `${deltaMi > 0 ? '+' : '−'}${miText(Math.abs(deltaMi))}`
-        + ` mi vs ${baseline.c.label}`);
+      spend(/longer|shorter|shortest/i, `${miles(Math.abs(deltaMi))} `
+        + `${deltaMi > 0 ? 'longer' : 'shorter'} than ${baseline.c.label}`);
     }
     const share = (mi) => Math.max(1.5, f.mi * 0.12) <= mi;
-    if (share(f.laneMi)) spend(/lane|protected/i, `${miText(f.laneMi)} mi bike lanes`);
-    if (share(f.resMi)) spend(/residential/i, `${miText(f.resMi)} mi residential`);
+    if (share(f.laneMi)) spend(/lane|protected/i, `${miles(f.laneMi)} on bike lanes`);
+    if (share(f.resMi)) spend(/residential/i, `${miles(f.resMi)} residential`);
     if (f.desigMi >= 2) {
-      spend(/trail|signed|protected|off-street/i, `${miText(f.desigMi)} mi signed`);
+      spend(/trail|signed|protected|off-street/i, `${miles(f.desigMi)} signed`);
     }
     // Riding time closes every description, always and last (field ask,
     // 2026-08-28): the row beneath the pill shows it, the pill does not, and
@@ -12190,6 +12201,7 @@ function candidateRouteDescriptions(all) {
   for (const f of facts) {
     const options = character(f);
     const pick = options.find((option) => !used.has(option.kind))
+      || options.find((option) => option.kind.startsWith('mixed-'))
       || options[options.length - 1];
     used.add(pick.kind);
     chosen.set(f.c.profileId,
@@ -12203,13 +12215,15 @@ function candidateRouteDescriptions(all) {
 // are generated in known shapes, so one pass over the finished sentence marks
 // them; textContent is unchanged, so anything reading the description as text
 // still sees exactly what it said.
-const DESC_FIGURE = /(\d+(?:\.\d+)?) mi (fail|caution|unpaved)\b/g;
+const DESC_FIGURE = /(\d+(?:\.\d+)?) miles? (failing|caution|unpaved)\b/g;
+const DESC_FIGURE_KIND = { failing: 'fail', caution: 'caution', unpaved: 'unpaved' };
 function routeDescriptionHtml(text) {
   const escaped = String(text || '').replace(/[&<>]/g, (ch) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
-  return escaped.replace(DESC_FIGURE, (whole, value, kind) =>
+  return escaped.replace(DESC_FIGURE, (whole, value, word) =>
     (Number(value) > 0.5
-      ? `<b class="desc-flag desc-flag-${kind}">${whole}</b>` : whole));
+      ? `<b class="desc-flag desc-flag-${DESC_FIGURE_KIND[word]}">${whole}</b>`
+      : whole));
 }
 
 function renderAllRoutesList() {
