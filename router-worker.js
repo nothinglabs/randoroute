@@ -3897,7 +3897,12 @@ function candidateSummary(candidate) {
     trailM: candidate.trailM || 0,
     desigM: candidate.desigM,
     residentialM: candidate.residentialM,
-    unpavedM: candidate.unpavedM || 0,
+    // Gravel and rough surfaces, summed here rather than read off the
+    // candidate: nothing ever set candidate.unpavedM, so every description
+    // saw zero and a gravel route could not say so (field, 2026-08-28).
+    // Surfaces 2 and 3 are what route-common calls confirmed unpaved.
+    unpavedM: (candidate.segs || []).reduce((sum, seg) =>
+      sum + (seg.surface === 2 || seg.surface === 3 ? (Number(seg.lenM) || 0) : 0), 0),
     ferryM: candidate.ferryM || 0,
     ascentM: candidate.ascentM || 0,
     // Traffic mileage for the description layer (field asks, 2026-08-27):
