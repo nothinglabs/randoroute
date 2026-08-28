@@ -50,6 +50,29 @@ try {
   }
   check('accepting the offer activates the new worker',
     !!advanced, JSON.stringify(advanced));
+
+  // The uncontrolled-page contract (field, 2026-08-27: a hard-reloaded
+  // desktop said "tap Restart to update" while the banner refused to show):
+  // offerUpdate hides on an uncontrolled page by default — the first-visit
+  // guard — but shows when the manual path vouches with evenUncontrolled.
+  const uncontrolled = await page.evaluate(() => {
+    const banner = document.getElementById('updatePrompt');
+    Object.defineProperty(navigator.serviceWorker, 'controller',
+      { get: () => null, configurable: true });
+    try {
+      banner.hidden = true;
+      offerUpdate({ fake: 1 });
+      const guarded = banner.hidden;
+      offerUpdate({ fake: 1 }, { evenUncontrolled: true });
+      const vouched = !banner.hidden;
+      return { guarded, vouched };
+    } finally {
+      delete navigator.serviceWorker.controller;
+      banner.hidden = true;
+    }
+  });
+  check('an uncontrolled page hides the automatic offer but shows the manual one',
+    uncontrolled.guarded && uncontrolled.vouched, JSON.stringify(uncontrolled));
 } finally {
   await browser.close();
   site.close();

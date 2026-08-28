@@ -1417,7 +1417,7 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
 // "friendly", which collided with the `friendly` ROUTE_PROFILES id (low-stress
 // mode with both preferences on). Three names for two things; now one each.
 const DEFAULT_WEIGHTS = Object.freeze({
-  failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
+  failRoadDirect: 1.9, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   // Field-tuned 2026-08-26 (rider's settled values became the defaults). The
   // old `designated` off-state weight is gone: the signed-route preference is
@@ -5621,13 +5621,31 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // Keep at most one deliberately extreme per-leg detour: the true safest
   // result. The remaining slots should represent useful approaches to the
   // stops the rider actually chose, not several variations of the same loop.
-  const selectionChoices = hasStops ? choices.filter((route) => boundedChoices.includes(route)
+  const stopBounded = hasStops ? choices.filter((route) => boundedChoices.includes(route)
     || route === safestOverall || route === boundedPreferred) : choices;
   // Six lettered slots, up from five: the direct-lens candidate widened the
   // portfolio's real variety, and the extra slot lets it surface without
   // pushing an ordinary choice out. Interior picks fill to two under the cap
   // so the endpoints (shortest, longest) keep their seats.
   const MAX_OFFERED = 6;
+  // Doubling back loses seats, not only the star (field, 2026-08-27: the
+  // score demotion moved the star off the University Bridge loop, and the
+  // loop still held two letters). When enough loop-free candidates exist to
+  // fill the board, a route that materially rides alongside itself is not
+  // seated at all; it stays in the corpus and the More screen says why.
+  // 400 m, not the score's 150 m allowance: seats are only denied for the
+  // unmistakable case. On a via trip the intended out-and-back is shared by
+  // every candidate, so the pool empties and the filter stands down.
+  const DOUBLE_BACK_SEAT_MAX_M = 400;
+  const doubledBack = (route) => {
+    if (route._doubleBackM === undefined) {
+      route._doubleBackM = Math.round(routeDoubleBackM(route.coords));
+    }
+    return route._doubleBackM > DOUBLE_BACK_SEAT_MAX_M;
+  };
+  const loopFree = stopBounded.filter((route) => !doubledBack(route)
+    || route === recommended);
+  const selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
@@ -5657,11 +5675,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const trailPortfolio = ferryCrossBreed || trailRich;
   const forwardProgressChoice = selectionChoices.includes(forwardProgressCandidate)
     ? forwardProgressCandidate : null;
+  // A role winner that doubles back lost its seating guarantee with its
+  // pool membership: trail-rich is the role the University Bridge loop wins
+  // BY CONSTRUCTION, and a guaranteed seat would undo the exclusion above.
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
     forwardProgressChoice, sectionFrontier, trailPortfolio,
     boundedBothPreferences, boundedPreferred, fullyMatching,
     ferryCrossBreed, adaptiveCorridor, combinedCorridor, strongPreferredCandidate,
-    preferredRouteAnchor].filter(Boolean))];
+    preferredRouteAnchor].filter(Boolean))]
+    .filter((route) => selectionChoices.includes(route));
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < MAX_OFFERED) {
@@ -5851,6 +5873,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           slowerS: candidate.timeS - dominator.timeS,
           moreSevereM: severeM(candidate) - severeM(dominator) };
       }
+    } else if ((candidate._doubleBackM || 0) > DOUBLE_BACK_SEAT_MAX_M) {
+      candidate._stage = 'not-chosen';
+      candidate._stageWhy = `Doubles back along itself for ${(candidate._doubleBackM / 1609.344).toFixed(1)} mi; the seats went to routes that do not.`;
+      candidate._stageData = nearestOffered(candidate);
     } else {
       candidate._stage = 'not-chosen';
       candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;

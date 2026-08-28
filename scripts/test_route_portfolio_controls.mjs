@@ -205,16 +205,25 @@ const descToast = await page.evaluate(() => {
     failM: 0, optimization: { label: 'Route A', profileId: 'p-toast' } };
   const host = document.getElementById('routeDescToast');
   activateRouteOption(option);
-  // Centered vertically over the start/destination card and horizontally
-  // on the screen, with a visible dismiss ✕ (field asks, 2026-08-27).
-  const bar = document.getElementById('routeBar').getBoundingClientRect();
+  // Just above the route chooser (below a top-docked panel on desktop),
+  // right of the Navigate button and never overlapping it, on screen
+  // (field asks, 2026-08-27 — moved down from over the start/destination
+  // card, which it hid).
+  const panel = document.getElementById('panel').getBoundingClientRect();
+  const navBtn = document.getElementById('navStartButton')?.getBoundingClientRect();
   const pill = host.getBoundingClientRect();
-  const centered = Math.abs((pill.top + pill.height / 2) - (bar.top + bar.height / 2)) <= 8
-    && Math.abs((pill.left + pill.width / 2) - window.innerWidth / 2) <= 2;
+  const phoneLayout = panel.top > window.innerHeight * 0.5;
+  const placed = (phoneLayout
+    ? pill.bottom <= panel.top - 2 && pill.bottom >= panel.top - 120
+    : pill.top >= panel.bottom + 2)
+    && (!navBtn?.width || pill.left >= navBtn.right + 6)
+    && pill.right <= window.innerWidth - 4 && pill.width >= 180;
   const shown = { text: host.querySelector('.route-desc-text')?.textContent,
     visible: host.classList.contains('show'),
     hasClose: !!host.querySelector('.route-desc-close'),
-    centered, pillTop: pill.top, pillLeft: pill.left, barTop: bar.top };
+    placed, phoneLayout, pillTop: pill.top, pillLeft: pill.left,
+    pillRight: pill.right, panelTop: panel.top, panelBottom: panel.bottom,
+    navRight: navBtn?.right };
   // Turn navigation must stay pill-free: the space belongs to guidance.
   host.classList.remove('show');
   turnNav.active = true;
@@ -232,8 +241,8 @@ const descToast = await page.evaluate(() => {
 check('choosing a route shows its description pill',
   descToast.shown.visible && descToast.shown.text.length > 10
     && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
-check('the pill centers over the card and across the screen',
-  descToast.shown.centered, JSON.stringify(descToast.shown));
+check('the pill sits by the chooser, clear of the Navigate button',
+  descToast.shown.placed, JSON.stringify(descToast.shown));
 check('the pill carries a dismiss mark',
   descToast.shown.hasClose, JSON.stringify(descToast.shown));
 

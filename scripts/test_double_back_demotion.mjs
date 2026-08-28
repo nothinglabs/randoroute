@@ -60,5 +60,18 @@ check('the star goes to a route that does not double back',
 check('the surcharge reaches the reported score breakdown',
   rows.some((r) => r.doubleBackS > 0) && rows.every((r) =>
     Number.isFinite(r.doubleBackM)), JSON.stringify(rows[0]));
+// Seats too, not only the star (field, 2026-08-27: the demoted loop still
+// held two letters): with enough clean candidates, no offered letter may
+// materially double back, and the excluded loops say why on More.
+const seated = rows.filter((r) => r.presented);
+check('no offered letter doubles back materially',
+  seated.length >= 4 && seated.every((r) => r.doubleBackM <= 400),
+  JSON.stringify(seated));
+// The loop family dedupes to a representative first; only the survivor
+// that reached seating carries the doubling why (its twins keep theirs).
+const loopWhy = (trip.allCandidates || []).find((c) =>
+  c.suggestionScore?.doubleBackM > 800 && c.stage === 'not-chosen')?.stageWhy || '';
+check('the unseated loop representative explains itself',
+  /[Dd]oubles back along itself/.test(loopWhy), loopWhy);
 
 done();

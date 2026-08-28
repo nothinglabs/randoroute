@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.898';
+const APP_VERSION = '2026-08-26.899';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -157,7 +157,7 @@ const RULE_NUMBER_LIMITS = {
 // rider-facing Limits remain the hard safety rules. Kept in one shared shape
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
-  failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
+  failRoadDirect: 1.9, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   // Field-tuned 2026-08-26: the rider's settled values applied as shipped
   // defaults. The `designated` off-state weight is gone — the signed-route
@@ -12291,18 +12291,24 @@ function showRouteDescriptionToast(option) {
   close.setAttribute('aria-hidden', 'true');
   close.textContent = '✕';
   host.replaceChildren(body, close);
-  const anchor = document.getElementById('routeBar')?.getBoundingClientRect();
-  if (anchor && anchor.width) {
-    host.style.width = `${Math.round(anchor.width)}px`;
-    // Centered horizontally on the SCREEN (field ask, 2026-08-27) — the
-    // card itself sits left of center, beside the toolbar buttons.
-    host.style.left = `${Math.round(Math.max(0, (window.innerWidth - anchor.width) / 2))}px`;
-    host.style.minHeight = `${Math.round(anchor.height * 0.8)}px`;
-    // Centered over the card rather than pinned to its top (field ask,
-    // 2026-08-27). The pill is opacity-hidden, never display:none, so its
-    // height is measurable before .show.
-    const height = host.offsetHeight || anchor.height * 0.8;
-    host.style.top = `${Math.round(anchor.top + Math.max(0, (anchor.height - height) / 2))}px`;
+  // Just above the route chooser, to the right of the Navigate button and
+  // never overlapping it (field ask, 2026-08-27 — down from over the
+  // start/destination card, where it hid what the rider was reaching for).
+  // On desktop the panel sits at the top, so the pill hangs below it. The
+  // pill is opacity-hidden, never display:none, so its height is
+  // measurable before .show.
+  const panel = document.getElementById('panel')?.getBoundingClientRect();
+  const nav = document.getElementById('navStartButton')?.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (panel && panel.width) {
+    const left = Math.round(Math.max(nav?.width ? nav.right + 10 : vw * 0.3, vw * 0.24));
+    host.style.left = `${left}px`;
+    host.style.width = `${Math.max(180, Math.min(vw - left - 10, 560))}px`;
+    host.style.removeProperty('min-height');
+    const height = host.offsetHeight || 48;
+    const phoneLayout = panel.top > vh * 0.5;
+    host.style.top = `${Math.round(phoneLayout ? panel.top - height - 8
+      : Math.min(panel.bottom + 8, vh - height - 10))}px`;
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
@@ -18714,8 +18720,17 @@ let deferredUpdateWorker = null;
 // Set the moment the rider takes an update, so the handover that follows is
 // known to be one they asked for even on a page that started uncontrolled.
 let updateAccepted = false;
-function offerUpdate(worker) {
-  if (!worker || worker === deferredUpdateWorker || !navigator.serviceWorker.controller) return;
+// The controller guard stops the false banner on a FIRST visit, where the
+// very first worker fires 'installed' with nothing to update. It also
+// silenced a real one: a hard-reloaded desktop page has no controller, and
+// a manual check there said "tap Restart to update" while this refused to
+// show the button (field, 2026-08-27). The manual path passes
+// evenUncontrolled — reg.waiting on an explicit check is proof of a real
+// update, and the Restart button works uncontrolled: skipWaiting fires
+// controllerchange via clients.claim, and the 8 s fallback reloads anyway.
+function offerUpdate(worker, { evenUncontrolled = false } = {}) {
+  if (!worker || worker === deferredUpdateWorker
+    || (!navigator.serviceWorker.controller && !evenUncontrolled)) return;
   pendingUpdateWorker = worker;
   // One banner at a time, and the app update comes first: it usually carries
   // the very index that announces the map update on the next boot.
@@ -18896,8 +18911,11 @@ async function runManualUpdateCheck() {
       // deferral, a rider who once tapped "Not now" got "Update ready." as
       // dead-end text with no button anywhere -- ready how? do what?
       deferredUpdateWorker = null;
-      setManualUpdateStatus('Update ready — tap “Restart to update”.');
-      offerUpdate(reg.waiting);
+      offerUpdate(reg.waiting, { evenUncontrolled: true });
+      // Promise the button only after it is actually on screen.
+      setManualUpdateStatus(document.getElementById('updatePrompt').hidden
+        ? 'Update ready — reload this page to finish installing.'
+        : 'Update ready — tap “Restart to update”.');
       document.getElementById('helpDialog')?.close();
       return;
     }
@@ -18953,7 +18971,7 @@ async function runManualUpdateCheck() {
           return;
         }
         if (!ready) return;
-        offerUpdate(ready);
+        offerUpdate(ready, { evenUncontrolled: true });
         if (document.getElementById('updatePrompt').hidden) {
           setManualUpdateStatus('Update ready — reload this page to finish installing.');
         }
