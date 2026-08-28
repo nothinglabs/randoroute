@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.914';
+const APP_VERSION = '2026-08-26.915';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12367,8 +12367,8 @@ function showRouteDescriptionToast(option) {
     host.style.removeProperty('min-height');
     const height = host.offsetHeight || 48;
     const phoneLayout = panel.top > vh * 0.5;
-    host.style.top = `${Math.round(phoneLayout ? panel.top - height - 4
-      : Math.min(panel.bottom + 6, vh - height - 8))}px`;
+    host.style.top = `${Math.round(phoneLayout ? panel.top - height - 2
+      : Math.min(panel.bottom + 4, vh - height - 8))}px`;
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
