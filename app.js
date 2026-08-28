@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.897';
+const APP_VERSION = '2026-08-26.898';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -80,14 +80,9 @@ const ADVANCED_ROUTE_OPTION_DEFAULTS = Object.freeze({
   allowSidewalkFallback: true,
   allowMtbTrails: false,
   allowFerries: true,
-  // TEMPORARY EXPERIMENT (2026-08-27): ride the University/Roosevelt Bridge
-  // side paths one-way, with traffic, until the OSM one-way fix ships in a
-  // graph rebuild. Delete with the worker's rooseveltProhibited.
-  rooseveltBridgePatch: false,
 });
 const ADVANCED_ROUTE_RULE_KEYS = Object.freeze([
   'alwaysPreferBikeRoutes', 'allowSidewalkFallback', 'allowMtbTrails', 'allowFerries',
-  'rooseveltBridgePatch',
 ]);
 const ADVANCED_ROUTE_PREFERENCE_KEYS = Object.freeze(['prefDesig', 'prefResidential']);
 const DEFAULT_RULES = Object.freeze({
@@ -144,7 +139,6 @@ const DEFAULT_RULES = Object.freeze({
 const rules = {
   ...DEFAULT_RULES,
   allowFerries: ADVANCED_ROUTE_OPTION_DEFAULTS.allowFerries,
-  rooseveltBridgePatch: ADVANCED_ROUTE_OPTION_DEFAULTS.rooseveltBridgePatch,
   alwaysPreferBikeRoutes: ADVANCED_ROUTE_OPTION_DEFAULTS.alwaysPreferBikeRoutes,
 };
 // Top of the lanes slider means "no limit" rather than a literal count. It
@@ -12200,6 +12194,7 @@ function renderAllRoutesList() {
         <span class="score-fail">fails <b>+${scoreMinutes(c.suggestionScore.failS)}</b></span>
         <span class="score-penalty">walk <b>+${scoreMinutes(c.suggestionScore.dismountS)}</b></span>
         <span class="score-penalty">ordinary roads <b>+${scoreMinutes(c.suggestionScore.ordinaryRoadS)}</b></span>
+        ${c.suggestionScore.doubleBackS > 0 ? `<span class="score-penalty">doubles back <b>+${scoreMinutes(c.suggestionScore.doubleBackS)}</b></span>` : ''}
         <span class="score-credit">trails <b>−${scoreMinutes(c.suggestionScore.trailCreditS)}</b></span>
         ${c.preferredRouteM > 0 && c.preferredRouteMultiplier != null
           ? `<span>Preferred route <b>${(c.preferredRouteM / 1609.344).toFixed(1)} mi × ${Number(c.preferredRouteMultiplier).toFixed(2)}</b> search cost</span>` : ''}
@@ -16499,10 +16494,6 @@ function buildAdvancedRoutingOptions() {
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
-  // Temporary experiment; delete with the worker's rooseveltCrossChain once
-  // the corrected OSM data ships in a graph rebuild.
-  add('rooseveltBridgePatch', 'Roosevelt Bridge patch (experiment): break the trail '
-    + 'tip join, so turning around costs a real street crossing', rules, scheduleReroute);
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');

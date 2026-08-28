@@ -77,112 +77,6 @@ let suppressFrontierHitRecording = false;
 // makes every road edge through that location unavailable to the search.
 let activeRoadBlockEdges = null;
 
-/* ---------------------- TEMPORARY EXPERIMENT: the Roosevelt Bridge patch
- * OSM joins the University (Roosevelt) Bridge side paths into a tip — a
- * "clean" on-trail U-turn across a busy street with bike lanes, a movement
- * the ground does not offer (field, 2026-08-27). The opt-in rule
- * `rooseveltBridgePatch` breaks that tip: a route may never step straight
- * from one side path onto the other, so turning around costs what it
- * really costs — leaving the trail and crossing on the street. The
- * experiment is whether that expense alone fixes the out-and-back routes.
- * Selection is geometric — unnamed trail edges within 25 m of the bridge
- * centerline, grouped into connected chains — so it survives graph
- * rebuilds and selects nothing outside Seattle. Application code carrying
- * a state-specific fact breaks the working agreement on purpose here: a
- * scoped experiment, to be DELETED once the OSM fix ships. Only the
- * per-request relax loop consults it — never the floor or warm-cost
- * caches, which persist across requests — so removing moves only raises
- * true costs and every bound stays admissible. */
-const ROOSEVELT_BRIDGE = {
-  lonMin: -122.3225, lonMax: -122.3176, latMin: 47.6513, latMax: 47.6553,
-  // Centerline south tip -> north end; the cross product's sign puts an
-  // edge midpoint on Eastlake's west or east side.
-  p0: [-122.3213, 47.65155], p1: [-122.3184, 47.6551],
-};
-let rooseveltPatchSets = null;
-let rooseveltPatchGraph = null;
-function ensureRooseveltPatch() {
-  if (rooseveltPatchGraph !== eA) {
-    rooseveltPatchGraph = eA;
-    const chainOf = new Map();
-    const B = ROOSEVELT_BRIDGE;
-    const dx = B.p1[0] - B.p0[0], dy = B.p1[1] - B.p0[1];
-    const lonMPerDeg = 111320 * Math.cos(B.p0[1] * Math.PI / 180);
-    // Candidates: unnamed trail edges within 25 m of the bridge centerline.
-    // The side paths sit 5-18 m off it; campus and I-5 paths a hundred
-    // metres out must never be touched.
-    const offsets = new Map();
-    for (let i = 0; i < eA.length; i++) {
-      if (!(eFlags[i] & 8) || edgeName(i)) continue;
-      const mLon = (nodeLon[eA[i]] + nodeLon[eB[i]]) / 2;
-      const mLat = (nodeLat[eA[i]] + nodeLat[eB[i]]) / 2;
-      if (mLat < B.latMin || mLat > B.latMax) continue;
-      const centerLon = B.p0[0] + (mLat - B.p0[1]) * dx / dy;
-      const offM = (mLon - centerLon) * lonMPerDeg;
-      if (Math.abs(offM) > 25) continue;
-      offsets.set(i, offM);
-    }
-    // Group into connected chains and side each CHAIN by its length-weighted
-    // mean offset: the centerline is an approximation, and a per-edge side
-    // test mis-sided one 120 m east-chain segment sitting on it, severing
-    // the whole northbound crossing (measured: the patched trip detoured
-    // 6 km around the bridge).
-    const seen = new Set();
-    for (const seed of offsets.keys()) {
-      if (seen.has(seed)) continue;
-      const chain = [];
-      const stack = [seed];
-      seen.add(seed);
-      while (stack.length) {
-        const e = stack.pop();
-        chain.push(e);
-        for (const n of [eA[e], eB[e]]) {
-          for (let a = outStart[n]; a < outStart[n + 1]; a++) {
-            const other = outEdge[a];
-            if (offsets.has(other) && !seen.has(other)) {
-              seen.add(other);
-              stack.push(other);
-            }
-          }
-        }
-      }
-      let lenSum = 0, weighted = 0;
-      for (const e of chain) { lenSum += eLen[e]; weighted += offsets.get(e) * eLen[e]; }
-      // A stub is a crossing or connector, not a side path.
-      if (lenSum < 150) continue;
-      // The side label is an identity, nothing more: the ban below only
-      // asks whether two edges belong to different chains.
-      const side = weighted / lenSum < 0 ? 'west' : 'east';
-      for (const e of chain) chainOf.set(e, side);
-    }
-    rooseveltPatchSets = { chainOf };
-  }
-  return rooseveltPatchSets;
-}
-// The data joins the two side paths at a SOUTH tip the ground does not
-// offer as a turnaround. The lanes are already one-way in OSM (west 6/6
-// edges, east 8/12); the tip exists because the southbound lane has no
-// mapped street connection of its own and drains through the join onto the
-// east way's last metres. So the ban is a scalpel, measured twice:
-//  - Banning every cross-chain step severed the southbound crossing
-//    outright (a 6 km Montlake detour) — the drain is load-bearing.
-//  - The bogus movement is specifically the TURNAROUND: crossing the tip
-//    and heading back NORTH across the bridge.
-// A cross-chain step is therefore refused only in the bridge's southern
-// half AND only when the entered edge is traversed northward; the
-// southward drain to the street stays legal.
-const ROOSEVELT_TIP_MAX_LAT = 47.6525;
-function rooseveltCrossChain(fromEdge, toEdge, atNode, toForward) {
-  if (nodeLat[atNode] >= ROOSEVELT_TIP_MAX_LAT) return false;
-  const p = ensureRooseveltPatch();
-  const from = p.chainOf.get(fromEdge);
-  if (from === undefined) return false;
-  const to = p.chainOf.get(toEdge);
-  if (to === undefined || to === from) return false;
-  const dLat = toForward ? nodeLat[eB[toEdge]] - nodeLat[eA[toEdge]]
-    : nodeLat[eA[toEdge]] - nodeLat[eB[toEdge]];
-  return dLat > 0;
-}
 
 const _dec = new TextDecoder();
 // The signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
@@ -3003,12 +2897,6 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
       if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
-      // The Roosevelt Bridge experiment: the data joins the bridge's two
-      // side paths at a tip the ground does not offer. Break it — stepping
-      // straight from one side path onto the other is refused, so turning
-      // around costs a real street crossing (rooseveltCrossChain).
-      if (rules.rooseveltBridgePatch && incomingEdge >= 0
-        && rooseveltCrossChain(incomingEdge, ei, u, forward)) continue;
       // Technical mountain-bike paths are opt-in. Unlike a bicycle=no road,
       // they remain available to an informed rider, but never appear in an
       // ordinary road-bike route.
@@ -4206,6 +4094,68 @@ const NETWORK_GAP_PRICE_S_PER_M = 0.2;
 // long trail-heavy recommendations are welcome), just a gentler rate.
 // Rider's call, 2026-08-19.
 const TRAIL_BONUS_S_PER_M = 0.08;
+// Doubling back is priced, because the trail credit invited it: on the
+// University Bridge trip that motivated this (field, 2026-08-27), twelve
+// candidates rode a kilometre SOUTH over the bridge and straight back
+// north — pure detour, no progress — because a bidirectional sidepath let
+// the loop earn enough trail credit to win the star (18.8 min against the
+// honest route's 20.0). A doubled meter buys nothing at all, so it costs
+// twice the ordinary-road rate, on top of whatever credit it earned. The
+// first 150 m are free: measured portfolios carry ~125 m of benign
+// doubling (a spur, a snap approach), and a via trip's intended
+// out-and-back is roughly constant across its candidates, so the penalty
+// cancels in their comparison.
+const DOUBLE_BACK_FREE_M = 150;
+const DOUBLE_BACK_PRICE_S_PER_M = 0.4;
+// Metres of a route ridden alongside ITSELF in the opposite direction:
+// ~15 m samples with headings, a 25 m spatial hash, and a match when a
+// sample from a different passage (>120 m apart along the route) sits
+// within 25 m heading the opposite way. Both passes of a retrace match,
+// so a there-and-back of L metres measures ~2L.
+function routeDoubleBackM(coords) {
+  if (!coords || coords.length < 4) return 0;
+  const kLon = 111320 * Math.cos(coords[0][1] * Math.PI / 180), kLat = 110540;
+  const pts = [];
+  let acc = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const x0 = coords[i - 1][0] * kLon, y0 = coords[i - 1][1] * kLat;
+    const x1 = coords[i][0] * kLon, y1 = coords[i][1] * kLat;
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    if (!len) continue;
+    const n = Math.max(1, Math.round(len / 15));
+    for (let s = 0; s < n; s++) {
+      pts.push({ x: x0 + dx * (s + 0.5) / n, y: y0 + dy * (s + 0.5) / n,
+        hx: dx / len, hy: dy / len, len: len / n, m: acc + len * (s + 0.5) / n });
+    }
+    acc += len;
+  }
+  const CELL = 25;
+  const grid = new Map();
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const key = Math.floor(p.x / CELL) + ':' + Math.floor(p.y / CELL);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(i);
+  }
+  let matched = 0;
+  for (const p of pts) {
+    const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL);
+    let hit = false;
+    for (let gx = cx - 1; gx <= cx + 1 && !hit; gx++) {
+      for (let gy = cy - 1; gy <= cy + 1 && !hit; gy++) {
+        for (const j of grid.get(gx + ':' + gy) || []) {
+          const q = pts[j];
+          if (Math.abs(q.m - p.m) < 120) continue;
+          if (p.hx * q.hx + p.hy * q.hy > -0.7) continue;
+          if (Math.hypot(p.x - q.x, p.y - q.y) <= 25) { hit = true; break; }
+        }
+      }
+    }
+    if (hit) matched += p.len;
+  }
+  return matched;
+}
 function recommendationScoreBreakdown(route) {
   const travelS = route.timeS;
   const failS = route.failM * FAIL_AVOID_PRICE_S_PER_M;
@@ -4213,9 +4163,15 @@ function recommendationScoreBreakdown(route) {
   const ordinaryRoadM = Math.max(0, route.distM - route.ferryM - route.facilityM);
   const ordinaryRoadS = ordinaryRoadM * NETWORK_GAP_PRICE_S_PER_M;
   const trailCreditS = (route.trailM || 0) * TRAIL_BONUS_S_PER_M;
+  if (route._doubleBackM === undefined) {
+    route._doubleBackM = Math.round(routeDoubleBackM(route.coords));
+  }
+  const doubleBackS = Math.max(0, route._doubleBackM - DOUBLE_BACK_FREE_M)
+    * DOUBLE_BACK_PRICE_S_PER_M;
   return {
-    totalS: travelS + failS + dismountS + ordinaryRoadS - trailCreditS,
+    totalS: travelS + failS + dismountS + ordinaryRoadS + doubleBackS - trailCreditS,
     travelS, failS, dismountS, ordinaryRoadS, trailCreditS, ordinaryRoadM,
+    doubleBackS, doubleBackM: route._doubleBackM,
   };
 }
 const recommendationScore = (route) => recommendationScoreBreakdown(route).totalS;
