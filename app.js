@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.903';
+const APP_VERSION = '2026-08-26.904';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11677,7 +11677,11 @@ function syncRouteOptionControls() {
 function setRouteOptionsLoading(loading) {
   // Every compute path passes through here on its way in, which makes it
   // the one reliable place to arm the top loading bar for calculation work.
-  if (loading) armMapLoadingBar();
+  // It is also where the description pill has to go: it describes a route
+  // from the portfolio now being replaced, and at boot a GPS fix moving the
+  // start left it on screen over "Calculating route options" (field,
+  // 2026-08-28), describing a route the rider was about to lose.
+  if (loading) { armMapLoadingBar(); hideRouteDescriptionToast(); }
   const host = document.getElementById('routeOptions');
   if (!host) return;
   host.classList.toggle('loading', loading);
@@ -12328,7 +12332,10 @@ function hideRouteDescriptionToast() {
 }
 function showRouteDescriptionToast(option) {
   const host = document.getElementById('routeDescToast');
-  if (!host || turnNav.active) return;
+  // Nothing is described while a computation is in flight: the candidates it
+  // would read from belong to the portfolio being replaced.
+  if (!host || turnNav.active
+    || routing.pendingRoute || routing.routeRequestActive) return;
   const profileId = option?.optimization?.profileId;
   const all = routing.allCandidates || [];
   const text = profileId && all.length

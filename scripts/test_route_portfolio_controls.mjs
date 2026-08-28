@@ -283,6 +283,45 @@ check('the pill stays out of turn navigation', !descToast.nav.visible,
 check('a tap dismisses the pill instantly',
   descToast.tap.beforeTap && !descToast.tap.afterTap, JSON.stringify(descToast.tap));
 
+/* ------- no description while the routes it describes are being replaced */
+// Field, 2026-08-28: booting with a stored trip drew the old route, a GPS fix
+// moved the start, and the pill sat over "Calculating route options"
+// describing a route about to be replaced.
+const staleToast = await page.evaluate(() => {
+  const candidate = { profileId: 'p-stale', label: 'Route A', presented: true,
+    distM: 9000, timeS: 2000, failM: 0, trailM: 5000, facilityM: 6000,
+    desigM: 0, residentialM: 500, freewayM: 0, limitedAccessM: 0,
+    ferryM: 0, ascentM: 40, levelM: [0, 3000, 0, 0, 0] };
+  routing.allCandidates = [candidate];
+  const option = { ok: true, coords: [[0, 0]], segs: [], distM: 9000, timeS: 2000,
+    failM: 0, optimization: { label: 'Route A', profileId: 'p-stale' } };
+  const host = document.getElementById('routeDescToast');
+  const wasActive = routing.routeRequestActive;
+  try {
+    // A pill already on screen goes when the next computation starts.
+    activateRouteOption(option);
+    const beforeRecompute = host.classList.contains('show');
+    setRouteOptionsLoading(true);
+    const afterRecomputeStarted = host.classList.contains('show');
+    setRouteOptionsLoading(false);
+    // And a selection made mid-computation describes nothing.
+    routing.routeRequestActive = true;
+    activateRouteOption(option);
+    const duringRecompute = host.classList.contains('show');
+    return { beforeRecompute, afterRecomputeStarted, duringRecompute };
+  } finally {
+    routing.routeRequestActive = wasActive;
+    routing.allCandidates = [];
+    host.classList.remove('show');
+    document.getElementById('routeOptions')?.classList.remove('loading');
+  }
+});
+check('starting a recompute takes the pill off screen',
+  staleToast.beforeRecompute && !staleToast.afterRecomputeStarted,
+  JSON.stringify(staleToast));
+check('a route chosen mid-computation describes nothing',
+  !staleToast.duringRecompute, JSON.stringify(staleToast));
+
 /* ------- tapping a letter fits the map to that route */
 const letterZoom = await page.evaluate(async () => {
   const mkOption = (id, coords) => ({ ok: true, coords, segs: [], distM: 15000,
