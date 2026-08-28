@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.902';
+const APP_VERSION = '2026-08-26.903';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11982,19 +11982,22 @@ function allRoutesSummary(all) {
   const recommended = all.find((c) => c.recommended);
   const meta = document.createElement('div');
   meta.className = 'all-routes-meta';
+  // Three short rows and a footnote. The basis sentence already opens with
+  // "Starred because…", so the ★ carries that and the sentence loses it.
+  const basis = recommended
+    ? recommendationBasisLabel(recommended.recommendationBasis)
+      .replace(/^Starred (because|as) /, '').replace(/\.$/, '')
+    : '';
   meta.innerHTML = `
-    <p><b>${all.length}</b> routes built · <b>${offered.length}</b> offered${
+    <p><b>${all.length}</b> built · <b>${offered.length}</b> offered${
       cutLine ? ` · ${cutLine}` : ''}</p>
-    <p>${mi.length ? `Distance <b>${min(mi).toFixed(1)}–${max(mi).toFixed(1)}</b> mi
-      · time <b>${formatCandidateHours(min(times))}–${formatCandidateHours(max(times))}</b>
-      · passing your rules <b>${min(pass)}–${max(pass)}%</b>` : ''}</p>
-    ${recommended ? `<p>Recommended: <b>${recommended.label}</b> — ${
-      recommendationBasisLabel(recommended.recommendationBasis)}</p>` : ''}
-    <p class="all-routes-rule">Two options fold into one when they share all but
+    ${mi.length ? `<p><b>${min(mi).toFixed(1)}–${max(mi).toFixed(1)}</b> mi ·
+      <b>${formatCandidateHours(min(times))}–${formatCandidateHours(max(times))}</b> ·
+      <b>${min(pass)}–${max(pass)}%</b> passing your rules</p>` : ''}
+    ${recommended ? `<p>★ <b>${recommended.label}</b> — ${basis}</p>` : ''}
+    <p class="all-routes-rule">Options fold together when under
       <b>${Number(routingWeights.distinctRideMi).toFixed(2)} mi</b> of the shorter
-      route (held between 4% and 25% of it), unless the failing road, trails,
-      lanes or walking differ enough to be a different ride. Both numbers appear
-      on each row below.</p>`;
+      route differs (held to 4–25%). Each row carries its own two numbers.</p>`;
   return meta;
 }
 

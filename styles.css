@@ -208,7 +208,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-routes-empty { color: #6a7c86; font: 600 13px system-ui; }
 .all-routes-list { display: grid; gap: 9px; }
 .all-routes-meta { padding: 10px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #f4f9fc; color: #34505f; font: 500 12px/1.55 system-ui; }
-.all-routes-meta p { margin: 0; }
+.all-routes-meta p { margin: 0 0 3px; }
+.all-routes-meta p:last-child { margin-bottom: 0; }
 .all-routes-meta b { color: #16394e; }
 .all-routes-meta .all-routes-rule { margin: 7px 0 0; padding-top: 7px;
   border-top: 1px solid #dbe7ee; color: #4c6674; font-size: 11.5px; }

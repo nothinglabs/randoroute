@@ -368,17 +368,17 @@ const summary = await pg.evaluate(() => {
   return { text, rowsByStage, labels: [...labels] };
 });
 check('the summary states the folding rule the rows are measured against',
-  /fold into one when they share all but [\d.]+ mi of the shorter route/.test(summary.text)
-    && /4% and 25%/.test(summary.text), summary.text.slice(0, 400));
+  /fold together when under [\d.]+ mi of the shorter route differs/.test(summary.text)
+    && /4–25%/.test(summary.text), summary.text.slice(0, 400));
 check('a meta summary leads the list with built and offered counts',
-  new RegExp(`${state.all} routes built`).test(summary.text)
+  new RegExp(`${state.all} built`).test(summary.text)
     && new RegExp(`${state.offered} offered`).test(summary.text), summary.text);
 check('the summary spans the corpus: distance, time, and rules-pass ranges',
-  /Distance [\d.]+–[\d.]+ mi/.test(summary.text)
-    && /time \d+h\d+–\d+h\d+/.test(summary.text)
-    && /passing your rules \d+–\d+%/.test(summary.text), summary.text);
+  /[\d.]+–[\d.]+ mi/.test(summary.text)
+    && /\d+h\d+–\d+h\d+/.test(summary.text)
+    && /\d+–\d+% passing your rules/.test(summary.text), summary.text);
 check('the summary names the recommended route and its basis',
-  /Recommended: .+ — Starred/.test(summary.text), summary.text);
+  /★ .+ — \w/.test(summary.text) && !/Starred/.test(summary.text), summary.text);
 const named = (line) => summary.labels.some((label) => line.includes(label));
 const offeredRows = summary.rowsByStage.filter((r) => r.stage === 'offered');
 check('every offered row reports its closest boardmate with a shared-road score',
