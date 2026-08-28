@@ -207,6 +207,12 @@ check('every row explains why it was built',
 // "Usually" is the contract - collisions fall through to a shared fallback
 // rather than forcing awkward one-offs - so the uniqueness floor is 70%.
 const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
+// The pill fits about 36 characters a line and clamps at three, so a
+// description past ~125 characters loses its tail rather than showing it
+// (2026-08-28). Words are the readability bound, characters the layout one.
+check('no description overruns the three lines it is given',
+  rows.every((r) => r.desc.length <= 125),
+  JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
 check('every row carries a 6-25 word character line',
   rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 25),
   rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)

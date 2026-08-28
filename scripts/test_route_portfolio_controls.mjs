@@ -228,6 +228,9 @@ const descToast = await page.evaluate(() => {
     visible: host.classList.contains('show'),
     hasClose: !!host.querySelector('.route-desc-close'),
     clampedToThreeLines: !!textEl && textEl.clientHeight <= lineH * 3 + 1,
+    // A description that fits must not be clipped by the clamp meant to
+    // catch the ones that do not.
+    unclipped: !!textEl && textEl.scrollHeight <= textEl.clientHeight + 1,
     textHeight: textEl?.clientHeight, lineH,
     placed, phoneLayout, pillTop: pill.top, pillLeft: pill.left,
     pillRight: pill.right, panelTop: panel.top, panelBottom: panel.bottom,
@@ -248,17 +251,14 @@ const descToast = await page.evaluate(() => {
 });
 check('choosing a route shows its description pill',
   descToast.shown.visible && descToast.shown.text.length > 10
-    // startsWith, not equality, while the temporary three-line stock filler
-    // is appended in showRouteDescriptionToast. Restore equality when that
-    // filler goes.
-    && descToast.shown.text.startsWith(descToast.expected),
-  JSON.stringify(descToast));
+    && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
 check('the pill sits by the chooser, clear of the Navigate button',
   descToast.shown.placed, JSON.stringify(descToast.shown));
 check('the pill spends its width on the description, with no dismiss mark',
   !descToast.shown.hasClose, JSON.stringify(descToast.shown));
-check('the pill holds its text to three lines',
-  descToast.shown.clampedToThreeLines, JSON.stringify(descToast.shown));
+check('the pill holds its text to three lines, showing all of it',
+  descToast.shown.clampedToThreeLines && descToast.shown.unclipped,
+  JSON.stringify(descToast.shown));
 
 /* ------- the details header carries the same description */
 const detailsDesc = await page.evaluate(() => {

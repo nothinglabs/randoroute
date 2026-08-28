@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.915';
+const APP_VERSION = '2026-08-26.916';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12134,36 +12134,34 @@ function candidateRouteDescriptions(all) {
       out.push(`${Math.round(f.trafficMi)} mi traffic`);
     }
     if (f.ascentFt >= 2000 && !/Flattest|Hilliest|flatter/.test(phrase)) out.push('hilly');
+    // A ferry is a mode change, not a detail: it is named whenever the
+    // phrase does not already say so.
+    if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
     if (f.trailMi >= 2 && !/trail|protected|signed/i.test(phrase)) {
       out.push(`${miText(f.trailMi)} mi trail`);
-    } else if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
-    // The pill is two lines whatever it holds, so a short description wastes
-    // one (field ask, 2026-08-28). Fill it from the facts this route has not
-    // spent yet -- never one the phrase or a condition already carries.
-    // Facts group into families that mean the same ride: trail mileage,
-    // signed-route mileage and "protected" are largely the same miles here,
-    // so a line that already carries one of them may not take another.
+    }
+    // Three lines of room, filled in order of what decides a ride, and only
+    // while the line stays inside them. Each fact must also be worth its
+    // words: a 2.5-mile residential stretch on a 60-mile ride is noise, so
+    // the mileage thresholds scale with the route.
     const line = () => `${phrase} — ${out.join(', ')}`;
+    let fills = 0;
     const spend = (family, text) => {
-      if (line().length >= 62 || family.test(line())) return;
+      if (fills >= 3 || family.test(line())) return;
+      // Three lines at the pill's ~36 characters a line. Past that the clamp
+      // eats the fact rather than showing it.
+      if (line().length + text.length + 2 > 108) return;
       out.push(text);
+      fills += 1;
     };
-    // What this route costs against the shortest option on the board goes
-    // first: a bare total is filler, "+15 mi vs Route C" is a decision
-    // (field ask, 2026-08-28).
-    // Distance is compared against the RECOMMENDED route (field ask,
-    // 2026-08-28): the star is the answer the rider is deciding against, so
-    // every other row is priced in its terms, above or below. Three tenths
-    // of a mile is worth naming -- on a board of 18-mile routes the whole
-    // spread between them is under a mile.
+    // What this route costs against the RECOMMENDED one: the star is the
+    // answer a rider decides against. The star itself is priced against the
+    // shortest option, so the row studied hardest is not the emptiest.
     const baseline = facts.find((g) => g.c.recommended)
       || facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
     const shortest = facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
     const deltaMi = f.mi - baseline.mi;
     if (baseline === f) {
-      // The star cannot be priced against itself, so it is priced against
-      // the shortest option instead -- otherwise the one row a rider looks
-      // at hardest is the one carrying the least.
       const overShortest = f.mi - shortest.mi;
       if (shortest === f) spend(/shortest/i, 'shortest here');
       else if (overShortest >= 0.3 && shortest.c.label) {
@@ -12173,15 +12171,15 @@ function candidateRouteDescriptions(all) {
       spend(/ vs |shortest/i, `${deltaMi > 0 ? '+' : '−'}${miText(Math.abs(deltaMi))}`
         + ` mi vs ${baseline.c.label}`);
     }
-    const GREEN = /trail|signed|protected|off-street/i;
-    if (f.trailMi >= 1) spend(GREEN, `${miText(f.trailMi)} mi trail`);
-    if (f.desigMi >= 2) spend(GREEN, `${miText(f.desigMi)} mi signed`);
-    // Miles, not shares: the row under this already prints the percentages,
-    // and a share says nothing about how long the ride is. The thresholds
-    // keep a mile of painted lane on an 18-mile ride out of the line.
-    if (f.laneMi >= 1.5) spend(/lane|protected/i, `${miText(f.laneMi)} mi bike lanes`);
-    if (f.resMi >= 1.5) spend(/residential/i, `${miText(f.resMi)} mi residential`);
-    if (f.ferry) spend(/ferry/i, 'ferry');
+    // Riding time: the row beneath the pill shows it, the pill does not, and
+    // it is what the extra miles are weighed against.
+    spend(/\dh\d|riding/i, `${formatCandidateHours(f.c.timeS)} riding`);
+    const share = (mi) => Math.max(1.5, f.mi * 0.12) <= mi;
+    if (share(f.laneMi)) spend(/lane|protected/i, `${miText(f.laneMi)} mi bike lanes`);
+    if (share(f.resMi)) spend(/residential/i, `${miText(f.resMi)} mi residential`);
+    if (f.desigMi >= 2) {
+      spend(/trail|signed|protected|off-street/i, `${miText(f.desigMi)} mi signed`);
+    }
     return out;
   };
   const used = new Set();
@@ -12325,9 +12323,6 @@ function hideRouteDescriptionToast() {
   clearTimeout(routeDescToastTimer);
   document.getElementById('routeDescToast')?.classList.remove('show');
 }
-// TEMPORARY, see showRouteDescriptionToast below.
-const PILL_STOCK_FILLER = ' — stock filler text, here only to show how three '
-  + 'full lines of description sit in the bubble.';
 function showRouteDescriptionToast(option) {
   const host = document.getElementById('routeDescToast');
   // Nothing is described while a computation is in flight: the candidates it
@@ -12341,12 +12336,7 @@ function showRouteDescriptionToast(option) {
   if (!text) { hideRouteDescriptionToast(); return; }
   const body = document.createElement('span');
   body.className = 'route-desc-text';
-  // TEMPORARY (2026-08-28, rider ask: "just add stock text ... I just want to
-  // see it"): stock filler so a short description reaches three lines and the
-  // shape of the taller bubble is visible. Delete this and PILL_STOCK_FILLER
-  // once the look is decided; nothing else reads it.
-  body.textContent = text.length < 118
-    ? `${text}${PILL_STOCK_FILLER}`.slice(0, 200) : text;
+  body.textContent = text;
   // No ✕ (field ask, 2026-08-28): it cost the width of two words on every
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.
