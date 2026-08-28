@@ -3601,25 +3601,57 @@ function edgeOverlap(a, b) {
   return sharedM / Math.max(1, Math.min(a.distM, b.distM));
 }
 
-function materialTradeoff(a, b) {
+// The outcome differences that can keep a near-twin, as one table read two
+// ways: materialTradeoff asks whether ANY term reached its threshold, and the
+// More screen asks WHICH one did -- or which came closest -- so a rider
+// looking at two similar lines sees the measurement behind the verdict.
+function tradeoffTerms(a, b) {
   // The rider's twinTradeoffX slider scales every threshold at once: below
   // 1, smaller outcome differences keep a near-twin; above 1 only large
   // ones do. At the default 1 this is exactly the shipped behaviour.
   const x = Math.min(3, Math.max(0.3, activeWeights.twinTradeoffX || 1));
   const routeScale = Math.max(250, Math.min(a.distM, b.distM) * 0.08) * x;
-  // A short failing stretch can be the most important difference on a long
-  // ride. Do not scale this threshold with total route length: doing so once
-  // hid hundreds of feet of avoided rule failures as an "equivalent" route.
-  return Math.abs(a.failM - b.failM) >= 60 * x
-    || Math.abs(a.freewayM - b.freewayM) >= 60 * x
-    || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120 * x, routeScale * 0.5)
-    || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40 * x
-    || (!!a.dismountM !== !!b.dismountM)
-    || Math.abs(a.facilityM - b.facilityM) >= routeScale
-    || Math.abs((a.trailM || 0) - (b.trailM || 0)) >= routeScale
-    || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50 * x
-    || Math.abs(a.desigM - b.desigM) >= routeScale
-    || Math.abs(a.residentialM - b.residentialM) >= routeScale;
+  const gap = (key) => Math.abs((a[key] || 0) - (b[key] || 0));
+  return [
+    // A short failing stretch can be the most important difference on a long
+    // ride. Do not scale this threshold with total route length: doing so once
+    // hid hundreds of feet of avoided rule failures as an "equivalent" route.
+    { key: 'failM', label: 'failing road', delta: gap('failM'), need: 60 * x },
+    { key: 'freewayM', label: 'freeway', delta: gap('freewayM'), need: 60 * x },
+    { key: 'limitedAccessM', label: 'limited-access road',
+      delta: gap('limitedAccessM'), need: Math.max(120 * x, routeScale * 0.5) },
+    { key: 'mtbM', label: 'mountain-bike trail', delta: gap('mtbM'), need: 40 * x },
+    { key: 'dismountM', label: 'walking the bike', flag: true,
+      delta: (!!a.dismountM !== !!b.dismountM) ? 1 : 0, need: 1 },
+    { key: 'facilityM', label: 'bike lane', delta: gap('facilityM'), need: routeScale },
+    { key: 'trailM', label: 'trail', delta: gap('trailM'), need: routeScale },
+    { key: 'hazardM', label: 'hazard', delta: gap('hazardM'), need: 50 * x },
+    { key: 'desigM', label: 'signed bike route', delta: gap('desigM'), need: routeScale },
+    { key: 'residentialM', label: 'residential street',
+      delta: gap('residentialM'), need: routeScale },
+  ];
+}
+
+function materialTradeoff(a, b) {
+  return tradeoffTerms(a, b).some((term) => term.delta >= term.need);
+}
+
+// The dedupe verdict on one pair, for the More screen: the two numbers the
+// comparison actually turned on, plus the outcome difference that kept the
+// pair apart (or, for a pair that folded, the one that came closest). The
+// caller passes the overlap it already has -- edgeOverlap builds two sets and
+// is the expensive half.
+function twinVerdict(a, b, overlap) {
+  const limit = twinOverlapLimit(a, b);
+  let best = null;
+  for (const term of tradeoffTerms(a, b)) {
+    if (!best || term.delta / term.need > best.delta / best.need) best = term;
+  }
+  const asPart = (term) => term && { label: term.label, flag: !!term.flag,
+    deltaM: Math.round(term.delta), needM: Math.round(term.need) };
+  const reached = best && best.delta >= best.need && overlap < 0.99 ? best : null;
+  return { overlap, limit, distinctByRoads: overlap < limit,
+    keptBy: overlap < limit ? null : asPart(reached), closest: asPart(best) };
 }
 
 // Distinctness is measured in ROAD, not percentage alone. The old flat 4%
@@ -5841,7 +5873,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       const value = pairOverlap(candidate, offered);
       if (value >= overlap) { overlap = value; best = offered; }
     }
-    return best ? { mateId: best._profile.id, overlap } : null;
+    return best ? { mateId: best._profile.id, overlap,
+      twin: twinVerdict(candidate, best, overlap) } : null;
   };
   for (const candidate of raw) {
     candidate._stageData = null;
@@ -5860,16 +5893,18 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         ? `Effectively the same roads as ${twin._outcome?.label || twin._profile.label}.`
         : 'Effectively the same roads as another option.';
       if (twin) {
-        candidate._stageData = { mateId: twin._profile.id,
-          overlap: pairOverlap(candidate, twin) };
+        const overlap = pairOverlap(candidate, twin);
+        candidate._stageData = { mateId: twin._profile.id, overlap,
+          twin: twinVerdict(candidate, twin, overlap) };
       }
     } else if (!inUseful.has(candidate)) {
       const dominator = dominatorOf.get(candidate);
       candidate._stage = 'dominated';
       candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
       if (dominator) {
-        candidate._stageData = { mateId: dominator._profile.id,
-          overlap: pairOverlap(candidate, dominator),
+        const overlap = pairOverlap(candidate, dominator);
+        candidate._stageData = { mateId: dominator._profile.id, overlap,
+          twin: twinVerdict(candidate, dominator, overlap),
           slowerS: candidate.timeS - dominator.timeS,
           moreSevereM: severeM(candidate) - severeM(dominator) };
       }

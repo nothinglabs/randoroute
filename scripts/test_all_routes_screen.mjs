@@ -367,6 +367,9 @@ const summary = await pg.evaluate(() => {
   }));
   return { text, rowsByStage, labels: [...labels] };
 });
+check('the summary states the folding rule the rows are measured against',
+  /fold into one when they share all but [\d.]+ mi of the shorter route/.test(summary.text)
+    && /4% and 25%/.test(summary.text), summary.text.slice(0, 400));
 check('a meta summary leads the list with built and offered counts',
   new RegExp(`${state.all} routes built`).test(summary.text)
     && new RegExp(`${state.offered} offered`).test(summary.text), summary.text);
@@ -382,10 +385,27 @@ check('every offered row reports its closest boardmate with a shared-road score'
   offeredRows.length >= 2 && offeredRows.every((r) =>
     /Similarity: closest to .+ \d+% shared roads/.test(r.similarity) && named(r.similarity)),
   JSON.stringify(offeredRows.find((r) => !/Similarity/.test(r.similarity))));
+// The shared-road percentage alone could not answer "why are these two both
+// here" (field, 2026-08-28): 94% and 98% read identically without the
+// threshold they were measured against. Every row naming a mate now carries
+// the fold line, and a pair over it names the difference that kept it.
+const foldLine = /folds at \d+%|past the \d+% fold line/;
+check('every offered row shows the fold line its similarity was measured against',
+  offeredRows.every((r) => foldLine.test(r.similarity)),
+  JSON.stringify(offeredRows.find((r) => !foldLine.test(r.similarity))));
+check('a near-twin that was kept names the difference that kept it',
+  offeredRows.filter((r) => /past the \d+% fold line/.test(r.similarity)).every((r) =>
+    /kept for [\d.]+ (?:ft|mi) more .+ \([\d.]+ (?:ft|mi) needed\)|kept because only one/
+      .test(r.similarity)),
+  JSON.stringify(offeredRows.filter((r) => /fold line/.test(r.similarity)).slice(0, 2)));
 const dupRows = summary.rowsByStage.filter((r) => r.stage === 'duplicate');
 check('duplicate rows name their twin and the shared fraction',
   dupRows.every((r) => /same roads as .+ — \d+% shared/.test(r.stageWhy) && named(r.stageWhy)),
   JSON.stringify(dupRows.find((r) => !/% shared/.test(r.stageWhy))));
+check('a folded row says what the fold line was and what came closest to beating it',
+  dupRows.every((r) => foldLine.test(r.stageWhy)
+    && /nothing about the ride differed enough|no outcome difference counts/.test(r.stageWhy)),
+  JSON.stringify(dupRows.slice(0, 2)));
 const domRows = summary.rowsByStage.filter((r) => r.stage === 'dominated');
 check('dominated rows name who covers them and by how much',
   domRows.every((r) => /covers this corridor \(\d+% shared\)/.test(r.stageWhy)),

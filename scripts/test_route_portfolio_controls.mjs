@@ -218,9 +218,17 @@ const descToast = await page.evaluate(() => {
     : pill.top >= panel.bottom + 2)
     && (!navBtn?.width || pill.left >= navBtn.right + 6)
     && pill.right <= window.innerWidth - 4 && pill.width >= 180;
-  const shown = { text: host.querySelector('.route-desc-text')?.textContent,
+  // Two lines of text, never three, and no ✕ taking width from the copy
+  // (field ask, 2026-08-28). The clamp is measured, not read off the rule:
+  // the text box may hold more than it shows, but it may not be taller
+  // than two lines.
+  const textEl = host.querySelector('.route-desc-text');
+  const lineH = parseFloat(getComputedStyle(host).lineHeight) || 18;
+  const shown = { text: textEl?.textContent,
     visible: host.classList.contains('show'),
     hasClose: !!host.querySelector('.route-desc-close'),
+    clampedToTwoLines: !!textEl && textEl.clientHeight <= lineH * 2 + 1,
+    textHeight: textEl?.clientHeight, lineH,
     placed, phoneLayout, pillTop: pill.top, pillLeft: pill.left,
     pillRight: pill.right, panelTop: panel.top, panelBottom: panel.bottom,
     navRight: navBtn?.right };
@@ -243,8 +251,10 @@ check('choosing a route shows its description pill',
     && descToast.shown.text === descToast.expected, JSON.stringify(descToast));
 check('the pill sits by the chooser, clear of the Navigate button',
   descToast.shown.placed, JSON.stringify(descToast.shown));
-check('the pill carries a dismiss mark',
-  descToast.shown.hasClose, JSON.stringify(descToast.shown));
+check('the pill spends its width on the description, with no dismiss mark',
+  !descToast.shown.hasClose, JSON.stringify(descToast.shown));
+check('the pill holds its text to two lines',
+  descToast.shown.clampedToTwoLines, JSON.stringify(descToast.shown));
 
 /* ------- the details header carries the same description */
 const detailsDesc = await page.evaluate(() => {

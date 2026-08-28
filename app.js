@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.899';
+const APP_VERSION = '2026-08-26.900';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6306,11 +6306,11 @@ function navigationBannerInfo() {
     meta: '',
     kicker: 'Turn-by-turn navigation',
   };
-  const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
-  const projectedS = remainingNavigationTimeS();
-  const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} to go${
-    projectedS >= 45 ? ` · ~${fmtDur(projectedS)}` : ''}`;
-  if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached', arrow: 'arrive' };
+  // The banner's meta line carries only what the maneuver itself cannot say.
+  // Distance done, distance left and the estimate came off it (field ask,
+  // 2026-08-28): the Navigating card under the banner already carries all
+  // three, on its own progress bar.
+  if (turnNav.arrived) return { headline: 'You have arrived', meta: '', kicker: 'Destination reached', arrow: 'arrive' };
   if (turnNav.newRouteRequestId != null) return {
     headline: 'Finding a new route from your current location…',
     meta: 'Your current route stays active unless a replacement is found',
@@ -6343,14 +6343,14 @@ function navigationBannerInfo() {
     headline: turnNav.message,
     meta: !turnNav.locationReady
       ? 'Navigation begins after a usable GPS fix'
-      : turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
+      : turnNav.followingConnector ? 'Connector onto your route' : '',
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   if (!next) return {
     headline: turnNav.followingConnector
       ? 'Continue to your route'
       : 'Continue to your destination',
-    meta: routeMeta,
+    meta: turnNav.followingConnector ? 'Connector onto your route' : '',
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   const remaining = next.distanceM - turnNav.routeM;
@@ -6365,7 +6365,7 @@ function navigationBannerInfo() {
     headline: remaining <= 5 ? `Now: ${word}` : `${word} in ${navDistanceText(remaining)}`,
     detail: navInstructionText(next),
     arrow: next.kind === 'caution' ? 'caution' : navArrowId(next.delta),
-    meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
+    meta: turnNav.followingConnector ? 'Connector onto your route' : '',
     kicker: turnNav.followingConnector ? 'To your route' : 'Next maneuver',
   };
 }
@@ -6893,7 +6893,10 @@ function refreshNavigationUI() {
     }
     bannerArrow.hidden = !svg;
   }
-  if (bannerMeta) bannerMeta.textContent = info.meta;
+  if (bannerMeta) {
+    bannerMeta.textContent = info.meta || '';
+    bannerMeta.hidden = !info.meta;
+  }
   updateNavCard();
   syncRoutePaneVisibility();
 }
@@ -11877,6 +11880,43 @@ function formatCandidateHours(seconds) {
   return `${Math.floor(hours)}h${String(Math.round(hours % 1 * 60)).padStart(2, '0')}`;
 }
 
+// Metres in the units the rider rides in: feet below a fifth of a mile, where
+// a "0.1 mi" reads as nothing, and miles above it.
+function candidateDistanceText(m) {
+  const value = Math.max(0, Number(m) || 0);
+  return value < 322 ? `${Math.max(10, Math.round(value * 3.28084 / 10) * 10)} ft`
+    : `${(value / 1609.344).toFixed(1)} mi`;
+}
+
+// The dedupe verdict in words. Two similar-looking routes on the same board is
+// the question this screen kept failing to answer (field, 2026-08-28): the
+// shared-road percentage was shown, the threshold it was measured against was
+// not, so 94% and 98% read the same. Both numbers now appear, with the outcome
+// difference that decided it.
+function twinVerdictText(twin) {
+  if (!twin || !Number.isFinite(twin.limit)) return '';
+  const limit = `${Math.round(twin.limit * 100)}%`;
+  if (twin.distinctByRoads) {
+    return `folds at ${limit}, so this is a separate ride on roads alone`;
+  }
+  const kept = twin.keptBy;
+  if (kept) {
+    return kept.flag
+      ? `past the ${limit} fold line, kept because only one of the two walks the bike`
+      : `past the ${limit} fold line, kept for ${candidateDistanceText(kept.deltaM)} `
+        + `more ${kept.label} (${candidateDistanceText(kept.needM)} needed)`;
+  }
+  if (twin.overlap >= 0.99) {
+    return `folds at ${limit}, and past 99% shared no outcome difference counts`;
+  }
+  const near = twin.closest;
+  return near && !near.flag
+    ? `folds at ${limit}; nothing about the ride differed enough — closest was `
+      + `${candidateDistanceText(near.deltaM)} more ${near.label} against `
+      + `${candidateDistanceText(near.needM)} needed`
+    : `folds at ${limit}; nothing about the ride differed enough`;
+}
+
 // The stage sentence, upgraded with the worker's comparator when it shipped
 // one: WHO covered a dominated route and by how much, WHICH twin a duplicate
 // matches, how far past the quickest a too-slow candidate ran. Labels resolve
@@ -11892,7 +11932,9 @@ function candidateStageDetail(c, stage, labelOf) {
       + `${formatCandidateHours(d.vsQuickestS)} (${ratio}×), with no offsetting safety gain.`;
   }
   if (c.stage === 'duplicate' && mate) {
-    return `Effectively the same roads as ${mate} — ${pct(d.overlap)} shared.`;
+    const verdict = twinVerdictText(d.twin);
+    return `Effectively the same roads as ${mate} — ${pct(d.overlap)} shared`
+      + (verdict ? `, ${verdict}.` : '.');
   }
   if (c.stage === 'dominated' && mate) {
     const quicker = d.slowerS >= 60
@@ -11903,7 +11945,9 @@ function candidateStageDetail(c, stage, labelOf) {
     return `${mate} covers this corridor (${pct(d.overlap)} shared), is ${quicker},${safer}.`;
   }
   if (c.stage === 'not-chosen' && mate) {
-    return `${c.stageWhy} Closest offered route: ${mate}, ${pct(d.overlap)} shared.`;
+    const verdict = twinVerdictText(d.twin);
+    return `${c.stageWhy} Closest offered route: ${mate}, ${pct(d.overlap)} shared`
+      + (verdict ? ` — ${verdict}` : '') + '.';
   }
   return c.stageWhy;
 }
@@ -11915,8 +11959,10 @@ function candidateSimilarityLine(c, labelOf) {
   const d = c.stageData;
   if (c.stage !== 'offered' || !d?.mateId) return '';
   const mate = labelOf.get(d.mateId) || 'another offered route';
+  const verdict = twinVerdictText(d.twin);
   return `<p class="all-route-stage-why"><b>Similarity:</b> closest to ${mate}, `
-    + `${Math.round((Number(d.overlap) || 0) * 100)}% shared roads.</p>`;
+    + `${Math.round((Number(d.overlap) || 0) * 100)}% shared roads`
+    + (verdict ? ` — ${verdict}` : '') + `.</p>`;
 }
 
 // The portfolio at a glance, above the rows: how many routes were built and
@@ -11943,7 +11989,12 @@ function allRoutesSummary(all) {
       · time <b>${formatCandidateHours(min(times))}–${formatCandidateHours(max(times))}</b>
       · passing your rules <b>${min(pass)}–${max(pass)}%</b>` : ''}</p>
     ${recommended ? `<p>Recommended: <b>${recommended.label}</b> — ${
-      recommendationBasisLabel(recommended.recommendationBasis)}</p>` : ''}`;
+      recommendationBasisLabel(recommended.recommendationBasis)}</p>` : ''}
+    <p class="all-routes-rule">Two options fold into one when they share all but
+      <b>${Number(routingWeights.distinctRideMi).toFixed(2)} mi</b> of the shorter
+      route (held between 4% and 25% of it), unless the failing road, trails,
+      lanes or walking differ enough to be a different ride. Both numbers appear
+      on each row below.</p>`;
   return meta;
 }
 
@@ -12283,14 +12334,10 @@ function showRouteDescriptionToast(option) {
   const body = document.createElement('span');
   body.className = 'route-desc-text';
   body.textContent = text;
-  // A visible way out. The whole pill already dismisses on tap; the ✕ is
-  // the affordance saying so (field ask, 2026-08-27), so it carries no
-  // behavior of its own — its tap bubbles to the host.
-  const close = document.createElement('span');
-  close.className = 'route-desc-close';
-  close.setAttribute('aria-hidden', 'true');
-  close.textContent = '✕';
-  host.replaceChildren(body, close);
+  // No ✕ (field ask, 2026-08-28): it cost the width of two words on every
+  // description and the whole pill already dismisses on tap. The text is
+  // clamped to two lines in CSS, so the bubble's height cannot grow.
+  host.replaceChildren(body);
   // Just above the route chooser, to the right of the Navigate button and
   // never overlapping it (field ask, 2026-08-27 — down from over the
   // start/destination card, where it hid what the rider was reaching for).
@@ -12301,14 +12348,14 @@ function showRouteDescriptionToast(option) {
   const nav = document.getElementById('navStartButton')?.getBoundingClientRect();
   const vw = window.innerWidth, vh = window.innerHeight;
   if (panel && panel.width) {
-    const left = Math.round(Math.max(nav?.width ? nav.right + 10 : vw * 0.3, vw * 0.24));
+    const left = Math.round(Math.max(nav?.width ? nav.right + 8 : vw * 0.28, vw * 0.22));
     host.style.left = `${left}px`;
-    host.style.width = `${Math.max(180, Math.min(vw - left - 10, 560))}px`;
+    host.style.width = `${Math.max(180, Math.min(vw - left - 8, 620))}px`;
     host.style.removeProperty('min-height');
     const height = host.offsetHeight || 48;
     const phoneLayout = panel.top > vh * 0.5;
-    host.style.top = `${Math.round(phoneLayout ? panel.top - height - 8
-      : Math.min(panel.bottom + 8, vh - height - 10))}px`;
+    host.style.top = `${Math.round(phoneLayout ? panel.top - height - 4
+      : Math.min(panel.bottom + 6, vh - height - 8))}px`;
   }
   host.classList.add('show');
   clearTimeout(routeDescToastTimer);
@@ -12612,7 +12659,13 @@ function fitRouteOptionBounds(option) {
     top: clamp(bar && bar.bottom > 0 ? bar.bottom + 16 : 60),
     bottom: clamp(panel && viewH > panel.top ? viewH - panel.top + 16 : 60),
   };
-  const bounds = [[minLon, minLat], [maxLon, maxLat]];
+  // A tenth more span than the route strictly needs, so the line clears the
+  // screen edges instead of grazing them (field ask, 2026-08-28). Applied to
+  // the fit only: routeOptionOutOfView still tests the true bbox, so the
+  // looser camera cannot re-trigger the fit it just performed.
+  const spanLon = (maxLon - minLon) * 0.05, spanLat = (maxLat - minLat) * 0.05;
+  const bounds = [[minLon - spanLon, minLat - spanLat],
+    [maxLon + spanLon, maxLat + spanLat]];
   try {
     map.fitBounds(bounds, { padding, maxZoom: 13 });
   } catch (error) {

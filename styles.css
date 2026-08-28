@@ -210,6 +210,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-routes-meta { padding: 10px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #f4f9fc; color: #34505f; font: 500 12px/1.55 system-ui; }
 .all-routes-meta p { margin: 0; }
 .all-routes-meta b { color: #16394e; }
+.all-routes-meta .all-routes-rule { margin: 7px 0 0; padding-top: 7px;
+  border-top: 1px solid #dbe7ee; color: #4c6674; font-size: 11.5px; }
 /* Thumbnail left, everything else right. The sketch is the fastest way to tell
    two candidates apart, so it leads. */
 .all-route-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; width: 100%; padding: 11px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }
@@ -407,10 +409,16 @@ body:not(.navigation-active) #navCard { display: none; }
    bar's short height stops wasting a whole band. */
 .nav-card-foot { display: flex; align-items: center; gap: 10px; height: 38px; min-height: 38px; margin-top: -2px; padding-left: 82px; }
 #navCard .nav-card-details { flex: none; }
-.nav-progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.nav-progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;
+  padding-right: max(18px, env(safe-area-inset-right)); }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
 #navProgressFill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, #00795c, #12a37c); transition: width .4s ease; }
-.nav-progress-meta { display: flex; flex-wrap: nowrap; align-items: baseline; justify-content: space-between; gap: 1px 8px; padding-right: 6px; }
+/* The ETA is the last thing on the last line of the screen, so it sits
+   where a curved display clips (field, 2026-08-28: "ETA 11:19 PM" lost
+   its right edge). Portrait safe-area insets read zero on those phones,
+   so the optical inset has to stand on its own. */
+.nav-progress-meta { display: flex; flex-wrap: nowrap; align-items: baseline;
+  justify-content: space-between; gap: 1px 8px; }
 .nav-progress-meta span { min-width: 0; overflow: hidden; color: #6a7a84; font: 800 11.5px/1.2 system-ui; text-overflow: ellipsis; white-space: nowrap; }
 .nav-progress-meta strong { flex: none; color: #223c4b; font: 800 12px/1.25 system-ui; white-space: nowrap; }
 /* Elevation chart at half width; destination + current-segment facts fill the
@@ -1769,13 +1777,15 @@ body.street-view-open #map { visibility: hidden; }
   box-shadow: 0 3px 12px rgba(0, 80, 130, .35); }
 .route-desc-toast { position: fixed; z-index: 64; box-sizing: border-box;
   display: flex; align-items: center; max-width: 96vw;
-  padding: 10px 34px 10px 16px; border-radius: 16px; background: rgba(28, 46, 58, .41);
-  color: #fff; font: 640 13.5px/1.45 system-ui; box-shadow: 0 4px 14px rgba(20, 35, 45, .28);
+  padding: 7px 14px; border-radius: 15px; background: rgba(28, 46, 58, .41);
+  color: #fff; font: 640 13.5px/1.34 system-ui; box-shadow: 0 4px 14px rgba(20, 35, 45, .28);
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 .route-desc-toast.show { opacity: 1; pointer-events: auto; }
-.route-desc-toast .route-desc-close { position: absolute; top: 9px; right: 13px;
-  font: 700 22px/1 system-ui; color: rgba(255, 255, 255, .85); }
+/* Two lines, never three: the bubble's height is fixed by the clamp rather
+   than by whichever description happened to be longest (field, 2026-08-28). */
+.route-desc-toast .route-desc-text { display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .weights-subnav { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: nowrap; gap: 6px;
   overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   padding: 8px 2px 9px; margin: 0 0 8px; background: #fff; border-bottom: 1px solid #e2eaef; }

@@ -81,6 +81,29 @@ try {
   check('and the banner hands back to turn guidance within seconds',
     later.active && /^(Left turn|Right turn|Slight |Straight|Hairpin|Continue|Now:|Caution|Off route|You have arrived)/.test(later.banner),
     JSON.stringify(later));
+
+  // The banner carries the maneuver, not the trip's progress: distance done,
+  // distance left and the estimate live on the Navigating card's own progress
+  // bar, and printing them twice cost the banner a line (field ask,
+  // 2026-08-28). The card must still carry them.
+  const progress = await page.evaluate(() => {
+    const meta = document.getElementById('navBannerMeta');
+    const card = document.getElementById('navProgressDist');
+    const eta = document.getElementById('navProgressEta');
+    const etaBox = eta?.getBoundingClientRect();
+    const pane = document.getElementById('navCard')?.getBoundingClientRect()
+      || { right: window.innerWidth };
+    return { bannerMeta: meta?.textContent || '', bannerMetaHidden: !!meta?.hidden,
+      cardDist: card?.textContent || '', cardEta: eta?.textContent || '',
+      etaGap: Math.round(pane.right - (etaBox?.right ?? pane.right)) };
+  });
+  check('the banner no longer repeats the trip progress',
+    !/done|to go/i.test(progress.bannerMeta), JSON.stringify(progress));
+  check('the Navigating card still reports distance done and left',
+    /done/.test(progress.cardDist) && /left|Waiting/.test(progress.cardDist),
+    JSON.stringify(progress));
+  check('the estimate keeps clear of the curved right edge',
+    progress.etaGap >= 14, JSON.stringify(progress));
 } finally {
   await browser.close();
   site.close();
