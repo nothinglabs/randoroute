@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.917';
+const APP_VERSION = '2026-08-26.918';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6455,7 +6455,7 @@ function openRouteDetails(detailTab = null, concernId = null) {
     const all = routing.allCandidates || [];
     const text = !turnNav.active && profileId && all.length
       ? candidateRouteDescriptions(all).get(profileId) : null;
-    desc.textContent = text || '';
+    desc.innerHTML = routeDescriptionHtml(text || '');
     desc.hidden = !text;
   }
   frame.title = dialogTitle;
@@ -12162,11 +12162,11 @@ function candidateRouteDescriptions(all) {
     const shortest = facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
     const deltaMi = f.mi - baseline.mi;
     if (baseline === f) {
-      const overShortest = f.mi - shortest.mi;
+      // The star is the reference, so it is never measured against another
+      // route (field ask, 2026-08-28: the comparison always names the
+      // recommendation, and pricing the star against the shortest broke
+      // that). It says only whether it is also the shortest.
       if (shortest === f) spend(/shortest/i, 'shortest here');
-      else if (overShortest >= 0.3 && shortest.c.label) {
-        spend(/ vs |shortest/i, `+${miText(overShortest)} mi vs ${shortest.c.label}`);
-      }
     } else if (Math.abs(deltaMi) >= 0.3 && baseline.c.label) {
       spend(/ vs |shortest/i, `${deltaMi > 0 ? '+' : '−'}${miText(Math.abs(deltaMi))}`
         + ` mi vs ${baseline.c.label}`);
@@ -12193,6 +12193,20 @@ function candidateRouteDescriptions(all) {
       `${pick.text} — ${conditions(f, pick.text).join(', ')}`);
   }
   return chosen;
+}
+
+// The figures a rider is deciding on -- failing road, caution, gravel -- carry
+// emphasis once they pass half a mile (field ask, 2026-08-28). The conditions
+// are generated in known shapes, so one pass over the finished sentence marks
+// them; textContent is unchanged, so anything reading the description as text
+// still sees exactly what it said.
+const DESC_FIGURE = /(\d+(?:\.\d+)?) mi (fail|caution|unpaved)\b/g;
+function routeDescriptionHtml(text) {
+  const escaped = String(text || '').replace(/[&<>]/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+  return escaped.replace(DESC_FIGURE, (whole, value, kind) =>
+    (Number(value) > 0.5
+      ? `<b class="desc-flag desc-flag-${kind}">${whole}</b>` : whole));
 }
 
 function renderAllRoutesList() {
@@ -12230,7 +12244,7 @@ function renderAllRoutesList() {
         <span class="all-route-badge stage-${stage.tone}">${stage.label}</span>
         ${active ? '<span class="all-route-badge cur">Showing</span>' : ''}
       </div>
-      <p class="all-route-desc">${descriptions.get(c.profileId) || ''}</p>
+      <p class="all-route-desc">${routeDescriptionHtml(descriptions.get(c.profileId))}</p>
       <div class="all-route-stats">
         <span><b>${s.mi.toFixed(1)}</b> mi</span>
         <span><b>${Math.floor(s.hours)}h${String(Math.round(s.hours % 1 * 60)).padStart(2, '0')}</b></span>
@@ -12336,7 +12350,7 @@ function showRouteDescriptionToast(option) {
   if (!text) { hideRouteDescriptionToast(); return; }
   const body = document.createElement('span');
   body.className = 'route-desc-text';
-  body.textContent = text;
+  body.innerHTML = routeDescriptionHtml(text);
   // No ✕ (field ask, 2026-08-28): it cost the width of two words on every
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.

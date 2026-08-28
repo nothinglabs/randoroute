@@ -336,6 +336,27 @@ check('over a mile of unpaved is called out whatever the line is about',
 check('under a mile of unpaved is not called out',
   !/unpaved/.test(gravel.paved), JSON.stringify(gravel));
 
+// Failing road, caution and gravel past half a mile carry weight and colour
+// in every description; below it they read as ordinary text (field ask,
+// 2026-08-28). textContent must be untouched by the markup.
+const emphasis = await pg.evaluate(() => {
+  const heavy = routeDescriptionHtml('Quickest — 2.5 mi fail, 5 mi caution (traffic), 3 mi unpaved');
+  const light = routeDescriptionHtml('Quickest — 0.4 mi fail, 0.5 mi caution, 0.3 mi unpaved');
+  const box = document.createElement('p');
+  box.innerHTML = heavy;
+  return { heavy, light, text: box.textContent,
+    kinds: [...box.querySelectorAll('.desc-flag')].map((b) =>
+      `${b.className.replace('desc-flag desc-flag-', '')}:${b.textContent}`) };
+});
+check('figures past half a mile are marked, each with its own kind',
+  emphasis.kinds.join('|') === 'fail:2.5 mi fail|caution:5 mi caution|unpaved:3 mi unpaved',
+  JSON.stringify(emphasis));
+check('half a mile and under stays plain',
+  !/desc-flag/.test(emphasis.light), emphasis.light);
+check('the marked-up description still reads as the sentence it was',
+  emphasis.text === 'Quickest — 2.5 mi fail, 5 mi caution (traffic), 3 mi unpaved',
+  JSON.stringify(emphasis));
+
 check('crossing-sized fails read as a count, not vanishing mileage',
   /just 2 short fails, no caution/.test(cautionAndHills.dabs),
   JSON.stringify(cautionAndHills));

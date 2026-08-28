@@ -223,6 +223,18 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
    (field, 2026-08-26). */
 .all-route-row > :not(.all-route-thumb) { grid-column: 2; }
 .all-route-desc { margin: 2px 0 0; color: #44596a; font: italic 600 12px/1.4 system-ui; }
+/* Failing road, caution and gravel past half a mile are what a rider is
+   choosing between, so they carry weight and their own colour wherever a
+   description is shown (field ask, 2026-08-28). */
+.desc-flag { font-weight: 800; }
+.desc-flag-fail { color: var(--verdict-fail); }
+.desc-flag-caution { color: var(--verdict-caution); }
+.desc-flag-unpaved { color: #7a5a2e; }
+/* On the pill those palette colours sit on a dark translucent ground, where
+   they lose contrast; keep the weight and lift the hue instead. */
+.route-desc-toast .desc-flag-fail { color: #ffb3a7; }
+.route-desc-toast .desc-flag-caution { color: #ffd79a; }
+.route-desc-toast .desc-flag-unpaved { color: #e8cfa8; }
 .all-route-thumb { width: var(--thumb-w); height: var(--thumb-h); border: 1px solid #e4ecf1; border-radius: 8px; background: #f7fafb; }
 .all-route-thumb path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .all-route-thumb .thumb-base { stroke: #0a66c2; stroke-width: 2.1; }
