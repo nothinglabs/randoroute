@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// The Roosevelt Bridge patch (temporary experiment, 2026-08-27): OSM maps
-// the University Bridge side paths bidirectional while each is a one-way
-// lane on the ground, so the router rides out one side and back the other.
-// The opt-in rule `rooseveltBridgePatch` prohibits the wrong direction of
-// each side. This runs the real Washington graph: the geometric selection
-// must pick a sane set of unnamed bridge trails, each side must block the
-// with-traffic-wrong direction, and a route across the bridge under the
-// patch must never traverse a blocked direction while the same trip
-// without the patch still routes.
+// The Roosevelt Bridge patch (temporary experiment, 2026-08-27): OSM joins
+// the University Bridge side paths into a tip — a "clean" on-trail U-turn
+// across a busy street, a movement the ground does not offer. The opt-in
+// rule `rooseveltBridgePatch` breaks that tip: a route may never step
+// straight from one side path onto the other, so turning around costs a
+// real street crossing. This runs the real Washington graph: the geometric
+// selection must pick the two side-path chains, crossings must still route
+// on the side paths, and no patched route may contain a direct
+// path-to-path step.
 //
-// DELETE this test together with rooseveltProhibited when the corrected
+// DELETE this test together with rooseveltCrossChain when the corrected
 // OSM data ships in a graph rebuild.
 import { appDefaultRules, check, done, routerWorker } from './testlib/harness.mjs';
 
@@ -19,74 +19,80 @@ check('worker loads the graph', worker.ready);
 const rules = JSON.stringify(appDefaultRules());
 
 const selection = JSON.parse(worker.run(`(() => {
-  rooseveltProhibited(0, true); // build the sets
-  const { blockAB, blockBA } = rooseveltPatchSets;
-  const describe = (set, forward) => [...set].map((i) => ({
-    i,
+  const { chainOf } = ensureRooseveltPatch();
+  const rows = [...chainOf.entries()].map(([i, side]) => ({
+    i, side,
     named: !!edgeName(i),
     trail: !!(eFlags[i] & 8),
     mLon: +((nodeLon[eA[i]] + nodeLon[eB[i]]) / 2).toFixed(5),
     mLat: +((nodeLat[eA[i]] + nodeLat[eB[i]]) / 2).toFixed(5),
-    // The latitude change of the BLOCKED traversal.
-    blockedDLat: +(forward ? nodeLat[eB[i]] - nodeLat[eA[i]]
-      : nodeLat[eA[i]] - nodeLat[eB[i]]).toFixed(6),
   }));
-  return JSON.stringify({ ab: describe(blockAB, true), ba: describe(blockBA, false) });
+  return JSON.stringify(rows);
 })()`));
-const blocked = [...selection.ab, ...selection.ba];
 check('the patch selects a sane bridge-sized set of edges',
-  blocked.length >= 6 && blocked.length <= 80, `selected ${blocked.length}`);
+  selection.length >= 6 && selection.length <= 80, `selected ${selection.length}`);
 check('every patched edge is an unnamed trail in the bridge corridor',
-  blocked.every((e) => e.trail && !e.named
-    && e.mLon >= -122.3225 && e.mLon <= -122.3176
+  selection.every((e) => e.trail && !e.named
+    && e.mLon >= -122.3235 && e.mLon <= -122.3170
     && e.mLat >= 47.6513 && e.mLat <= 47.6553),
-  JSON.stringify(blocked.filter((e) => !e.trail || e.named).slice(0, 3)));
-// Trips across the bridge in BOTH directions, south approach to Campus
-// Parkway and back. With the patch, no traversal may use a blocked
-// direction, each direction must still cross on a side path, and the two
-// directions must ride DIFFERENT sides — that separation is the entire
-// point of the one-waying. (A per-edge centerline side check was tried
-// here and reproduced the exact mis-siding the chain classification
-// exists to fix.)
+  JSON.stringify(selection.filter((e) => !e.trail || e.named).slice(0, 3)));
+check('both side-path chains are present — the ban needs two sides',
+  new Set(selection.map((e) => e.side)).size === 2,
+  JSON.stringify([...new Set(selection.map((e) => e.side))]));
+
+// Trips across the bridge in both directions plus a deliberate side-to-side
+// trip. Under the patch a route may never step straight from one chain onto
+// the other; crossings must still ride the side paths, and everything must
+// still route with the patch off.
 const trips = JSON.parse(worker.run(`(() => {
   const base = ${rules};
   const south = [-122.3220, 47.6500], north = [-122.3170, 47.6565];
+  const westMid = [-122.3205, 47.6535], eastMid = [-122.3201, 47.6535];
   const run = (a, b, patch) => {
     const r = routeLeg(a, b, { ...base, rooseveltBridgePatch: patch },
       'balanced', false, false);
     if (!r.ok) return { ok: false, reason: r.reason };
-    let blockedUses = 0;
-    const usedPatched = [];
+    const { chainOf } = ensureRooseveltPatch();
+    let crossSteps = 0, sidepathM = 0;
     for (let k = 0; k < r.edgeIds.length; k++) {
-      const ei = r.edgeIds[k];
-      const forward = eA[ei] === r.nodeIds[k];
-      if (forward ? rooseveltPatchSets.blockAB.has(ei)
-        : rooseveltPatchSets.blockBA.has(ei)) blockedUses++;
-      if (rooseveltPatchSets.blockAB.has(ei)
-        || rooseveltPatchSets.blockBA.has(ei)) usedPatched.push(ei);
+      const side = chainOf.get(r.edgeIds[k]);
+      if (side !== undefined) sidepathM += eLen[r.edgeIds[k]];
+      if (k > 0) {
+        const prev = chainOf.get(r.edgeIds[k - 1]);
+        // Only the TURNAROUND is banned: a cross-chain step at the south
+        // tip whose entered edge heads back north. The southward drain to
+        // the street is load-bearing and stays legal.
+        const ei = r.edgeIds[k];
+        const fwd = eA[ei] === r.nodeIds[k];
+        const dLat = fwd ? nodeLat[eB[ei]] - nodeLat[eA[ei]]
+          : nodeLat[eA[ei]] - nodeLat[eB[ei]];
+        if (side !== undefined && prev !== undefined && side !== prev
+          && nodeLat[r.nodeIds[k]] < ROOSEVELT_TIP_MAX_LAT && dLat > 0) crossSteps++;
+      }
     }
-    const sidepathM = usedPatched.reduce((sum, ei) => sum + eLen[ei], 0);
-    return { ok: true, distM: Math.round(r.distM), blockedUses,
-      sidepathM: Math.round(sidepathM), usedPatched };
+    return { ok: true, distM: Math.round(r.distM), crossSteps,
+      sidepathM: Math.round(sidepathM) };
   };
   return JSON.stringify({
     northbound: run(south, north, true),
     southbound: run(north, south, true),
+    sideToSide: run(westMid, eastMid, true),
     off: run(south, north, false),
   });
 })()`));
-check('the trip routes with the patch on (both ways) and off',
+check('the trips route with the patch on (both ways) and off',
   trips.northbound.ok && trips.southbound.ok && trips.off.ok,
   JSON.stringify({ nb: trips.northbound.ok, sb: trips.southbound.ok, off: trips.off.ok }));
-check('under the patch no traversal rides a side path the wrong way',
-  trips.northbound.blockedUses === 0 && trips.southbound.blockedUses === 0,
-  JSON.stringify({ nb: trips.northbound.blockedUses, sb: trips.southbound.blockedUses }));
-check('each direction still crosses the bridge on a side path',
+check('no patched route steps straight from one side path onto the other',
+  trips.northbound.crossSteps === 0 && trips.southbound.crossSteps === 0
+    && (!trips.sideToSide.ok || trips.sideToSide.crossSteps === 0),
+  JSON.stringify({ nb: trips.northbound.crossSteps, sb: trips.southbound.crossSteps,
+    s2s: trips.sideToSide.crossSteps }));
+check('each crossing direction still rides a side path',
   trips.northbound.sidepathM > 100 && trips.southbound.sidepathM > 100,
   JSON.stringify({ nb: trips.northbound.sidepathM, sb: trips.southbound.sidepathM }));
-const nbSet = new Set(trips.northbound.usedPatched);
-check('the two directions ride different sides',
-  trips.southbound.usedPatched.every((ei) => !nbSet.has(ei)),
-  JSON.stringify({ shared: trips.southbound.usedPatched.filter((ei) => nbSet.has(ei)) }));
+check('neither direction detours to another bridge',
+  trips.northbound.distM < 2500 && trips.southbound.distM < 2500,
+  JSON.stringify({ nb: trips.northbound.distM, sb: trips.southbound.distM }));
 
 done();

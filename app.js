@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.896';
+const APP_VERSION = '2026-08-26.897';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -16499,10 +16499,10 @@ function buildAdvancedRoutingOptions() {
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
-  // Temporary experiment; delete with the worker's rooseveltProhibited once
+  // Temporary experiment; delete with the worker's rooseveltCrossChain once
   // the corrected OSM data ships in a graph rebuild.
-  add('rooseveltBridgePatch', 'Roosevelt Bridge patch (experiment): ride its side '
-    + 'paths one-way, with traffic', rules, scheduleReroute);
+  add('rooseveltBridgePatch', 'Roosevelt Bridge patch (experiment): break the trail '
+    + 'tip join, so turning around costs a real street crossing', rules, scheduleReroute);
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');

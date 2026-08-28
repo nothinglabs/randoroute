@@ -78,21 +78,21 @@ let suppressFrontierHitRecording = false;
 let activeRoadBlockEdges = null;
 
 /* ---------------------- TEMPORARY EXPERIMENT: the Roosevelt Bridge patch
- * The University (Roosevelt) Bridge side paths are mapped bidirectional in
- * OSM, but on the ground each side is a one-way lane continuing onto the
- * street (field, 2026-08-27) — so the router happily rides out one side
- * and back the other. Until the corrected OSM data rides a graph rebuild,
- * the opt-in rule `rooseveltBridgePatch` prohibits the wrong direction of
- * each side: east side northbound only, west side southbound only, riding
- * with traffic. Selection is geometric — unnamed trail edges with a clear
- * north-south component inside the bridge corridor — so it survives graph
- * rebuilds, selects nothing outside Seattle, and leaves the tip connectors
- * bidirectional. Application code carrying a state-specific fact breaks
- * the working agreement on purpose here: a scoped experiment, to be
- * DELETED once the OSM fix ships. Only the per-request relax loop consults
- * it — never the floor or warm-cost caches, which persist across requests
- * — so removing arcs only raises true costs and every bound stays
- * admissible. */
+ * OSM joins the University (Roosevelt) Bridge side paths into a tip — a
+ * "clean" on-trail U-turn across a busy street with bike lanes, a movement
+ * the ground does not offer (field, 2026-08-27). The opt-in rule
+ * `rooseveltBridgePatch` breaks that tip: a route may never step straight
+ * from one side path onto the other, so turning around costs what it
+ * really costs — leaving the trail and crossing on the street. The
+ * experiment is whether that expense alone fixes the out-and-back routes.
+ * Selection is geometric — unnamed trail edges within 25 m of the bridge
+ * centerline, grouped into connected chains — so it survives graph
+ * rebuilds and selects nothing outside Seattle. Application code carrying
+ * a state-specific fact breaks the working agreement on purpose here: a
+ * scoped experiment, to be DELETED once the OSM fix ships. Only the
+ * per-request relax loop consults it — never the floor or warm-cost
+ * caches, which persist across requests — so removing moves only raises
+ * true costs and every bound stays admissible. */
 const ROOSEVELT_BRIDGE = {
   lonMin: -122.3225, lonMax: -122.3176, latMin: 47.6513, latMax: 47.6553,
   // Centerline south tip -> north end; the cross product's sign puts an
@@ -101,10 +101,10 @@ const ROOSEVELT_BRIDGE = {
 };
 let rooseveltPatchSets = null;
 let rooseveltPatchGraph = null;
-function rooseveltProhibited(ei, forward) {
+function ensureRooseveltPatch() {
   if (rooseveltPatchGraph !== eA) {
     rooseveltPatchGraph = eA;
-    const blockAB = new Set(), blockBA = new Set();
+    const chainOf = new Map();
     const B = ROOSEVELT_BRIDGE;
     const dx = B.p1[0] - B.p0[0], dy = B.p1[1] - B.p0[1];
     const lonMPerDeg = 111320 * Math.cos(B.p0[1] * Math.PI / 180);
@@ -150,23 +150,38 @@ function rooseveltProhibited(ei, forward) {
       for (const e of chain) { lenSum += eLen[e]; weighted += offsets.get(e) * eLen[e]; }
       // A stub is a crossing or connector, not a side path.
       if (lenSum < 150) continue;
-      const west = weighted / lenSum < 0;
-      for (const e of chain) {
-        const dLat = nodeLat[eB[e]] - nodeLat[eA[e]];
-        const dLonM = Math.abs(nodeLon[eB[e]] - nodeLon[eA[e]]);
-        // East-west jogs inside a chain stay two-way.
-        if (Math.abs(dLat) < dLonM) continue;
-        const abNorthbound = dLat >= 0;
-        // The west side rides southbound only, so its northbound traversal
-        // is the blocked one; the east side mirrors.
-        if (abNorthbound === west) blockAB.add(e);
-        else blockBA.add(e);
-      }
+      // The side label is an identity, nothing more: the ban below only
+      // asks whether two edges belong to different chains.
+      const side = weighted / lenSum < 0 ? 'west' : 'east';
+      for (const e of chain) chainOf.set(e, side);
     }
-    rooseveltPatchSets = { blockAB, blockBA };
+    rooseveltPatchSets = { chainOf };
   }
-  return forward ? rooseveltPatchSets.blockAB.has(ei)
-    : rooseveltPatchSets.blockBA.has(ei);
+  return rooseveltPatchSets;
+}
+// The data joins the two side paths at a SOUTH tip the ground does not
+// offer as a turnaround. The lanes are already one-way in OSM (west 6/6
+// edges, east 8/12); the tip exists because the southbound lane has no
+// mapped street connection of its own and drains through the join onto the
+// east way's last metres. So the ban is a scalpel, measured twice:
+//  - Banning every cross-chain step severed the southbound crossing
+//    outright (a 6 km Montlake detour) — the drain is load-bearing.
+//  - The bogus movement is specifically the TURNAROUND: crossing the tip
+//    and heading back NORTH across the bridge.
+// A cross-chain step is therefore refused only in the bridge's southern
+// half AND only when the entered edge is traversed northward; the
+// southward drain to the street stays legal.
+const ROOSEVELT_TIP_MAX_LAT = 47.6525;
+function rooseveltCrossChain(fromEdge, toEdge, atNode, toForward) {
+  if (nodeLat[atNode] >= ROOSEVELT_TIP_MAX_LAT) return false;
+  const p = ensureRooseveltPatch();
+  const from = p.chainOf.get(fromEdge);
+  if (from === undefined) return false;
+  const to = p.chainOf.get(toEdge);
+  if (to === undefined || to === from) return false;
+  const dLat = toForward ? nodeLat[eB[toEdge]] - nodeLat[eA[toEdge]]
+    : nodeLat[eA[toEdge]] - nodeLat[eB[toEdge]];
+  return dLat > 0;
 }
 
 const _dec = new TextDecoder();
@@ -2988,9 +3003,12 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
       if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
-      // The Roosevelt Bridge experiment: its side paths ride one-way (see
-      // rooseveltProhibited).
-      if (rules.rooseveltBridgePatch && rooseveltProhibited(ei, forward)) continue;
+      // The Roosevelt Bridge experiment: the data joins the bridge's two
+      // side paths at a tip the ground does not offer. Break it — stepping
+      // straight from one side path onto the other is refused, so turning
+      // around costs a real street crossing (rooseveltCrossChain).
+      if (rules.rooseveltBridgePatch && incomingEdge >= 0
+        && rooseveltCrossChain(incomingEdge, ei, u, forward)) continue;
       // Technical mountain-bike paths are opt-in. Unlike a bicycle=no road,
       // they remain available to an informed rider, but never appear in an
       // ordinary road-bike route.
