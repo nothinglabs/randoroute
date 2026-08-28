@@ -1820,10 +1820,11 @@ body.street-view-open #map { visibility: hidden; }
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 .route-desc-toast.show { opacity: 1; pointer-events: auto; }
-/* Two lines, never three: the bubble's height is fixed by the clamp rather
-   than by whichever description happened to be longest (field, 2026-08-28). */
+/* Three lines, capped: the bubble's height is fixed by the clamp rather than
+   by whichever description happened to be longest. Back to three at the
+   rider's ask (2026-08-28) to see the shape of it. */
 .route-desc-toast .route-desc-text { display: -webkit-box; -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .weights-subnav { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: nowrap; gap: 6px;
   overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   padding: 8px 2px 9px; margin: 0 0 8px; background: #fff; border-bottom: 1px solid #e2eaef; }

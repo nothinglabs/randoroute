@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.913';
+const APP_VERSION = '2026-08-26.914';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12325,6 +12325,9 @@ function hideRouteDescriptionToast() {
   clearTimeout(routeDescToastTimer);
   document.getElementById('routeDescToast')?.classList.remove('show');
 }
+// TEMPORARY, see showRouteDescriptionToast below.
+const PILL_STOCK_FILLER = ' — stock filler text, here only to show how three '
+  + 'full lines of description sit in the bubble.';
 function showRouteDescriptionToast(option) {
   const host = document.getElementById('routeDescToast');
   // Nothing is described while a computation is in flight: the candidates it
@@ -12338,7 +12341,12 @@ function showRouteDescriptionToast(option) {
   if (!text) { hideRouteDescriptionToast(); return; }
   const body = document.createElement('span');
   body.className = 'route-desc-text';
-  body.textContent = text;
+  // TEMPORARY (2026-08-28, rider ask: "just add stock text ... I just want to
+  // see it"): stock filler so a short description reaches three lines and the
+  // shape of the taller bubble is visible. Delete this and PILL_STOCK_FILLER
+  // once the look is decided; nothing else reads it.
+  body.textContent = text.length < 118
+    ? `${text}${PILL_STOCK_FILLER}`.slice(0, 200) : text;
   // No ✕ (field ask, 2026-08-28): it cost the width of two words on every
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.
