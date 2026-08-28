@@ -313,6 +313,24 @@ check('caution that is mostly official traffic stress says so',
 check('high-stress stretches from 3 miles up are named even when the rules pass them',
   /with 4 miles heavy traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
+// Unpaved riding over a mile is named on every description, whatever the
+// base line is about (field ask, 2026-08-28) -- it decides which bike goes.
+const gravel = await pg.evaluate(() => {
+  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
+    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
+    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
+  const d = candidateRouteDescriptions([
+    mk({ profileId: 'gravel', timeS: 7000, unpavedM: 3219, trailM: 9656 }),
+    mk({ profileId: 'paved', unpavedM: 1287 }),
+  ]);
+  return { gravel: d.get('gravel'), paved: d.get('paved') };
+});
+check('over a mile of unpaved is called out whatever the line is about',
+  /2 miles unpaved/.test(gravel.gravel), JSON.stringify(gravel));
+check('under a mile is not appended to the clause, and never rounds up',
+  /0\.8 miles unpaved/.test(gravel.paved)
+    && gravel.paved.match(/unpaved/g).length === 1, JSON.stringify(gravel));
+
 check('crossing-sized fails read as a count, not vanishing mileage',
   /just 2 short fails, no caution/.test(cautionAndHills.dabs),
   JSON.stringify(cautionAndHills));

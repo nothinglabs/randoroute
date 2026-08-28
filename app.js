@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.906';
+const APP_VERSION = '2026-08-26.907';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12093,7 +12093,9 @@ function candidateRouteDescriptions(all) {
     if (f.lanePct >= 0.3) out.push(`${Math.round(f.lanePct * 100)}% bike lanes`);
     if (f.resPct >= 0.3) out.push('Mostly residential streets');
     if (f.unpavedMi >= 0.5) {
-      out.push(`${miles(Math.round(f.unpavedMi))} unpaved`);
+      // One decimal, not a rounded mile: 0.8 unpaved miles printed as
+      // "1 mile unpaved" overstated the gravel by a quarter.
+      out.push(`${miNum(f.unpavedMi)} ${mileWord(miNum(f.unpavedMi))} unpaved`);
     }
     if (holds(f, 'ftPerMi', max, 20)) {
       out.push('Hilliest option');
@@ -12130,7 +12132,7 @@ function candidateRouteDescriptions(all) {
     return one >= 9.95 ? String(Math.round(one)) : String(one);
   };
   const mileWord = (s) => (s === '1' ? 'mile' : 'miles');
-  const safetyClause = (f, coversFail, coversCaution) => {
+  const safetyClause = (f, coversFail, coversCaution, coversUnpaved) => {
     const failPart = () => {
       if (f.failMi <= 0.001) return 'no fails';
       // Crossing-sized dabs read as a count, not a mileage that rounds to
@@ -12146,16 +12148,28 @@ function candidateRouteDescriptions(all) {
       const n = miNum(f.cautionMi);
       return `${n} ${mileWord(n)} caution${trafficNote(f)}`;
     };
-    if (coversFail && coversCaution) return '';
-    if (coversFail) return cautionPart();
-    if (coversCaution) return failPart();
-    if (f.failMi <= 0.001 && f.cautionMi <= 0.05) return 'no fails or caution';
-    return `${failPart()}, ${cautionPart()}`;
+    const parts = [];
+    if (!coversFail && !coversCaution
+      && f.failMi <= 0.001 && f.cautionMi <= 0.05) {
+      parts.push('no fails or caution');
+    } else {
+      if (!coversFail) parts.push(failPart());
+      if (!coversCaution) parts.push(cautionPart());
+    }
+    // Unpaved riding over a mile is named on every description, alongside
+    // fails and caution (field ask, 2026-08-28): it decides which bike the
+    // rider takes, and a base line about anything else used to bury it.
+    if (!coversUnpaved && f.unpavedMi >= 1) {
+      const n = miNum(f.unpavedMi);
+      parts.push(`${n} ${mileWord(n)} unpaved`);
+    }
+    return parts.join(', ');
   };
   const withDetail = (f, line) => {
     // The clause skips whichever topic the base line already carries (the
     // heavy fail and caution percentage lines), never both mentions.
-    const clause = safetyClause(f, /fail|flag/i.test(line), /caution/i.test(line));
+    const clause = safetyClause(f, /fail|flag/i.test(line), /caution/i.test(line),
+      /unpaved/i.test(line));
     let full = clause ? `${line} — ${clause}` : line;
     const tails = [];
     // Stretches on officially high-stress roads are worth a word from 3
