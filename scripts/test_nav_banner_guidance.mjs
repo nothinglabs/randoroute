@@ -42,6 +42,8 @@ try {
     routing.options?.length > 0 && !routing.routeRequestActive, null, { timeout: 300000 });
   await page.waitForFunction(() => !document.getElementById('navStartButton').hidden,
     null, { timeout: 30000 });
+  const chooserMarkSize = await page.evaluate(() =>
+    Math.round(document.getElementById('routeTipsBtn').getBoundingClientRect().height));
   await page.evaluate(() => document.getElementById('navStartButton').click());
   await page.waitForTimeout(1200);
   await page.evaluate(() => {
@@ -104,6 +106,26 @@ try {
     JSON.stringify(progress));
   check('the estimate keeps clear of the curved right edge',
     progress.etaGap >= 14, JSON.stringify(progress));
+
+  // The head row's "?" sat on top of the destination line (field, 2026-08-28).
+  // Both are in the Navigating card, in different rows that the card's own
+  // negative offset pulls together, so the only proof is measured boxes.
+  const helpMark = await page.evaluate(() => {
+    const destEl = document.getElementById('navDest');
+    // The name that caused it: long enough to run the width of the card.
+    destEl.textContent = 'To: Gas Works Park north lawn by the sundial, Wallingford';
+    const tips = document.getElementById('navTipsBtn').getBoundingClientRect();
+    const dest = destEl.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(destEl).paddingRight) || 0;
+    return { textRight: Math.round(dest.right - pad), tipsLeft: Math.round(tips.left),
+      clipped: destEl.scrollWidth > destEl.clientWidth,
+      verticalGap: Math.round(dest.top - tips.bottom),
+      tipsSize: Math.round(tips.height) };
+  });
+  check('a long destination name stops before the help mark',
+    helpMark.textRight <= helpMark.tipsLeft + 1, JSON.stringify(helpMark));
+  check('both help marks are the same size',
+    helpMark.tipsSize === chooserMarkSize, `${helpMark.tipsSize} vs ${chooserMarkSize}`);
 } finally {
   await browser.close();
   site.close();
