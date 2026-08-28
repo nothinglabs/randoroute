@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.910';
+const APP_VERSION = '2026-08-26.911';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12024,7 +12024,9 @@ function candidateRouteDescriptions(all) {
       trailMi: (c.trailM || 0) / 1609.344,
       trailPct: (c.trailM || 0) / ridingM,
       lanePct: Math.max(0, (c.facilityM || 0) - (c.trailM || 0)) / ridingM,
+      laneMi: Math.max(0, (c.facilityM || 0) - (c.trailM || 0)) / 1609.344,
       resPct: (c.residentialM || 0) / ridingM,
+      resMi: (c.residentialM || 0) / 1609.344,
       desigMi: (c.desigM || 0) / 1609.344,
       failMi: (c.failM || 0) / 1609.344,
       failPct: (c.failM || 0) / ridingM,
@@ -12146,17 +12148,27 @@ function candidateRouteDescriptions(all) {
       if (line().length >= 62 || family.test(line())) return;
       out.push(text);
     };
+    // What this route costs against the shortest option on the board goes
+    // first: a bare total is filler, "+15 mi vs Route C" is a decision
+    // (field ask, 2026-08-28).
+    const shortest = facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
+    const extraMi = f.mi - shortest.mi;
+    // Half a mile is worth naming: on a board of 18-mile routes the spread
+    // between them IS under a mile, and "no extra distance" is itself the
+    // fact a rider wants from the one they are looking at.
+    if (shortest === f) spend(/shortest/i, 'shortest here');
+    else if (extraMi >= 0.3 && shortest.c.label) {
+      spend(/ vs |shortest/i, `+${miText(extraMi)} mi vs ${shortest.c.label}`);
+    }
     const GREEN = /trail|signed|protected|off-street/i;
     if (f.trailMi >= 1) spend(GREEN, `${miText(f.trailMi)} mi trail`);
     if (f.desigMi >= 2) spend(GREEN, `${miText(f.desigMi)} mi signed`);
-    if (f.lanePct >= 0.1) {
-      spend(/lane|protected/i, `${Math.round(f.lanePct * 100)}% bike lanes`);
-    }
-    if (f.resPct >= 0.15) {
-      spend(/residential/i, `${Math.round(f.resPct * 100)}% residential`);
-    }
+    // Miles, not shares: the row under this already prints the percentages,
+    // and a share says nothing about how long the ride is. The thresholds
+    // keep a mile of painted lane on an 18-mile ride out of the line.
+    if (f.laneMi >= 1.5) spend(/lane|protected/i, `${miText(f.laneMi)} mi bike lanes`);
+    if (f.resMi >= 1.5) spend(/residential/i, `${miText(f.resMi)} mi residential`);
     if (f.ferry) spend(/ferry/i, 'ferry');
-    spend(/mixed roads|mi total/i, `${Math.round(f.mi)} mi total`);
     return out;
   };
   const used = new Set();
