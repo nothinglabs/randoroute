@@ -241,11 +241,11 @@ const safetyDescs = await pg.evaluate(() => {
   const descs = candidateRouteDescriptions(set);
   return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
 });
-check('a heavy-fail route leads with the failure share, even when quickest',
-  /% fails your rules — 1\.2 miles caution/.test(safetyDescs.dirty),
+check('a heavy-fail route states its failing mileage first',
+  /— 2\.5 mi fail, 1\.2 mi caution/.test(safetyDescs.dirty),
   JSON.stringify(safetyDescs));
 check('a single failing mile reads singular in the safety clause',
-  /1 mile fail, 1\.2 miles caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
+  /1 mi fail, 1\.2 mi caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
 check('a clean route says so outright',
   /no fails or caution/.test(safetyDescs.clean), JSON.stringify(safetyDescs));
 check('descriptions never talk about the search itself',
@@ -265,8 +265,8 @@ const enriched = await pg.evaluate(() => {
   return { quick: d.get('quick'), plain: d.get('plain') };
 });
 const quickWords = enriched.quick.split(/\s+/).filter(Boolean).length;
-check('a composition line carries a second fact within the 17-word budget',
-  /, (with|climbing|plus)/.test(enriched.quick) && quickWords > 10 && quickWords <= 17,
+check('a composition line carries a second fact within the 14-word budget',
+  /\d+(\.\d+)? mi trail/.test(enriched.quick) && quickWords > 7 && quickWords <= 14,
   JSON.stringify({ ...enriched, quickWords }));
 // The mandatory safety clause (field ask, 2026-08-27: always say
 // something about presence or lack of fails and caution): fail-clean
@@ -295,23 +295,23 @@ const cautionAndHills = await pg.evaluate(() => {
     dabs: d.get('dabs') };
 });
 check('a fail-clean route with caution states both plainly',
-  /no fails, 5 miles caution/.test(cautionAndHills.cleanish),
+  /no fails, 5 mi caution/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
-check('a route-defining climb is its own trailing word, without a figure',
-  /\. Hilly$/.test(cautionAndHills.cleanish)
+check('a route-defining climb is one word, without a figure',
+  /, hilly/.test(cautionAndHills.cleanish)
     && !/\d+ feet/.test(cautionAndHills.cleanish),
   JSON.stringify(cautionAndHills));
 check('fail and caution miles ride every line that needs them',
-  /3\.1 miles fail, 5 miles caution/.test(cautionAndHills.dirty),
+  /3\.1 mi fail, 5 mi caution/.test(cautionAndHills.dirty),
   JSON.stringify(cautionAndHills));
 check('caution that is mostly official traffic stress says so',
-  /5 miles caution \(traffic\)/.test(cautionAndHills.traffic),
+  /5 mi caution \(traffic\)/.test(cautionAndHills.traffic),
   JSON.stringify(cautionAndHills));
 // Field, 2026-08-27: four car markers on a "meets rules" stretch and the
 // line said nothing about traffic — the official rating is reported at
 // every level, so long high-stress stretches are named even when they pass.
 check('high-stress stretches from 3 miles up are named even when the rules pass them',
-  /with 4 miles heavy traffic/.test(cautionAndHills.passing),
+  /4 mi traffic/.test(cautionAndHills.passing),
   JSON.stringify(cautionAndHills));
 // Unpaved riding over a mile is named on every description, whatever the
 // base line is about (field ask, 2026-08-28) -- it decides which bike goes.
@@ -326,10 +326,9 @@ const gravel = await pg.evaluate(() => {
   return { gravel: d.get('gravel'), paved: d.get('paved') };
 });
 check('over a mile of unpaved is called out whatever the line is about',
-  /2 miles unpaved/.test(gravel.gravel), JSON.stringify(gravel));
-check('under a mile is not appended to the clause, and never rounds up',
-  /0\.8 miles unpaved/.test(gravel.paved)
-    && gravel.paved.match(/unpaved/g).length === 1, JSON.stringify(gravel));
+  /2 mi unpaved/.test(gravel.gravel), JSON.stringify(gravel));
+check('under a mile of unpaved is not called out',
+  !/unpaved/.test(gravel.paved), JSON.stringify(gravel));
 
 check('crossing-sized fails read as a count, not vanishing mileage',
   /just 2 short fails, no caution/.test(cautionAndHills.dabs),

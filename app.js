@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.907';
+const APP_VERSION = '2026-08-26.908';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12052,165 +12052,96 @@ function candidateRouteDescriptions(all) {
   // traffic" sounded like it described the whole route (field, same day).
   const trafficNote = (f) => (f.trafficCautionMi >= 3
     && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
-  const lines = (f) => {
+  // One character phrase, then the conditions. Every fact appears exactly
+  // once (field review, 2026-08-28: "27 miles on signed bike routes … with
+  // 24 miles on trails" was one fact twice, and the percentage lines
+  // restated the mileage the conditions already carry). A phrase that
+  // implies trail mileage suppresses the trail condition; caution names
+  // traffic when traffic caused it, and separately-rated traffic is only
+  // added when the caution figure did not already say so.
+  const miText = (x) => {
+    const n = Math.max(0.1, Math.round(x * 10) / 10);
+    return n >= 9.95 ? String(Math.round(n)) : String(n);
+  };
+  // Each option carries its KIND, and a board may spend a kind once. Keying
+  // the dedupe on the text let five routes all read "Signed routes, N mi"
+  // -- different numbers, same sentence (field review, 2026-08-28).
+  const character = (f) => {
     const c = f.c;
     const out = [];
-    // Heavy failing mileage outranks every other trait — a route that fails
-    // a fifth of your rules is defined by that, not by being quickest
-    // (field, 2026-08-26: a 24% fail route described only its speed).
-    if (f.failPct >= 0.2) {
-      out.push(`${Math.round(f.failPct * 100)}% fails your rules`);
+    const add = (kind, text) => out.push({ kind, text });
+    if (c.timeS === minTime && facts.length > 1) add('quickest', 'Quickest');
+    if (holds(f, 'mi', min, 1) && c.timeS !== minTime) add('shortest', 'Shortest');
+    if (holds(f, 'ascentFt', min, 250)) add('flattest', 'Flattest');
+    if (holds(f, 'ftPerMi', max, 20)) add('hilliest', 'Hilliest');
+    if (f.trailPct >= 0.6) add('trail-all', 'Nearly all trail');
+    if (holds(f, 'trailMi', max, 2)) add('trail-most', `Most trail, ${miText(f.trailMi)} mi`);
+    if (f.trailPct >= 0.35) add('trail-half', 'Half trail, half road');
+    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) add('protected', 'Over 50% protected');
+    if (f.lanePct >= 0.3) add('lanes', 'Mostly bike lanes');
+    if (f.resPct >= 0.3) add('residential', 'Mostly residential');
+    if (holds(f, 'desigMi', max, 2) || f.desigMi >= 3) {
+      add('signed', `Signed routes, ${miText(f.desigMi)} mi`);
     }
-    // Half-caution defines a route the same way heavy fail does (field,
-    // 2026-08-27: a 50%-caution ride to Port Townsend read as "Quickest,
-    // mostly ordinary roads" with the caution nowhere in the line).
-    if (f.cautionPct >= 0.3) {
-      out.push(`${Math.round(f.cautionPct * 100)}% needs caution — ${miles(Math.round(f.cautionMi))}${trafficNote(f)}`);
-    }
-    if (c.timeS === minTime && facts.length > 1) {
-      if (f.trailPct >= 0.45) out.push(`Quickest, ${miles(Math.round(f.trailMi))} on trails`);
-      if (f.resPct >= 0.2) out.push('Quickest, mostly residential');
-      out.push('Quickest, mostly roads');
-    }
-    if (holds(f, 'trailMi', max, 2)) {
-      out.push(`Most trail: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} miles off-street`);
-    }
-    if (holds(f, 'ascentFt', min, 250)) {
-      out.push('Flattest option');
-    }
-    if (holds(f, 'mi', min, 1) && c.timeS !== minTime) {
-      out.push('Shortest, not quickest');
-    }
-    if (holds(f, 'desigMi', max, 2)) {
-      out.push(`${miles(Math.round(f.desigMi))} on signed bike routes`);
-    }
-    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) {
-      out.push('Over 50% protected riding');
-    }
-    if (f.ferry) out.push('Includes ferry');
-    if (f.trailPct >= 0.6) out.push('Nearly all off-street trail');
-    else if (f.trailPct >= 0.35) out.push('Half trail, half road');
-    if (f.lanePct >= 0.3) out.push(`${Math.round(f.lanePct * 100)}% bike lanes`);
-    if (f.resPct >= 0.3) out.push('Mostly residential streets');
-    if (f.unpavedMi >= 0.5) {
-      // One decimal, not a rounded mile: 0.8 unpaved miles printed as
-      // "1 mile unpaved" overstated the gravel by a quarter.
-      out.push(`${miNum(f.unpavedMi)} ${mileWord(miNum(f.unpavedMi))} unpaved`);
-    }
-    if (holds(f, 'ftPerMi', max, 20)) {
-      out.push('Hilliest option');
-    }
-    // Mid-tier composition, so a middling candidate still reads as a route
-    // rather than a time delta.
-    if (f.trailMi >= 3 && f.trailPct < 0.35) {
-      out.push(`${Math.round(f.trailMi)} trail miles among roads`);
-    }
-    if (f.desigMi >= 3) out.push(`Signed routes ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
-    if (f.resPct >= 0.15) out.push('Part residential streets');
-    if (f.lanePct >= 0.15) out.push('Some bike lanes');
+    if (f.ferry) add('ferry', 'Ferry route');
+    if (f.trailMi >= 2) add('trail-mi', `${miText(f.trailMi)} mi trail`);
+    if (f.lanePct >= 0.15) add('lanes-some', 'Some bike lanes');
+    if (f.resPct >= 0.15) add('res-part', 'Part residential');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
-      out.push('Among the flatter choices');
+      add('flatter', 'Among the flatter');
     }
-    if (facts.length > 1 && f.mi <= min('mi') * 1.03) {
-      out.push('Nearly the shortest');
-    }
+    if (facts.length > 1 && f.mi <= min('mi') * 1.03) add('near-short', 'Nearly shortest');
     const slowerMin = Math.round((c.timeS - minTime) / 60);
-    if (slowerMin >= 5) out.push(`${slowerMin} min slower than quickest`);
-    out.push(`${Math.round(f.mi)} miles, mixed roads`);
-    out.push('Ordinary mixed-road route');
+    // Past an hour and a half, minutes stop meaning anything: "189 min
+    // slower" is a number to decode, "3.2h slower" is a decision.
+    if (slowerMin >= 5) {
+      add('slower', slowerMin >= 90 ? `${(slowerMin / 60).toFixed(1)}h slower`
+        : `${slowerMin} min slower`);
+    }
+    add(`mixed-${Math.round(f.mi)}`, `${Math.round(f.mi)} mi, mixed roads`);
+    add('plain', 'Mixed roads');
     return out;
   };
-  // Every description states presence or lack of fails and caution (field
-  // ask, 2026-08-27): a mandatory clause — "no fails or caution",
-  // "no fails, 2.5 miles caution", "just 2 short fails, no caution" — so
-  // the rider always knows the kind of ride, and can weigh the miles
-  // against the route's length themselves. Optional tails then fit a
-  // 20-word budget, and a short climb sentence rides outside it.
-  const wordsOf = (s) => s.split(/\s+/).filter(Boolean).length;
-  const miNum = (x) => {
-    const one = Math.max(0.1, Math.round(x * 10) / 10);
-    return one >= 9.95 ? String(Math.round(one)) : String(one);
-  };
-  const mileWord = (s) => (s === '1' ? 'mile' : 'miles');
-  const safetyClause = (f, coversFail, coversCaution, coversUnpaved) => {
-    const failPart = () => {
-      if (f.failMi <= 0.001) return 'no fails';
-      // Crossing-sized dabs read as a count, not a mileage that rounds to
-      // nothing ("just 2 short fails", each under a tenth of a mile).
-      if (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1) {
-        return `just ${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`;
-      }
-      const n = miNum(f.failMi);
-      return `${n} ${mileWord(n)} fail`;
-    };
-    const cautionPart = () => {
-      if (f.cautionMi <= 0.05) return 'no caution';
-      const n = miNum(f.cautionMi);
-      return `${n} ${mileWord(n)} caution${trafficNote(f)}`;
-    };
-    const parts = [];
-    if (!coversFail && !coversCaution
-      && f.failMi <= 0.001 && f.cautionMi <= 0.05) {
-      parts.push('no fails or caution');
+  // Fails and caution on every route, whatever the phrase says; then only
+  // what changes the ride: gravel, traffic the caution figure missed, a
+  // climbing day, and one implication-free extra.
+  const conditions = (f, phrase) => {
+    const out = [];
+    const failClean = f.failMi <= 0.001, cautionClean = f.cautionMi <= 0.05;
+    if (failClean && cautionClean) {
+      out.push('no fails or caution');
     } else {
-      if (!coversFail) parts.push(failPart());
-      if (!coversCaution) parts.push(cautionPart());
+      // Crossing-sized dabs read as a count, not a mileage rounding to
+      // nothing ("just 2 short fails", each under a tenth of a mile).
+      out.push(failClean ? 'no fails'
+        : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
+          ? `just ${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
+          : `${miText(f.failMi)} mi fail`);
+      out.push(cautionClean ? 'no caution'
+        : `${miText(f.cautionMi)} mi caution${trafficNote(f)}`);
     }
-    // Unpaved riding over a mile is named on every description, alongside
-    // fails and caution (field ask, 2026-08-28): it decides which bike the
-    // rider takes, and a base line about anything else used to bury it.
-    if (!coversUnpaved && f.unpavedMi >= 1) {
-      const n = miNum(f.unpavedMi);
-      parts.push(`${n} ${mileWord(n)} unpaved`);
+    if (f.unpavedMi >= 1) out.push(`${miText(f.unpavedMi)} mi unpaved`);
+    // High-stress roads that did NOT become caution: the rating fails to
+    // caution only where no painted lane carries it, so a busy road with a
+    // lane is real exposure the caution figure never mentions.
+    if (f.trafficMi >= 3 && !out.some((part) => /traffic/.test(part))) {
+      out.push(`${Math.round(f.trafficMi)} mi traffic`);
     }
-    return parts.join(', ');
-  };
-  const withDetail = (f, line) => {
-    // The clause skips whichever topic the base line already carries (the
-    // heavy fail and caution percentage lines), never both mentions.
-    const clause = safetyClause(f, /fail|flag/i.test(line), /caution/i.test(line),
-      /unpaved/i.test(line));
-    let full = clause ? `${line} — ${clause}` : line;
-    const tails = [];
-    // Stretches on officially high-stress roads are worth a word from 3
-    // miles up, even when the rider's rules pass them (field, 2026-08-27:
-    // four car markers on a "meets rules" stretch and the line said nothing
-    // about traffic) — unless the caution mention already named it.
-    if (f.trafficMi >= 3 && !/traffic/i.test(full)) {
-      tails.push(`with ${miles(Math.round(f.trafficMi))} heavy traffic`);
-    }
-    // Scenery stays off the heavy-safety base lines, as before.
-    if (!/flag|fail|caution/i.test(line)) {
-      if (f.trailMi >= 2 && !/trail|off-street/i.test(line)
-        && !new RegExp(`\\b${Math.round(f.trailMi)}\\b`).test(line)) {
-        tails.push(`with ${miles(Math.round(f.trailMi))} on trails`);
-      }
-      if (f.ferry && !/ferry/i.test(line)) tails.push('plus ferry');
-    }
-    // At most two tails within the budget. A second "with" tail folds into
-    // the first as "and": "with 4 miles in heavy traffic and 10 on trails".
-    let attached = 0;
-    let lastWasWith = false;
-    for (const tail of tails) {
-      if (attached >= 2 || wordsOf(full) + wordsOf(tail) > 20) continue;
-      const foldsIn = lastWasWith && tail.startsWith('with ');
-      full = foldsIn ? `${full} and ${tail.slice(5)}` : `${full}, ${tail}`;
-      lastWasWith = tail.startsWith('with ');
-      attached += 1;
-    }
-    // A route-defining climbing day is its own sentence at the end, outside
-    // the tail budget, so it never crowds out a safety fact (field ask,
-    // 2026-08-27: elevation gain as its own sentence).
-    if (f.ascentFt >= 2000 && !/climb|flat|hill/i.test(full)) full += '. Hilly';
-    return full;
+    if (f.ascentFt >= 2000 && !/Flattest|Hilliest|flatter/.test(phrase)) out.push('hilly');
+    if (f.trailMi >= 2 && !/trail|protected|signed/i.test(phrase)) {
+      out.push(`${miText(f.trailMi)} mi trail`);
+    } else if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
+    return out;
   };
   const used = new Set();
   const chosen = new Map();
   for (const f of facts) {
-    const options = lines(f);
-    const pick = options.find((line) => !used.has(line)) || options[options.length - 1];
-    used.add(pick);
-    chosen.set(f.c.profileId, withDetail(f, pick));
+    const options = character(f);
+    const pick = options.find((option) => !used.has(option.kind))
+      || options[options.length - 1];
+    used.add(pick.kind);
+    chosen.set(f.c.profileId,
+      `${pick.text} — ${conditions(f, pick.text).join(', ')}`);
   }
   return chosen;
 }
