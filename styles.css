@@ -845,6 +845,21 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin: calc(env(safe-area-inset-top) + 10px) 10px 0 0; }
+/* The location button hangs under the start/destination card, whose height is
+   content-driven -- app.js publishes its measured bottom edge as
+   --toolbar-bottom (field ask, 2026-08-28: upper left, under the card). More
+   translucent than the right-hand controls: it sits over the map itself
+   rather than in a control column, and at .84 it read as opaque. */
+#map .maplibregl-ctrl-top-left .maplibregl-ctrl-group {
+  margin: 8px 0 0 12px;
+  transform: translateY(var(--toolbar-bottom, 0px));
+  border: 1px solid rgba(200, 213, 223, .7); border-radius: 9px;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, .13);
+  background: rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+#map .maplibregl-ctrl-top-left .maplibregl-ctrl-group button { background-color: transparent; }
+#map .maplibregl-ctrl-top-left .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { margin: 0 3px 8px 0; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group button,
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group button { background-color: transparent; }
@@ -1401,6 +1416,11 @@ body.navigation-active #routeBar { display: none; }
   }
   #routeBar { max-width: 100%; }
   #rb-status { min-width: 0; }
+  /* The docked panel owns the left column on desktop, so the location button
+     clears it the same way the toolbar above it does. */
+  body:not(.navigation-active) #map .maplibregl-ctrl-top-left .maplibregl-ctrl-group {
+    margin-left: calc(12px + var(--desktop-panel-width));
+  }
 }
 
 .app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
@@ -1543,6 +1563,8 @@ body.navigation-active #routeBar { display: none; }
   }
   #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
+  #map .maplibregl-ctrl-top-left .maplibregl-ctrl-group { border-radius: 12px; margin-left: 12px; }
+  #map .maplibregl-ctrl-top-left .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   /* Even while explicitly expanded, attribution stays in the right-hand map
      lane instead of growing left across the 100px Navigate control.
      The budget must cover the attribution's own inset from the right edge --

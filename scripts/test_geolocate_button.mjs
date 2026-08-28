@@ -161,6 +161,27 @@ const afterFollowing = await page.evaluate(() => ({
   calls: window.__webLocationCalls, follows: turnNav.cameraFollow,
 }));
 check('the locate button is present', following.missing === false);
+// Upper left, under the start/destination card, and translucent enough to
+// read as map chrome (field ask, 2026-08-28). The card's height is
+// content-driven, so this is measured rather than assumed.
+const locatePlacement = await page.evaluate(() => {
+  const button = document.querySelector('[data-app-location-control]');
+  const group = button?.closest('.maplibregl-ctrl-group');
+  const bar = document.getElementById('topToolbar').getBoundingClientRect();
+  const box = button.getBoundingClientRect();
+  const alpha = Number((getComputedStyle(group).backgroundColor
+    .match(/[\d.]+\)$/) || ['1'])[0].replace(')', ''));
+  return { inTopLeft: !!button.closest('.maplibregl-ctrl-top-left'),
+    below: Math.round(box.top - bar.bottom), left: Math.round(box.left),
+    overlapsBar: box.top < bar.bottom, alpha };
+});
+check('the locate button sits in the upper left under the itinerary card',
+  locatePlacement.inTopLeft && !locatePlacement.overlapsBar
+    && locatePlacement.below <= 24 && locatePlacement.left <= 24,
+  JSON.stringify(locatePlacement));
+check('and reads as translucent map chrome',
+  locatePlacement.alpha > 0 && locatePlacement.alpha <= 0.6,
+  JSON.stringify(locatePlacement));
 check('tapping it while navigating never reaches the web location API',
   afterFollowing.calls === 0, JSON.stringify(afterFollowing));
 check('and it leaves the camera following the rider', afterFollowing.follows === true,

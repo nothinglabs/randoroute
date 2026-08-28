@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.908';
+const APP_VERSION = '2026-08-26.909';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1834,7 +1834,11 @@ class AppGeolocateControl {
 
 const mapLocationControl = new AppGeolocateControl();
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
-map.addControl(mapLocationControl, 'bottom-right');
+// Upper left, under the start/destination card (field ask, 2026-08-28).
+// The card's height is content-driven -- one endpoint row or two, plus any
+// waypoints -- so its measured bottom edge is published as --toolbar-bottom
+// and the stylesheet hangs the control from it.
+map.addControl(mapLocationControl, 'top-left');
 // Mouse/trackpad users benefit from explicit zoom buttons. Keep them out of
 // phone-sized web layouts and the native shell, where pinch zoom is primary
 // and the extra controls would crowd the map toolbar.
@@ -18108,6 +18112,21 @@ function syncMobileNavDock() {
   // <body> rather than only on the dock. Both elements then rise together.
   document.body.style.setProperty('--mobile-panel-height', `${height}px`);
 }
+// The start/destination card's bottom edge, for anything hanging below it.
+function syncToolbarBottom() {
+  const toolbar = document.getElementById('topToolbar');
+  if (!toolbar) return;
+  const bottom = Math.ceil(toolbar.getBoundingClientRect().bottom);
+  if (bottom > 0) {
+    document.documentElement.style.setProperty('--toolbar-bottom', `${bottom}px`);
+  }
+}
+if (typeof ResizeObserver === 'function') {
+  const toolbar = document.getElementById('topToolbar');
+  if (toolbar) new ResizeObserver(syncToolbarBottom).observe(toolbar);
+}
+window.addEventListener('resize', syncToolbarBottom);
+syncToolbarBottom();
 function scheduleMobileNavDock() {
   if (_mobileDockFrame != null) return;
   _mobileDockFrame = requestAnimationFrame(() => {
