@@ -28,7 +28,14 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v931';
+// v932 is the same trap from the other side: a graph rebuild published new
+// acquisition ids and regenerated maps/states.js and maps/index.json -- both
+// SHELL -- without touching this line, so returning devices kept the old
+// catalogue. The routing guard read the published data and refused to route,
+// while the Maps screen compared installs against the stale shell catalogue
+// and offered no update at all. A DATA release that regenerates either file
+// is a shell change.
+const VERSION = 'v932';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
