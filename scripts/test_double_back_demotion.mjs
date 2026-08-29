@@ -49,12 +49,14 @@ const rows = (trip.allCandidates || []).map((c) => ({
   doubleBackS: Math.round(c.suggestionScore?.doubleBackS || 0),
   totalS: Math.round(c.suggestionScore?.totalS || 0),
 }));
-const loops = rows.filter((r) => r.doubleBackM > 800);
+// Thresholds re-based 2026-08-29 with the tightened parallelism (17.5 m,
+// dot -0.91): the loop family now measures ~616 m, the seat fence is 540.
+const loops = rows.filter((r) => r.doubleBackM > 540);
 const star = rows.find((r) => r.recommended);
 check('the bridge loop is still built and measured',
   loops.length >= 3, JSON.stringify(rows.slice(0, 6)));
 check('every loop candidate is surcharged for the doubling',
-  loops.every((r) => r.doubleBackS > 200), JSON.stringify(loops.slice(0, 3)));
+  loops.every((r) => r.doubleBackS > 150), JSON.stringify(loops.slice(0, 3)));
 check('the star goes to a route that does not double back',
   !!star && star.doubleBackM < 300, JSON.stringify(star));
 check('the surcharge reaches the reported score breakdown',
@@ -65,12 +67,12 @@ check('the surcharge reaches the reported score breakdown',
 // materially double back, and the excluded loops say why on More.
 const seated = rows.filter((r) => r.presented);
 check('no offered letter doubles back materially',
-  seated.length >= 4 && seated.every((r) => r.doubleBackM <= 400),
+  seated.length >= 4 && seated.every((r) => r.doubleBackM <= 540),
   JSON.stringify(seated));
 // The loop family dedupes to a representative first; only the survivor
 // that reached seating carries the doubling why (its twins keep theirs).
 const loopWhy = (trip.allCandidates || []).find((c) =>
-  c.suggestionScore?.doubleBackM > 800 && c.stage === 'not-chosen')?.stageWhy || '';
+  c.suggestionScore?.doubleBackM > 540 && c.stage === 'not-chosen')?.stageWhy || '';
 check('the unseated loop representative explains itself',
   /[Dd]oubles back along itself/.test(loopWhy), loopWhy);
 

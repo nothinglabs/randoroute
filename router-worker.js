@@ -4174,7 +4174,12 @@ const TRAIL_BONUS_S_PER_M = 0.08;
 // out-and-back is roughly constant across its candidates, so the penalty
 // cancels in their comparison.
 const DOUBLE_BACK_FREE_M = 150;
-const DOUBLE_BACK_PRICE_S_PER_M = 0.4;
+// 0.4 -> 0.75 with the 2026-08-29 parallelism tightening: the measure
+// shrank for every route (the U-Bridge loop 1039 -> 616 m), and at the old
+// rate its surcharge fell to 3.1 min and the loop won the star back -- the
+// exact field bug this price exists to prevent. 0.75 restores the loop's
+// surcharge to ~350 s, what it paid before the measure changed.
+const DOUBLE_BACK_PRICE_S_PER_M = 0.75;
 // Metres of a route ridden alongside ITSELF in the opposite direction:
 // ~15 m samples with headings, a 25 m spatial hash, and a match when a
 // sample from a different passage (>120 m apart along the route) sits
@@ -4215,8 +4220,14 @@ function routeDoubleBackM(coords) {
         for (const j of grid.get(gx + ':' + gy) || []) {
           const q = pts[j];
           if (Math.abs(q.m - p.m) < 120) continue;
-          if (p.hx * q.hx + p.hy * q.hy > -0.7) continue;
-          if (Math.hypot(p.x - q.x, p.y - q.y) <= 25) { hit = true; break; }
+          // Tightened 2026-08-29 (was -0.7 / 25 m, rider call: stricter
+          // parallelism over per-case rules). Ferry-terminal approaches --
+          // offset carriageways and ramps at 15-25 m -- measured 747-1003 m
+          // of false doubling and stopped matching at these values (75-271),
+          // while the University Bridge loop, the same trail ridden both
+          // ways, keeps 616 m and stays caught.
+          if (p.hx * q.hx + p.hy * q.hy > -0.91) continue;
+          if (Math.hypot(p.x - q.x, p.y - q.y) <= 17.5) { hit = true; break; }
         }
       }
     }
@@ -5704,7 +5715,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // 400 m, not the score's 150 m allowance: seats are only denied for the
   // unmistakable case. On a via trip the intended out-and-back is shared by
   // every candidate, so the pool empties and the filter stands down.
-  const DOUBLE_BACK_SEAT_MAX_M = 400;
+  // 400 -> 540 with the 2026-08-29 parallelism tightening: the measure
+  // shrank for everyone, so the fence moved out 35% with it. The U-Bridge
+  // loop measures 616 under the new terms.
+  const DOUBLE_BACK_SEAT_MAX_M = 540;
   const doubledBack = (route) => {
     if (route._doubleBackM === undefined) {
       route._doubleBackM = Math.round(routeDoubleBackM(route.coords));
