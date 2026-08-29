@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.930';
+const APP_VERSION = '2026-08-26.931';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -157,8 +157,8 @@ const RULE_NUMBER_LIMITS = {
 // rider-facing Limits remain the hard safety rules. Kept in one shared shape
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
-  failRoadDirect: 1.9, failRoadBalanced: 9, failRoadLowStress: 30,
-  comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
+  failRoadDirect: 4, failRoadBalanced: 9, failRoadLowStress: 30,
+  comfyRoadBalanced: 0.88, comfyRoadLowStress: 0.82,
   // Field-tuned 2026-08-26: the rider's settled values applied as shipped
   // defaults. The `designated` off-state weight is gone — the signed-route
   // preference is always on, so strongDesignated is THE designation bonus.

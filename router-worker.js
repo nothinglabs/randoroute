@@ -1417,8 +1417,8 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
 // "friendly", which collided with the `friendly` ROUTE_PROFILES id (low-stress
 // mode with both preferences on). Three names for two things; now one each.
 const DEFAULT_WEIGHTS = Object.freeze({
-  failRoadDirect: 1.9, failRoadBalanced: 9, failRoadLowStress: 30,
-  comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
+  failRoadDirect: 4, failRoadBalanced: 9, failRoadLowStress: 30,
+  comfyRoadBalanced: 0.88, comfyRoadLowStress: 0.82,
   // Field-tuned 2026-08-26 (rider's settled values became the defaults). The
   // old `designated` off-state weight is gone: the signed-route preference is
   // always on, so strongDesignated is THE designation bonus.
