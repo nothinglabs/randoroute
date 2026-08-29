@@ -1451,13 +1451,21 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // were `arterialTertiary/Secondary/Primary`, named for the OSM highway tag
   // they used to read. They now price a measured count first and the OSM tag
   // last, so the old names described the weakest of their three inputs.
-  busyLightDirect: 1.02, busyLightBalanced: 1.12, busyLightLowStress: 1.22,
-  busyMediumDirect: 1.05, busyMediumBalanced: 1.28, busyMediumLowStress: 1.48,
-  busyHeavyDirect: 1.1, busyHeavyBalanced: 1.5, busyHeavyLowStress: 1.85,
+  // Nudged up 2026-08-29 (rider call: traffic should bite a little harder;
+  // was 1.02/1.12/1.22, 1.05/1.28/1.48, 1.1/1.5/1.85).
+  busyLightDirect: 1.03, busyLightBalanced: 1.16, busyLightLowStress: 1.3,
+  busyMediumDirect: 1.07, busyMediumBalanced: 1.38, busyMediumLowStress: 1.65,
+  busyHeavyDirect: 1.14, busyHeavyBalanced: 1.65, busyHeavyLowStress: 2.1,
   // 0 = price busy roads off the OSM tag alone, as before the statewide
   // measurements existed. 1 = let a measured count or an official functional
   // class override the tag. Fractions blend the two.
   useMeasuredTraffic: 1,
+  // The share of the traffic penalty a PAINTED lane or buffer still pays
+  // (rider call, 2026-08-29). Paint used to clear traffic pricing entirely,
+  // which left the busy* sliders dead on 991 laned arterial miles statewide.
+  // 0 restores that full exemption; 1 prices the lane like bare road.
+  // Physical separation (facility >= 4) is always exempt.
+  lanedTrafficShare: 0.3,
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
@@ -1502,6 +1510,9 @@ let weightsSignature = '';
 // beyond both inputs and can make an edge cost negative.
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
+  // A share, not a multiplier: above 1 a painted lane would price WORSE
+  // than bare road.
+  lanedTrafficShare: Object.freeze([0, 1]),
   preferredRoute: Object.freeze([0.05, 1]),
   // A knee of 0 charges every metre climbed; 9 charges almost nothing until the
   // grade is genuinely steep. Above 9 the anchor at 10% has nothing to bite on.
@@ -1522,7 +1533,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'facilityNeutralStrength',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'lanedTrafficShare', 'facilityNeutralStrength',
   'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
@@ -1706,21 +1717,27 @@ function trafficTierMult(tier, weights) {
 }
 
 function majorRoadMult(i, weights, forward) {
-  // A real bike lane or separated facility makes motor-traffic exposure less
-  // relevant to route choice. A sharrow is only paint in the traffic lane, so
-  // measured traffic must still be priced normally.
-  if (edgeFacility(i, forward) >= 2 || (eFlags[i] & (8 | 32 | 4))
-      || edgeLimited(i, forward)) return 1;
+  if ((eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  // Physical separation removes motor-traffic exposure; paint does not
+  // shrink the road. A painted lane or buffer used to clear this pricing
+  // entirely, which made every busy* slider dead on a laned arterial
+  // (measured 2026-08-29: 991 laned arterial miles statewide, traffic
+  // priced on none). It now pays lanedTrafficShare of the penalty's
+  // excess. A sharrow is only paint in the traffic lane and pays in full.
+  const facility = edgeFacility(i, forward);
+  const share = facility >= 4 ? 0 : facility >= 2
+    ? Math.max(0, Math.min(1, activeWeights.lanedTrafficShare)) : 1;
+  if (!share) return 1;
   const osm = trafficTierMult(osmTrafficTier(i), weights);
   // `useMeasuredTraffic` blends from the OSM answer toward the measured one. At 0
-  // this function is byte-for-byte the old behaviour, which is the point: the
+  // the tier choice is byte-for-byte the old behaviour, which is the point: the
   // measurements can be switched off from the desktop weight editor and ridden
   // against, rather than being an unfalsifiable improvement.
   const blend = activeWeights.useMeasuredTraffic;
-  if (!blend) return osm;
-  const tier = measuredTrafficTier(i);
-  if (tier == null) return osm;
-  return osm + blend * (trafficTierMult(tier, weights) - osm);
+  const tier = blend ? measuredTrafficTier(i) : null;
+  const full = (blend && tier != null)
+    ? osm + blend * (trafficTierMult(tier, weights) - osm) : osm;
+  return 1 + (full - 1) * share;
 }
 
 // Lane count and WSDOT's own stress rating, for the roads where speed has
@@ -5696,7 +5713,20 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   };
   const loopFree = stopBounded.filter((route) => !doubledBack(route)
     || route === recommended);
-  const selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
+  let selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
+  // The fully-matching guarantee outranks the doubling exclusion (found
+  // 2026-08-29 when the traffic weights moved): on a ferry trip every
+  // rules-clean candidate measures ~750-1050 m of "doubling" -- terminal
+  // approaches, not a pathology -- and the filter removed the board's only
+  // clean routes, so the guaranteed seat silently vanished. When the pool
+  // keeps no clean candidate, re-admit the fullyMatching pick alone; its
+  // recommendationScore already surcharges doubling, so among clean
+  // candidates it self-steers away from genuine loops.
+  if (fullyMatching && !selectionChoices.includes(fullyMatching)
+      && stopBounded.includes(fullyMatching)
+      && !selectionChoices.some((route) => route.failM <= 0.5)) {
+    selectionChoices = [...selectionChoices, fullyMatching];
+  }
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);

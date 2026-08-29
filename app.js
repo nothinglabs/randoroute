@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.927';
+const APP_VERSION = '2026-08-26.928';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -173,10 +173,11 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   curveDirect1: 1.08, curveDirect2: 1.16, curveDirect3: 1.3,
   curveBalanced1: 1.35, curveBalanced2: 1.8, curveBalanced3: 2.6,
   curveLowStress1: 1.8, curveLowStress2: 3.4, curveLowStress3: 6.5,
-  busyLightDirect: 1.02, busyLightBalanced: 1.12, busyLightLowStress: 1.22,
-  busyMediumDirect: 1.05, busyMediumBalanced: 1.28, busyMediumLowStress: 1.48,
-  busyHeavyDirect: 1.1, busyHeavyBalanced: 1.5, busyHeavyLowStress: 1.85,
+  busyLightDirect: 1.03, busyLightBalanced: 1.16, busyLightLowStress: 1.3,
+  busyMediumDirect: 1.07, busyMediumBalanced: 1.38, busyMediumLowStress: 1.65,
+  busyHeavyDirect: 1.14, busyHeavyBalanced: 1.65, busyHeavyLowStress: 2.1,
   useMeasuredTraffic: 1,
+  lanedTrafficShare: 0.3,
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
@@ -233,6 +234,7 @@ const ROUTING_WEIGHTS_VERSION = 10;
 // blend into extrapolation (and, for traffic, a negative edge cost).
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
+  lanedTrafficShare: Object.freeze([0, 1]),
   preferredRoute: Object.freeze([0.05, 1]),
   // A knee of 0 charges every metre climbed; 9 charges almost nothing until the
   // grade is genuinely steep. Above 9 the anchor at 10% has nothing to bite on.
@@ -253,7 +255,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
   'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'facilityNeutralStrength',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic', 'lanedTrafficShare', 'facilityNeutralStrength',
   'crossUncontrolledDirectSec', 'crossUncontrolledBalancedSec', 'crossUncontrolledLowStressSec']);
 function validatedRoutingWeight(key, sourceValue) {
   const value = Number(sourceValue);
@@ -16418,7 +16420,7 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
       hint: 'Above 1: rideable on a mountain bike, avoided unless it is the only link.' },
   ], 'Bike & quiet'],
-  ['Traffic volume', 'Measured counts first, FHWA class next, OSM tags last. Thresholds match "Road is busier than" in Limits. Any recorded bike facility clears these.', [
+  ['Traffic volume', 'Measured counts first, FHWA class next, OSM tags last. Thresholds match "Road is busier than" in Limits. Separation clears these; a painted lane pays the share below.', [
     { key: 'useMeasuredTraffic', label: 'Trust measurements over OSM road tags', min: 0, max: 1, step: .05,
       hint: 'Set to 0 to price traffic purely from OSM tags; 1 lets a measured count or official class override the tag.' },
     { base: 'busyLight', label: 'Light traffic', min: 1, max: 3, step: .01,
@@ -16427,6 +16429,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Over 6,000 vehicles/day, or an FHWA minor arterial.' },
     { base: 'busyHeavy', label: 'Heavy traffic', min: 1, max: 5, step: .01,
       hint: 'Over 15,000 vehicles/day, or an FHWA principal arterial and up.' },
+    { key: 'lanedTrafficShare', label: 'Traffic share a painted bike lane still pays', min: 0, max: 1, step: .05,
+      hint: 'A painted lane or buffer pays this fraction of the traffic penalty above. 0 exempts it entirely (the old behaviour); 1 prices it like bare road. Physical separation is always exempt.' },
   ], 'Traffic'],
   ['Road size and stress rating', 'For roads where the speed limit stops telling you anything. Separation exempts an edge, paint halves the cost, and the larger of the two applies.', [
     { base: 'wideRoad', label: 'Four or more lanes', min: 1, max: 4, step: .01,

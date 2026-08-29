@@ -150,13 +150,25 @@ setEdge({ cls: 1, adt: 15001 });
 assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyHeavyLowStress,
   'the heaviest traffic-cost tier starts above 15,000/day');
 
-/* ----------------------- real bike space exempts traffic; sharrows do not */
+/* -------- paint pays a share of traffic; separation exempts; sharrows pay */
 setEdge({ cls: 8, adt: 30000, facility: 1 });
 assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyHeavyLowStress,
   'a sharrow must not erase the measured-traffic cost');
+// A painted lane no longer clears traffic pricing (2026-08-29): it pays
+// lanedTrafficShare of the excess -- 0.3 by default, 0 restoring the old
+// exemption, 1 pricing it like bare road. Separation stays exempt.
 setEdge({ cls: 8, adt: 30000, facility: 2 });
-assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), 1,
-  'a real bike lane still clears the no-facility traffic proxy');
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }),
+  +(1 + (W.busyHeavyLowStress - 1) * W.lanedTrafficShare).toFixed(4),
+  'a painted lane pays the default share of the traffic cost');
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1, lanedTrafficShare: 0 }), 1,
+  'share 0 restores the old full exemption for paint');
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1, lanedTrafficShare: 1 }),
+  W.busyHeavyLowStress,
+  'share 1 prices a painted lane like bare road');
+setEdge({ cls: 8, adt: 30000, facility: 4 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1, lanedTrafficShare: 1 }), 1,
+  'physical separation stays exempt at any share');
 
 /* ---------------- a sharrow preference may apply without changing safety */
 vm.runInContext('useWeights({ facilityShared: 0.75 })', context);
