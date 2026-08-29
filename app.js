@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.921';
+const APP_VERSION = '2026-08-26.922';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12066,6 +12066,16 @@ function candidateRouteDescriptions(all) {
     const n = Math.max(0.1, Math.round(x * 10) / 10);
     return n >= 9.95 ? String(Math.round(n)) : String(n);
   };
+  // "~1h 15m ride", and no empty minutes: "1h25" read as a clock time rather
+  // than a duration (field ask, 2026-08-29).
+  const rideText = (seconds) => {
+    const total = Math.max(1, Math.round((Number(seconds) || 0) / 60));
+    const h = Math.floor(total / 60), m = total % 60;
+    const parts = [];
+    if (h) parts.push(`${h}h`);
+    if (m || !h) parts.push(`${m}m`);
+    return `~${parts.join(' ')} ride`;
+  };
   // Spelled out, not abbreviated: three lines leave room, and "mi" reads as
   // a data label rather than a sentence (field ask, 2026-08-28).
   const miles = (x) => {
@@ -12104,13 +12114,6 @@ function candidateRouteDescriptions(all) {
       add('flatter', 'Among the flatter');
     }
     if (facts.length > 1 && f.mi <= min('mi') * 1.03) add('near-short', 'Nearly shortest');
-    const slowerMin = Math.round((c.timeS - minTime) / 60);
-    // Past an hour and a half, minutes stop meaning anything: "189 min
-    // slower" is a number to decode, "3.2h slower" is a decision.
-    if (slowerMin >= 5) {
-      add('slower', slowerMin >= 90 ? `${(slowerMin / 60).toFixed(1)}h slower`
-        : `${slowerMin} min slower`);
-    }
     // The last resort keeps its decimal. miText collapses anything past 9.95
     // to whole miles, so 17.70, 17.74 and 17.94 all read "18 miles" and three
     // rows on one board came out identical (2026-08-29). Distance is the only
@@ -12134,8 +12137,10 @@ function candidateRouteDescriptions(all) {
         : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
           ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
           : `${miles(f.failMi)} failing`);
-      out.push(cautionClean ? 'no caution'
-        : `${miles(f.cautionMi)} caution${trafficNote(f)}`);
+      // "no caution" is worth saying only when there is nothing else to
+      // report: after a failing mileage it is noise (field ask, 2026-08-29).
+      if (!cautionClean) out.push(`${miles(f.cautionMi)} caution${trafficNote(f)}`);
+      else if (failClean) out.push('no caution');
     }
     if (f.unpavedMi >= 1) out.push(`${miles(f.unpavedMi)} unpaved`);
     // High-stress roads that did NOT become caution: the rating fails to
@@ -12193,7 +12198,7 @@ function candidateRouteDescriptions(all) {
     // 2026-08-28): the row beneath the pill shows it, the pill does not, and
     // it is what the rest of the line is weighed against. Outside the filler
     // budget, which reserves its room above.
-    out.push(`${formatCandidateHours(f.c.timeS)} riding`);
+    out.push(rideText(f.c.timeS));
     return out;
   };
   const used = new Set();

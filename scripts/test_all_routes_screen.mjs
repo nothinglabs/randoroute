@@ -212,9 +212,14 @@ const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
 // (2026-08-28). Words are the readability bound, characters the layout one.
 // Riding time closes every description, always and last (field ask,
 // 2026-08-28) -- it is what the rest of the line is weighed against.
-check('every description ends with its riding time',
-  rows.every((r) => /, \d+h\d{2} riding$/.test(r.desc)),
-  JSON.stringify(rows.filter((r) => !/riding$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
+check('every description ends with its ride estimate',
+  rows.every((r) => /, ~\d+[hm]( \d+m)? ride$/.test(r.desc)),
+  JSON.stringify(rows.filter((r) => !/ride$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
+// Empty minutes are not printed, and the estimate is a duration rather than
+// a clock time (field ask, 2026-08-29).
+check('the estimate never prints a zero-minute tail',
+  rows.every((r) => !/\b0m ride$/.test(r.desc)),
+  JSON.stringify(rows.map((r) => r.desc).filter((d) => /0m ride$/.test(d))));
 check('no description overruns the three lines it is given',
   rows.every((r) => r.desc.length <= 135),
   JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
@@ -363,7 +368,8 @@ check('the marked-up description still reads as the sentence it was',
   JSON.stringify(emphasis));
 
 check('crossing-sized fails read as a count, not vanishing mileage',
-  /\b2 short fails, no caution/.test(cautionAndHills.dabs),
+  /\b2 short fails,/.test(cautionAndHills.dabs)
+    && !/no caution/.test(cautionAndHills.dabs),
   JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
