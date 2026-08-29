@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.923';
+const APP_VERSION = '2026-08-26.924';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12066,15 +12066,14 @@ function candidateRouteDescriptions(all) {
     const n = Math.max(0.1, Math.round(x * 10) / 10);
     return n >= 9.95 ? String(Math.round(n)) : String(n);
   };
-  // "~1h 15m ride", and no empty minutes: "1h25" read as a clock time rather
-  // than a duration (field ask, 2026-08-29).
+  // Under an hour, minutes; past it, quarter hours (field ask, 2026-08-29).
+  // "1h25" read as a clock time, and a rider planning an afternoon thinks in
+  // quarters, not in minutes they will not hold to anyway.
   const rideText = (seconds) => {
     const total = Math.max(1, Math.round((Number(seconds) || 0) / 60));
-    const h = Math.floor(total / 60), m = total % 60;
-    const parts = [];
-    if (h) parts.push(`${h}h`);
-    if (m || !h) parts.push(`${m}m`);
-    return `~${parts.join(' ')} ride`;
+    if (total < 60) return `${total} minute ride`;
+    const hours = Math.round(total / 15) / 4;
+    return `~${Number.isInteger(hours) ? hours : hours} hour ride`;
   };
   // Spelled out, not abbreviated: three lines leave room, and "mi" reads as
   // a data label rather than a sentence (field ask, 2026-08-28).
@@ -12119,12 +12118,11 @@ function candidateRouteDescriptions(all) {
       add('flatter', 'Among the flatter');
     }
     if (facts.length > 1 && f.mi <= min('mi') * 1.03) add('near-short', 'Nearly shortest');
-    // The last resort keeps its decimal. miText collapses anything past 9.95
-    // to whole miles, so 17.70, 17.74 and 17.94 all read "18 miles" and three
-    // rows on one board came out identical (2026-08-29). Distance is the only
-    // thing left to tell these apart, so it is stated precisely.
-    add(`mixed-${f.mi.toFixed(1)}`, `${f.mi.toFixed(1)} miles, mixed roads`);
-    add('plain', 'Mixed roads');
+    // The last resort is the distance itself, stated precisely: miText
+    // collapses anything past 9.95 to whole miles, so 17.70, 17.74 and 17.94
+    // all read "18 miles" and three rows on one board came out identical
+    // (2026-08-29). Distance is the only thing left to tell these apart.
+    add(`mixed-${f.mi.toFixed(1)}`, `${f.mi.toFixed(1)} miles`);
     return out;
   };
   // Fails and caution on every route, whatever the phrase says; then only

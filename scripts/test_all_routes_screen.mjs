@@ -213,13 +213,32 @@ const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
 // Riding time closes every description, always and last (field ask,
 // 2026-08-28) -- it is what the rest of the line is weighed against.
 check('every description ends with its ride estimate',
-  rows.every((r) => /, ~\d+[hm]( \d+m)? ride$/.test(r.desc)),
+  rows.every((r) => /, (\d+ minute|~\d+(\.\d+)? hour) ride$/.test(r.desc)),
   JSON.stringify(rows.filter((r) => !/ride$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
-// Empty minutes are not printed, and the estimate is a duration rather than
-// a clock time (field ask, 2026-08-29).
-check('the estimate never prints a zero-minute tail',
-  rows.every((r) => !/\b0m ride$/.test(r.desc)),
-  JSON.stringify(rows.map((r) => r.desc).filter((d) => /0m ride$/.test(d))));
+// Minutes under an hour, quarter hours past it, and never a trailing zero
+// (field ask, 2026-08-29): "1h25" read as a clock time, and a rider planning
+// an afternoon thinks in quarters.
+const rideForms = await pg.evaluate(() => {
+  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
+    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
+    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
+  const d = candidateRouteDescriptions([
+    mk({ profileId: 'short', timeS: 2700 }),          // 45 min
+    mk({ profileId: 'hour', timeS: 3620 }),           // 1h00
+    mk({ profileId: 'quarter', timeS: 4500 }),        // 1h15
+    mk({ profileId: 'two', timeS: 7150 }),            // ~2h
+  ]);
+  return { short: d.get('short'), hour: d.get('hour'),
+    quarter: d.get('quarter'), two: d.get('two') };
+});
+check('under an hour reads in minutes',
+  /, 45 minute ride$/.test(rideForms.short), JSON.stringify(rideForms));
+check('an hour reads as one hour, with no decimal',
+  /, ~1 hour ride$/.test(rideForms.hour), JSON.stringify(rideForms));
+check('past an hour rounds to a quarter',
+  /, ~1\.25 hour ride$/.test(rideForms.quarter), JSON.stringify(rideForms));
+check('and a whole number of hours keeps no trailing zero',
+  /, ~2 hour ride$/.test(rideForms.two), JSON.stringify(rideForms));
 check('no description overruns the three lines it is given',
   rows.every((r) => r.desc.length <= 135),
   JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
