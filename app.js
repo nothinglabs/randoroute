@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.924';
+const APP_VERSION = '2026-08-26.925';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12081,49 +12081,27 @@ function candidateRouteDescriptions(all) {
     const n = miText(x);
     return `${n} ${n === '1' ? 'mile' : 'miles'}`;
   };
-  // Each option carries its KIND, and a board may spend a kind once. Keying
-  // the dedupe on the text let five routes all read "Signed routes, N mi"
-  // -- different numbers, same sentence (field review, 2026-08-28).
-  const character = (f) => {
-    const c = f.c;
-    const out = [];
-    const add = (kind, text) => out.push({ kind, text });
-    if (c.timeS === minTime && facts.length > 1) add('quickest', 'Quickest');
-    if (holds(f, 'mi', min, 1) && c.timeS !== minTime) add('shortest', 'Shortest');
-    // Safety is the thing a rider is choosing on, so the route that carries
-    // uniquely the least failing road says so before its shape (rider ask,
-    // 2026-08-29). Only when it HAS fails: a route with none already says
-    // "no fails" in its conditions, and the phrase would repeat it.
-    if (holds(f, 'failMi', min, 0.3) && f.failMi > 0.05) add('fewest-fails', 'Fewest fails');
-    if (holds(f, 'ascentFt', min, 250)) add('flattest', 'Flattest');
-    if (holds(f, 'ftPerMi', max, 20)) add('hilliest', 'Hilliest');
-    // The words have to match the measurement (field review, 2026-08-28:
-    // "nearly all trail" was firing at 60% and "half trail, half road" at
-    // 35%). Each band now says what its share actually is, and a route that
-    // fits none of them falls through to its trail MILEAGE, which cannot
-    // overstate anything.
-    if (f.trailPct >= 0.85) add('trail-all', 'Nearly all trail');
-    else if (f.trailPct >= 0.6) add('trail-most-share', 'Mostly trail');
-    if (holds(f, 'trailMi', max, 2)) add('trail-most', `Most trail, ${miles(f.trailMi)}`);
-    if (f.trailPct >= 0.4 && f.trailPct < 0.6) add('trail-half', 'Half trail, half road');
-    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) {
-      add('protected', 'Over half protected');
-    }
-    if (f.lanePct >= 0.5) add('lanes', 'Mostly bike lanes');
-    if (f.resPct >= 0.5) add('residential', 'Mostly residential');
-    if (f.ferry) add('ferry', 'Ferry route');
-    if (f.trailMi >= 2) add('trail-mi', `${miles(f.trailMi)} on trail`);
-    if (f.resPct >= 0.2) add('res-part', 'Part residential');
+  // Every description opens with the distance (field ask, 2026-08-29), so a
+  // trait is no longer an opener competing for the row -- it is one clause
+  // inside the sentence, lower case, and two routes that share a trait may
+  // both say so. "Quickest" and "Ferry route" are gone: the ride estimate
+  // carries the first, and a ferry rides in the conditions with everything
+  // else that changes the ride.
+  const trait = (f) => {
+    if (holds(f, 'failMi', min, 0.3) && f.failMi > 0.05) return 'fewest fails';
+    if (f.trailPct >= 0.85) return 'nearly all trail';
+    if (f.trailPct >= 0.6) return 'mostly trail';
+    if (f.trailPct >= 0.4) return 'half trail and road';
+    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) return 'over half protected';
+    if (f.lanePct >= 0.5) return 'mostly bike lanes';
+    if (f.resPct >= 0.5) return 'mostly residential';
+    if (holds(f, 'ascentFt', min, 250)) return 'flattest option';
+    if (holds(f, 'ftPerMi', max, 20)) return 'hilliest option';
+    if (f.resPct >= 0.2) return 'part residential';
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
-      add('flatter', 'Among the flatter');
+      return 'among the flatter';
     }
-    if (facts.length > 1 && f.mi <= min('mi') * 1.03) add('near-short', 'Nearly shortest');
-    // The last resort is the distance itself, stated precisely: miText
-    // collapses anything past 9.95 to whole miles, so 17.70, 17.74 and 17.94
-    // all read "18 miles" and three rows on one board came out identical
-    // (2026-08-29). Distance is the only thing left to tell these apart.
-    add(`mixed-${f.mi.toFixed(1)}`, `${f.mi.toFixed(1)} miles`);
-    return out;
+    return '';
   };
   // Fails and caution on every route, whatever the phrase says; then only
   // what changes the ride: gravel, traffic the caution figure missed, a
@@ -12152,7 +12130,7 @@ function candidateRouteDescriptions(all) {
     if (f.trafficMi >= 3 && !out.some((part) => /traffic/.test(part))) {
       out.push(`${miles(Math.round(f.trafficMi))} heavy traffic`);
     }
-    if (f.ascentFt >= 2000 && !/Flattest|Hilliest|flatter/.test(phrase)) out.push('hilly');
+    if (f.ascentFt >= 2000 && !/flat|hilliest/i.test(phrase)) out.push('hilly');
     // A ferry is a mode change, not a detail: it is named whenever the
     // phrase does not already say so.
     if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
@@ -12163,7 +12141,8 @@ function candidateRouteDescriptions(all) {
     // while the line stays inside them. Each fact must also be worth its
     // words: a 2.5-mile residential stretch on a 60-mile ride is noise, so
     // the mileage thresholds scale with the route.
-    const line = () => `${phrase} — ${out.join(', ')}`;
+    const line = () => `${f.mi.toFixed(1)} miles — `
+      + [phrase, ...out].filter(Boolean).join(', ');
     let fills = 0;
     const spend = (family, text) => {
       if (fills >= 3 || family.test(line())) return;
@@ -12204,15 +12183,18 @@ function candidateRouteDescriptions(all) {
     out.push(rideText(f.c.timeS));
     return out;
   };
-  const used = new Set();
   const chosen = new Map();
+  // A trait earns its words by distinguishing this route from the others. On
+  // a board where nine of ten options are nearly all trail, saying so on each
+  // one says nothing (measured, 2026-08-29) -- and the trail MILEAGE, which
+  // the trait was suppressing, differs per route and returns in its place.
+  const traits = new Map(facts.map((f) => [f, trait(f)]));
+  const shared = (text) => text
+    && [...traits.values()].filter((other) => other === text).length > facts.length / 2;
   for (const f of facts) {
-    const options = character(f);
-    const pick = options.find((option) => !used.has(option.kind))
-      || options[options.length - 1];
-    used.add(pick.kind);
-    chosen.set(f.c.profileId,
-      `${pick.text} — ${conditions(f, pick.text).join(', ')}`);
+    const pick = shared(traits.get(f)) ? '' : traits.get(f);
+    chosen.set(f.c.profileId, `${f.mi.toFixed(1)} miles — `
+      + [pick, ...conditions(f, pick)].filter(Boolean).join(', '));
   }
   return chosen;
 }

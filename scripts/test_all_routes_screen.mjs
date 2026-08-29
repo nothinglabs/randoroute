@@ -212,6 +212,15 @@ const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
 // (2026-08-28). Words are the readability bound, characters the layout one.
 // Riding time closes every description, always and last (field ask,
 // 2026-08-28) -- it is what the rest of the line is weighed against.
+// Every description opens with the route's distance (field ask, 2026-08-29):
+// "Quickest" is gone, and a ferry rides in the conditions rather than opening
+// the line.
+check('every description opens with the route distance',
+  rows.every((r) => /^\d+(\.\d+)? miles — /.test(r.desc)),
+  JSON.stringify(rows.filter((r) => !/^\d/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
+check('and no description opens with a trait or a ferry',
+  rows.every((r) => !/^(Quickest|Ferry|Fewest|Nearly|Mostly|Half|Over)/.test(r.desc)),
+  JSON.stringify(rows.map((r) => r.desc).filter((d) => /^[A-Z]/.test(d)).slice(0, 3)));
 check('every description ends with its ride estimate',
   rows.every((r) => /, (\d+ minute|~\d+(\.\d+)? hour) ride$/.test(r.desc)),
   JSON.stringify(rows.filter((r) => !/ride$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
@@ -409,7 +418,8 @@ const fewestFails = await pg.evaluate(() => {
     leastBesideClean: withClean.get('least'), clean: withClean.get('clean') };
 });
 check('the least-failing route of a dirty board says so',
-  /^Fewest fails —/.test(fewestFails.least), JSON.stringify(fewestFails));
+  /^[\d.]+ miles — fewest fails,/.test(fewestFails.least),
+  JSON.stringify(fewestFails));
 check('and no other route claims it',
   !/Fewest fails/.test(fewestFails.worst), JSON.stringify(fewestFails));
 check('nobody claims fewest when another route has none',
