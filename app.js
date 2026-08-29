@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.925';
+const APP_VERSION = '2026-08-26.926';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4431,6 +4431,10 @@ function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
   return {
     name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
+    // Travel time and what the search charged for this arc, for the debug
+    // pane's cost strip (2026-08-29).
+    timeS: Number.isFinite(Number(s.timeS)) ? Number(s.timeS) : null,
+    costS: Number.isFinite(Number(s.costS)) ? Number(s.costS) : null,
     stateId: s.stateId || (typeof Region !== 'undefined' ? Region.id : null),
     partitionId: s.partitionId || null,
     localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
@@ -15225,12 +15229,45 @@ function readoutPrimaryButton(className, text, label) {
   return button;
 }
 
+// What riding this arc takes against what the SEARCH charged for it. The
+// ratio is the diagnostic: a cycletrack prices at a fifth of its travel time,
+// a failing shoulder at several times, and that difference is the whole
+// reason a route went one way and not the other. Both come from the segment
+// the rider tapped -- timeS is edgeTimeS, costS is edgeCost, the same terms
+// the relaxation loop charged -- so nothing here is a second model.
+function mapTapCostFacts(record) {
+  const p = record?.rawProperties || {};
+  const lenM = Number(p.lenM), timeS = Number(p.timeS), costS = Number(p.costS);
+  if (!Number.isFinite(lenM) || lenM <= 0 || !Number.isFinite(costS)) return [];
+  const mi = lenM / 1609.344;
+  const facts = [];
+  if (Number.isFinite(timeS)) facts.push(['Travel', `${timeS.toFixed(0)} s`]);
+  facts.push(['Search cost', `${costS.toFixed(1)} s`]);
+  facts.push(['Cost per mile', `${Math.round(costS / Math.max(mi, 0.0001))} s`]);
+  if (Number.isFinite(timeS) && timeS > 0) {
+    facts.push(['Cost vs travel', `${(costS / timeS).toFixed(2)}×`]);
+  }
+  facts.push(['Length', `${mi < 0.1 ? `${Math.round(lenM * 3.28084)} ft` : `${mi.toFixed(2)} mi`}`]);
+  return facts;
+}
+
 function openMapTapDebug(title, record) {
   const dialog = document.getElementById('mapDebugDialog');
   const heading = document.getElementById('mapDebugTitle');
   const output = document.getElementById('mapDebugOutput');
+  const facts = document.getElementById('mapDebugFacts');
   if (!dialog || !heading || !output) return;
   heading.textContent = title || 'Map location';
+  if (facts) {
+    const items = mapTapCostFacts(record);
+    facts.replaceChildren(...items.map(([label, value]) => {
+      const item = document.createElement('span');
+      item.className = 'map-debug-fact';
+      item.innerHTML = `<b>${value}</b>${label}`;
+      return item;
+    }));
+    facts.hidden = !items.length;
+  }
   output.textContent = JSON.stringify(record, null, 2);
   if (!dialog.open) dialog.showModal();
 }

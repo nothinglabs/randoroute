@@ -1629,6 +1629,16 @@ body.navigation-active #routeBar { display: none; }
 .map-debug-head span { display: block; color: #89a4b0; font: 750 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; }
 .map-debug-head h2 { margin: 2px 0 0; color: #f1f6f8; font: 750 14px/1.15 system-ui; }
 .map-debug-head .dialog-close { flex: none; width: 36px; height: 36px; color: #d7e2e7; background: #2a3a42; font-size: 17px; }
+/* Cost facts sit above the JSON, in the pane's own dark register: what
+   riding this arc takes against what the search charged for it. */
+.map-debug-facts { display: flex; flex-wrap: wrap; gap: 6px; flex: none;
+  padding: 10px 12px; border-bottom: 1px solid #2b3d46; background: #14212711; }
+.map-debug-facts[hidden] { display: none; }
+.map-debug-fact { display: flex; flex-direction: column; gap: 1px; min-width: 74px;
+  padding: 6px 9px; border: 1px solid #2f434c; border-radius: 8px; background: #182830;
+  color: #89a4b0; font: 750 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .06em; text-transform: uppercase; }
+.map-debug-fact b { color: #e6f2f6; font: 750 14px/1.2 system-ui; letter-spacing: 0; text-transform: none; }
 #mapDebugOutput {
   flex: 1 1 auto; min-height: 0; margin: 0; padding: 14px; overflow: auto;
   background: #10191e; color: #c9e6d5; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

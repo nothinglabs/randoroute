@@ -3025,6 +3025,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   let hazardM = 0;
   let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
   let facilityM = 0, trailM = 0, mtbM = 0, dismountM = 0;
+  // The edge turned off, for the path-dependent half of an arc's price.
+  let incomingEdge = -1;
   for (const [ei, fromNode] of edges) {
     edgeIds.push(ei);
     const off = eOff[ei], cnt = eCnt[ei];
@@ -3126,10 +3128,22 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
-      lenM: Math.round(eLen[ei]), timeS: Math.round(segTimeS) });
+      lenM: Math.round(eLen[ei]), timeS: Math.round(segTimeS),
+      // What the SEARCH charged for this arc, as against what riding it
+      // takes: the ratio between them is why a router went around something
+      // (debug view, 2026-08-29). Same terms the relaxation loop used --
+      // both go through edgeCostParts -- with the path-dependent inputs the
+      // loop had: which edge we turned off, and where the ferry boards.
+      costS: Math.round(10 * edgeCost(ei, forward, {
+        mode, modeW, rules, searchRules, prefDesig, prefResidential,
+        boardingWaitS: (eFlags[ei] & 32) && nodeHasLand[fromNode]
+          ? activeWeights.ferryWaitMin * 60 : 0,
+        fromNode, incomingEdge,
+      })) / 10 });
     const toNode = forward ? eB[ei] : eA[ei];
     nodeIds.push(toNode);
     profile.push([distM, nodeEle[toNode]]);
+    incomingEdge = ei;
   }
   // Reclassify a complete short failing RUN as one crossing. OSM may split a
   // crosswalk or intersection into several graph edges, so requiring one
