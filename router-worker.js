@@ -5713,20 +5713,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   };
   const loopFree = stopBounded.filter((route) => !doubledBack(route)
     || route === recommended);
-  let selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
-  // The fully-matching guarantee outranks the doubling exclusion (found
-  // 2026-08-29 when the traffic weights moved): on a ferry trip every
-  // rules-clean candidate measures ~750-1050 m of "doubling" -- terminal
-  // approaches, not a pathology -- and the filter removed the board's only
-  // clean routes, so the guaranteed seat silently vanished. When the pool
-  // keeps no clean candidate, re-admit the fullyMatching pick alone; its
-  // recommendationScore already surcharges doubling, so among clean
-  // candidates it self-steers away from genuine loops.
-  if (fullyMatching && !selectionChoices.includes(fullyMatching)
-      && stopBounded.includes(fullyMatching)
-      && !selectionChoices.some((route) => route.failM <= 0.5)) {
-    selectionChoices = [...selectionChoices, fullyMatching];
-  }
+  const selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
@@ -5895,6 +5882,42 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     bench.push(selected[bestSeat]);
     bench.splice(bestPick, 1);
     selected.splice(0, selected.length, ...bestBoard);
+  }
+
+  // ---- the fully-matching guarantee, deliberately LAST ------------------
+  // Found 2026-08-29 when the traffic weights moved: on a ferry trip every
+  // rules-clean candidate measures ~750-1050 m of "doubling" (terminal
+  // approaches, not a pathology), the seat exclusion dropped them all from
+  // the pool, and the guaranteed clean seat silently vanished. Re-admitting
+  // the pick BEFORE seating broke differently -- it outranked the ferry
+  // cross-breed in the required list and the field-contracted safe-island
+  // hybrid lost its seat. So the guarantee runs after everything else: only
+  // when the finished board carries no rules-clean route, swap the
+  // fullyMatching pick in for the most redundant swappable seat. Its
+  // recommendationScore already surcharges doubling, so among clean
+  // candidates it steers away from genuine loops (the University Bridge
+  // exclusion is untouched: that board seats clean routes normally).
+  if (fullyMatching && !selected.includes(fullyMatching)
+      && stopBounded.includes(fullyMatching)
+      && !selected.some((route) => route.failM <= 0.5)) {
+    const redundancy = (index) => Math.max(0, ...selected
+      .filter((other) => other !== selected[index])
+      .map((other) => pairOverlap(selected[index], other)));
+    const swappable = (soft) => {
+      let at = -1, worst = -Infinity;
+      for (let i = 0; i < selected.length; i++) {
+        if (selected[i] === recommended) continue;
+        if (!soft && required.includes(selected[i])) continue;
+        const overlap = redundancy(i);
+        if (overlap > worst) { worst = overlap; at = i; }
+      }
+      return at;
+    };
+    if (selected.length < MAX_OFFERED) selected.push(fullyMatching);
+    else {
+      const at = swappable(false) >= 0 ? swappable(false) : swappable(true);
+      if (at >= 0) selected[at] = fullyMatching;
+    }
   }
 
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
