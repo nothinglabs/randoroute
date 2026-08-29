@@ -175,6 +175,40 @@ await pg.waitForTimeout(400);
 const opened = await pg.evaluate(() => document.getElementById('allRoutesDialog').open);
 check('tapping it opens the screen', opened);
 
+// Three lens prices per route, fetched when the screen opened (rider ask,
+// 2026-08-29). A diagnostic: each candidate re-priced under all three riding
+// modes with ONE set of rules, so a column can be read down. Nothing here
+// selects or recommends anything -- the star is still the suggestion score's.
+const lensStrip = await pg.evaluate(async () => {
+  await new Promise((resolve) => {
+    const timer = setInterval(() => {
+      if (routing.lensScores && !routing.lensScores.pending) { clearInterval(timer); resolve(); }
+    }, 200);
+    setTimeout(() => { clearInterval(timer); resolve(); }, 90000);
+  });
+  const rowsOut = [...document.querySelectorAll('.all-route-row')].map((row) => ({
+    cells: [...row.querySelectorAll('.lens-cell')].map((cell) => cell.textContent),
+    bests: [...row.querySelectorAll('.lens-cell.is-best')].length,
+  }));
+  return { rows: rowsOut, pendingLeft: !!document.querySelector('.all-route-lenses.is-pending') };
+});
+check('every row carries a Direct, Balanced and Low stress price',
+  lensStrip.rows.length > 3 && lensStrip.rows.every((r) => r.cells.length === 3
+    && /Direct$/.test(r.cells[0]) && /Balanced$/.test(r.cells[1])
+    && /Low stress$/.test(r.cells[2])),
+  JSON.stringify(lensStrip.rows.slice(0, 2)));
+check('each price is a ratio against travel time',
+  lensStrip.rows.every((r) => r.cells.every((c) => /^\d+\.\d\d×/.test(c))),
+  JSON.stringify(lensStrip.rows[0]));
+check('the pricing notice is gone once the numbers land',
+  !lensStrip.pendingLeft, JSON.stringify(lensStrip.rows[0]));
+// Marked per column, because down a column is the only comparison these
+// support: low-stress walls are inherently bigger, so its numbers always run
+// higher than direct's for the same road.
+check('the best price in each column is marked, on some row',
+  lensStrip.rows.reduce((sum, r) => sum + r.bests, 0) >= 3,
+  JSON.stringify(lensStrip.rows.map((r) => r.bests)));
+
 const rows = await pg.evaluate(() => {
   const list = [...document.querySelectorAll('.all-route-row')];
   return list.map((r) => ({

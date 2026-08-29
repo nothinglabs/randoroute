@@ -6226,6 +6226,59 @@ onmessage = (ev) => {
                   || cached._profile.label } } }
         : { type: 'route-candidate', id: m.id, ok: false,
             reason: 'That route is no longer available — the map or your rules changed.' });
+    } else if (m.type === 'score-lenses') {
+      // A diagnostic, not a recommender (rider ask, 2026-08-29). Every
+      // candidate the portfolio built is re-priced under all three riding
+      // modes with the SAME rules and weights, so the numbers are finally
+      // comparable: a candidate's own search cost is not, because each was
+      // priced by the lens that built it -- direct charges 1.9x on failing
+      // road where balanced charges 9x and low-stress 30x, so direct-built
+      // routes look cheap whatever they ride.
+      //
+      // The ratio is what to read. Cost is travel time times the multiplier
+      // chain, so raw seconds mostly restate length; cost divided by travel
+      // divides length out and leaves the judgement.
+      useWeights(m.weights);
+      const cached = lastCandidatesKey === m.candidatesKey && lastCandidates
+        ? [...lastCandidates.entries()] : [];
+      const rules = m.rules || {};
+      const lenses = {};
+      for (const [profileId, candidate] of cached) {
+        const edges = candidate.edgeIds || [];
+        const nodes = candidate.nodeIds || [];
+        if (!edges.length || nodes.length < edges.length) continue;
+        const travelS = candidate.timeS || 0;
+        const byMode = {};
+        for (const mode of ['direct', 'balanced', 'low']) {
+          const modeW = modeWeights(mode);
+          let costS = 0, priced = true;
+          let incomingEdge = -1;
+          for (let i = 0; i < edges.length && priced; i++) {
+            const ei = edges[i], fromNode = nodes[i];
+            const forward = eA[ei] === fromNode;
+            const step = edgeCost(ei, forward, {
+              mode, modeW, rules, searchRules: rules,
+              prefDesig: !!candidate._profile?.prefDesig,
+              prefResidential: !!candidate._profile?.prefResidential,
+              boardingWaitS: (eFlags[ei] & 32) && nodeHasLand[fromNode]
+                ? activeWeights.ferryWaitMin * 60 : 0,
+              fromNode, incomingEdge,
+            });
+            // A lens that forbids something on this route cannot price it.
+            // Say so rather than reporting a number that omits the arc.
+            if (!(step < Infinity)) { priced = false; break; }
+            costS += step;
+            incomingEdge = ei;
+          }
+          byMode[mode] = priced
+            ? { costS: Math.round(costS),
+                ratio: travelS > 0 ? Math.round(100 * costS / travelS) / 100 : null }
+            : { costS: null, ratio: null };
+        }
+        lenses[profileId] = { travelS: Math.round(travelS), ...byMode };
+      }
+      postMessage({ type: 'score-lenses', id: m.id, ok: !!cached.length,
+        candidatesKey: m.candidatesKey, lenses });
     } else if (m.type === 'route-connector') {
       beginFrontierRequest();
       useWeights(m.weights);

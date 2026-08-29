@@ -222,6 +222,17 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
    new line was inserted mid-row, blowing the row past a phone's width
    (field, 2026-08-26). */
 .all-route-row > :not(.all-route-thumb) { grid-column: 2; }
+/* Three lens prices per route: what each riding mode would charge for this
+   road, with one set of rules. Read DOWN a column -- across one is
+   meaningless, since low-stress walls are inherently bigger. */
+.all-route-lenses { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 0; }
+.all-route-lenses.is-pending { margin: 7px 0 0; color: #6a7c86; font: 600 11px system-ui; }
+.lens-cell { display: flex; flex-direction: column; gap: 1px; min-width: 62px;
+  padding: 4px 8px; border: 1px solid #dbe6ec; border-radius: 8px; background: #f7fbfd;
+  color: #6a7c86; font: 700 8.5px/1.2 system-ui; letter-spacing: .06em; text-transform: uppercase; }
+.lens-cell b { color: #33505f; font: 750 13px/1.2 system-ui; letter-spacing: 0; text-transform: none; }
+.lens-cell.is-best { border-color: #9ecbb4; background: #f0f9f4; }
+.lens-cell.is-best b { color: #0f6b45; }
 .all-route-desc { margin: 2px 0 0; color: #44596a; font: italic 600 12px/1.4 system-ui; }
 /* Failing road, caution and gravel past half a mile are what a rider is
    choosing between, so they carry weight and their own colour wherever a

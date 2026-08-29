@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.926';
+const APP_VERSION = '2026-08-26.927';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9324,6 +9324,11 @@ function onRouterMessage(ev) {
     }
     routing.options = [m];
     activateRouteOption(m, true);
+  } else if (m.type === 'score-lenses') {
+    if (m.candidatesKey !== routing.candidatesKey) return;   // stale portfolio
+    routing.lensScores = { key: m.candidatesKey, pending: false,
+      byProfile: m.ok ? (m.lenses || {}) : null };
+    if (document.getElementById('allRoutesDialog')?.open) renderAllRoutesList();
   } else if (m.type === 'error') {
     if (m.id != null && m.id !== routing.reqId) return;
     handleRouterFailure(m.message);
@@ -12219,6 +12224,45 @@ function routeDescriptionHtml(text) {
       : whole));
 }
 
+// One row of the lens table. The best ratio in each column is marked, which
+// is the only comparison these numbers support: down a column, never across
+// one (low-stress walls are inherently bigger, so its numbers always run
+// higher). Ratio, not seconds -- cost is travel time times the multiplier
+// chain, so raw seconds mostly restate length.
+const LENS_COLUMNS = [['direct', 'Direct'], ['balanced', 'Balanced'], ['low', 'Low stress']];
+function candidateLensRow(c, best) {
+  const store = routing.lensScores;
+  if (!store || store.key !== routing.candidatesKey) return '';
+  if (store.pending) {
+    return '<p class="all-route-lenses is-pending">Pricing under each lens…</p>';
+  }
+  const lens = store.byProfile?.[c.profileId];
+  if (!lens) return '';
+  const cells = LENS_COLUMNS.map(([key, label]) => {
+    const value = lens[key]?.ratio;
+    if (value == null) return `<span class="lens-cell"><b>n/a</b>${label}</span>`;
+    const isBest = best[key] != null && Math.abs(value - best[key]) < 0.005;
+    return `<span class="lens-cell${isBest ? ' is-best' : ''}"><b>${value.toFixed(2)}×</b>${label}</span>`;
+  }).join('');
+  return `<div class="all-route-lenses">${cells}</div>`;
+}
+
+// The lowest ratio in each column across the whole corpus, so a row can mark
+// where it holds one.
+function lensColumnBests() {
+  const store = routing.lensScores;
+  const out = { direct: null, balanced: null, low: null };
+  if (!store || store.pending || !store.byProfile) return out;
+  for (const lens of Object.values(store.byProfile)) {
+    for (const [key] of LENS_COLUMNS) {
+      const value = lens?.[key]?.ratio;
+      if (value == null) continue;
+      if (out[key] == null || value < out[key]) out[key] = value;
+    }
+  }
+  return out;
+}
+
 function renderAllRoutesList() {
   const host = document.getElementById('allRoutesList');
   if (!host) return;
@@ -12232,6 +12276,7 @@ function renderAllRoutesList() {
     return;
   }
   const labelOf = new Map(all.map((c) => [c.profileId, c.label]));
+  const lensBests = lensColumnBests();
   host.append(allRoutesSummary(all));
   const bounds = candidateShapeBounds(all);
   const descriptions = candidateRouteDescriptions(all);
@@ -12275,6 +12320,7 @@ function renderAllRoutesList() {
           ? `<span>Preferred route <b>${(c.preferredRouteM / 1609.344).toFixed(1)} mi × ${Number(c.preferredRouteMultiplier).toFixed(2)}</b> search cost</span>` : ''}
         ${c.recommendationBasis ? `<span class="score-basis">${recommendationBasisLabel(c.recommendationBasis)}</span>` : ''}
       </div>` : ''}
+      ${candidateLensRow(c, lensBests)}
       <p class="all-route-why"><b>Built as:</b> ${c.why}</p>
       ${candidateSimilarityLine(c, labelOf)}
       ${(() => {
@@ -12317,7 +12363,23 @@ function chooseCandidate(c) {
   showRouteActionToast(`Loading ${c.label}…`, { busy: true, duration: 8000 });
 }
 
+// Three lens prices per route, fetched when the screen opens (rider ask,
+// 2026-08-29). A DIAGNOSTIC: nothing here selects or recommends anything.
+// Each candidate's own search cost is not comparable with another's, because
+// each was priced by the lens that built it; this re-prices every candidate
+// under all three modes with one set of rules, so a column can be read down.
+function requestLensScores() {
+  const key = routing.candidatesKey;
+  if (!key || !routing.worker || routing.multiStateActive) return;
+  if (routing.lensScores?.key === key) return;
+  routing.lensScores = { key, pending: true, byProfile: null };
+  routing.lensReqId = (routing.lensReqId || 0) + 1;
+  routing.worker.postMessage({ type: 'score-lenses', id: routing.lensReqId,
+    candidatesKey: key, rules, weights: routingWeights });
+}
+
 function openAllRoutes() {
+  requestLensScores();
   renderAllRoutesList();
   document.getElementById('allRoutesDialog').showModal();
 }
