@@ -579,7 +579,8 @@ def parse_incline_pct(value):
     return pct
 
 
-def edge_grade(coords, way_coords, tags, ele_at, is_ferry=False, reversed_way=False):
+def edge_grade(coords, way_coords, tags, ele_at, is_ferry=False, reversed_way=False,
+               carry=None):
     """(ascent, descent) for one edge -- the ONE answer to how much it climbs.
 
     Three signals can speak to this and they used to be nowhere: the DEM walk
@@ -595,6 +596,13 @@ def edge_grade(coords, way_coords, tags, ele_at, is_ferry=False, reversed_way=Fa
     Anything else falls through to the terrain walk, which is right for an
     ordinary road and wrong for everything a structure or an embankment does.
     """
+    # Only the terrain walk can use the carried deadband reference; a stated
+    # incline, a structure deck or a ferry answers from something other than
+    # the DEM, so the next terrain edge must restart from its own sample.
+    if carry is not None and (is_ferry or tags.get('incline') is not None
+                              or is_structure_way(tags)):
+        carry['ref'] = None
+        carry['end'] = None
     if is_ferry:
         return 0.0, 0.0
     length = line_len_m(coords)
@@ -609,7 +617,7 @@ def edge_grade(coords, way_coords, tags, ele_at, is_ferry=False, reversed_way=Fa
     if is_structure_way(tags):
         asc, des = structure_climb(coords, way_coords, ele_at)
     else:
-        asc, des = edge_climb(coords, ele_at)
+        asc, des = edge_climb(coords, ele_at, way_carry=carry)
     if tags.get('railway') in RAIL_TRAIL_RAILWAY:
         cap = length * RAIL_TRAIL_MAX_GRADE_PCT / 100.0
         asc, des = min(asc, cap), min(des, cap)
@@ -648,9 +656,20 @@ def structure_climb(coords, way_coords, ele_at):
     return (max(0.0, delta), max(0.0, -delta))
 
 
-def edge_climb(coords, ele_at, step_m=60.0):
+def edge_climb(coords, ele_at, step_m=60.0, way_carry=None):
     """(ascent, descent) in meters going a->b, sampled every ~step_m with a
     4 m deadband to suppress DEM noise and cut-and-fill offsets.
+
+    `carry` is a per-way {'ref', 'end'} dict that keeps the deadband's
+    reference elevation ALIVE across consecutive edges of the same way.
+    Without it the reference reset at every edge boundary, and a graph whose
+    urban edges average 99 m never accumulated a climb that gains less than
+    4 m per block: 266k rising edges stored zero ascent, 35% of sub-200 m
+    urban rise was deleted, and 602 mi of >=6% Washington road priced as
+    flat (field, 2026-08-29 -- a Carkeek route drew a real hill on the
+    elevation chart and reported 0 ft of climb beside it). The carry applies
+    only when this edge starts exactly where the previous one ended, so a
+    filtered-out fragment or a reset by edge_grade() starts fresh.
 
     The samples are median-of-5 smoothed before accumulation. The DEM reads
     the terrain surface, but a graded road bridges and fills the gullies the
@@ -691,12 +710,22 @@ def edge_climb(coords, ele_at, step_m=60.0):
         ] + [samples[-1]]
     asc = des = 0.0
     ref = samples[0]
-    for e in samples[1:]:
+    rest = samples[1:]
+    if way_carry is not None:
+        if way_carry.get('ref') is not None and way_carry.get('end') == coords[0]:
+            # Continue the previous edge's reference; the shared endpoint's
+            # sample is then a fresh observation against it, not a restart.
+            ref = way_carry['ref']
+            rest = samples
+    for e in rest:
         delta = e - ref
         if delta > 4:
             asc += delta; ref = e
         elif delta < -4:
             des += -delta; ref = e
+    if way_carry is not None:
+        way_carry['ref'] = ref
+        way_carry['end'] = coords[-1]
     return asc, des
 
 
@@ -1834,6 +1863,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                for n in obj.nodes if n.location.valid()]
         kept = [i for i, p in enumerate(pts) if p[0] in refcount]
         runs = []
+        climb_carry = {'ref': None, 'end': None}
         for ka, kb in zip(kept, kept[1:]):
             frag = pts[ka:kb + 1]
             aref, bref = frag[0][0], frag[-1][0]
@@ -1848,7 +1878,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             eflags = 2 | 8 | (64 if obj.id in designated else 0)
             eofficial = (EDGE_DISMOUNT | sidewalk_flags(tags)
                          | (EDGE_URBAN if is_urban_edge(coords, urban_index) else 0))
-            asc, des = edge_grade(coords, coords, tags, ele_at)
+            asc, des = edge_grade(coords, coords, tags, ele_at, carry=climb_carry)
             runs.append((
                 aref, coords[0], bref, coords[-1], True,
                 length, coords, eflags, 0, 0,
@@ -1944,6 +1974,10 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                     if (tags.get('highway') or '').endswith('_link') else '')
         way_runs = []
 
+        # One deadband reference per way, threaded through edge_grade() in
+        # run order so a sustained climb split into short blocks still
+        # accumulates -- see edge_climb().
+        climb_carry = {'ref': None, 'end': None}
         seg = [pts[0]]
         for p in pts[1:]:
             seg.append(p)
@@ -2093,7 +2127,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                         m.get('fc'), m.get('owner'))
                             asc, des = edge_grade(coords, way_coords, tags, ele_at,
                                                   is_ferry=is_ferry,
-                                                  reversed_way=reversed_way)
+                                                  reversed_way=reversed_way,
+                                                  carry=climb_carry)
                             if is_ferry or attrs['infra']:
                                 haz_ab = haz_ba = (0, 0, 0)
                             else:
