@@ -228,6 +228,12 @@ const descToast = await page.evaluate(() => {
     visible: host.classList.contains('show'),
     hasClose: !!host.querySelector('.route-desc-close'),
     clampedToThreeLines: !!textEl && textEl.clientHeight <= lineH * 3 + 1,
+    // One height whatever the text runs to, with the text centred in it
+    // (field ask, 2026-08-29): a bubble that resized per route moved on
+    // every letter tap.
+    pillHeight: Math.round(pill.height),
+    gapAbove: Math.round(textEl.getBoundingClientRect().top - pill.top),
+    gapBelow: Math.round(pill.bottom - textEl.getBoundingClientRect().bottom),
     // A description that fits must not be clipped by the clamp meant to
     // catch the ones that do not.
     unclipped: !!textEl && textEl.scrollHeight <= textEl.clientHeight + 1,
@@ -258,6 +264,12 @@ check('the pill spends its width on the description, with no dismiss mark',
   !descToast.shown.hasClose, JSON.stringify(descToast.shown));
 check('the pill holds its text to three lines, showing all of it',
   descToast.shown.clampedToThreeLines && descToast.shown.unclipped,
+  JSON.stringify(descToast.shown));
+check('the pill keeps one height whatever the description runs to',
+  descToast.shown.pillHeight >= Math.round(descToast.shown.lineH * 3),
+  JSON.stringify(descToast.shown));
+check('and centres a short description in it',
+  Math.abs(descToast.shown.gapAbove - descToast.shown.gapBelow) <= 2,
   JSON.stringify(descToast.shown));
 
 /* ------- the details header carries the same description */

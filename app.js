@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.920';
+const APP_VERSION = '2026-08-26.921';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12097,12 +12097,8 @@ function candidateRouteDescriptions(all) {
     }
     if (f.lanePct >= 0.5) add('lanes', 'Mostly bike lanes');
     if (f.resPct >= 0.5) add('residential', 'Mostly residential');
-    if (holds(f, 'desigMi', max, 2) || f.desigMi >= 3) {
-      add('signed', `Signed routes, ${miles(f.desigMi)}`);
-    }
     if (f.ferry) add('ferry', 'Ferry route');
     if (f.trailMi >= 2) add('trail-mi', `${miles(f.trailMi)} on trail`);
-    if (f.lanePct >= 0.2) add('lanes-some', 'Part bike lanes');
     if (f.resPct >= 0.2) add('res-part', 'Part residential');
     if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
       add('flatter', 'Among the flatter');
@@ -12115,7 +12111,11 @@ function candidateRouteDescriptions(all) {
       add('slower', slowerMin >= 90 ? `${(slowerMin / 60).toFixed(1)}h slower`
         : `${slowerMin} min slower`);
     }
-    add(`mixed-${Math.round(f.mi)}`, `${Math.round(f.mi)} miles, mixed roads`);
+    // The last resort keeps its decimal. miText collapses anything past 9.95
+    // to whole miles, so 17.70, 17.74 and 17.94 all read "18 miles" and three
+    // rows on one board came out identical (2026-08-29). Distance is the only
+    // thing left to tell these apart, so it is stated precisely.
+    add(`mixed-${f.mi.toFixed(1)}`, `${f.mi.toFixed(1)} miles, mixed roads`);
     add('plain', 'Mixed roads');
     return out;
   };
@@ -12132,7 +12132,7 @@ function candidateRouteDescriptions(all) {
       // nothing ("just 2 short fails", each under a tenth of a mile).
       out.push(failClean ? 'no fails'
         : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
-          ? `just ${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
+          ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
           : `${miles(f.failMi)} failing`);
       out.push(cautionClean ? 'no caution'
         : `${miles(f.cautionMi)} caution${trafficNote(f)}`);
@@ -12201,7 +12201,6 @@ function candidateRouteDescriptions(all) {
   for (const f of facts) {
     const options = character(f);
     const pick = options.find((option) => !used.has(option.kind))
-      || options.find((option) => option.kind.startsWith('mixed-'))
       || options[options.length - 1];
     used.add(pick.kind);
     chosen.set(f.c.profileId,

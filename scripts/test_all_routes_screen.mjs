@@ -363,7 +363,7 @@ check('the marked-up description still reads as the sentence it was',
   JSON.stringify(emphasis));
 
 check('crossing-sized fails read as a count, not vanishing mileage',
-  /just 2 short fails, no caution/.test(cautionAndHills.dabs),
+  /\b2 short fails, no caution/.test(cautionAndHills.dabs),
   JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
