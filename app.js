@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.922';
+const APP_VERSION = '2026-08-26.923';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12091,6 +12091,11 @@ function candidateRouteDescriptions(all) {
     const add = (kind, text) => out.push({ kind, text });
     if (c.timeS === minTime && facts.length > 1) add('quickest', 'Quickest');
     if (holds(f, 'mi', min, 1) && c.timeS !== minTime) add('shortest', 'Shortest');
+    // Safety is the thing a rider is choosing on, so the route that carries
+    // uniquely the least failing road says so before its shape (rider ask,
+    // 2026-08-29). Only when it HAS fails: a route with none already says
+    // "no fails" in its conditions, and the phrase would repeat it.
+    if (holds(f, 'failMi', min, 0.3) && f.failMi > 0.05) add('fewest-fails', 'Fewest fails');
     if (holds(f, 'ascentFt', min, 250)) add('flattest', 'Flattest');
     if (holds(f, 'ftPerMi', max, 20)) add('hilliest', 'Hilliest');
     // The words have to match the measurement (field review, 2026-08-28:

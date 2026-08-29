@@ -367,6 +367,36 @@ check('the marked-up description still reads as the sentence it was',
   emphasis.text === 'Quickest — 2.5 miles failing, 5 miles caution (traffic), 3 miles unpaved',
   JSON.stringify(emphasis));
 
+// The route carrying uniquely the least failing road leads with that (rider
+// ask, 2026-08-29). It only claims "fewest" when it HAS fails: where another
+// route is clean, that route says "no fails" and nobody can claim fewer.
+const fewestFails = await pg.evaluate(() => {
+  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
+    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
+    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
+  // The least-failing route is deliberately NOT the quickest here: one route
+  // spends one phrase, and "Quickest" is ranked above "Fewest fails".
+  const dirty = candidateRouteDescriptions([
+    mk({ profileId: 'least', timeS: 7400, failM: 500, levelM: [0, 0, 31687, 0, 500] }),
+    mk({ profileId: 'mid', timeS: 7200, failM: 2000, levelM: [0, 0, 30187, 0, 2000] }),
+    mk({ profileId: 'worst', timeS: 7300, failM: 4000, levelM: [0, 0, 28187, 0, 4000] }),
+  ]);
+  const withClean = candidateRouteDescriptions([
+    mk({ profileId: 'clean' }),
+    mk({ profileId: 'least', timeS: 7300, failM: 500, levelM: [0, 0, 31687, 0, 500] }),
+    mk({ profileId: 'worst', timeS: 7400, failM: 4000, levelM: [0, 0, 28187, 0, 4000] }),
+  ]);
+  return { least: dirty.get('least'), worst: dirty.get('worst'),
+    leastBesideClean: withClean.get('least'), clean: withClean.get('clean') };
+});
+check('the least-failing route of a dirty board says so',
+  /^Fewest fails —/.test(fewestFails.least), JSON.stringify(fewestFails));
+check('and no other route claims it',
+  !/Fewest fails/.test(fewestFails.worst), JSON.stringify(fewestFails));
+check('nobody claims fewest when another route has none',
+  !/Fewest fails/.test(fewestFails.leastBesideClean)
+    && /no fails/.test(fewestFails.clean), JSON.stringify(fewestFails));
+
 check('crossing-sized fails read as a count, not vanishing mileage',
   /\b2 short fails,/.test(cautionAndHills.dabs)
     && !/no caution/.test(cautionAndHills.dabs),
