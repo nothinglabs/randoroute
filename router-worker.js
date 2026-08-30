@@ -3825,13 +3825,13 @@ function outcomeSnapshot(route) {
   return details.join(' · ');
 }
 
-// Letters run A..F by increasing distance, which is what a rider scanning a
-// list expects. They deliberately carry no relation to the slot positions the
-// selection above reasons about -- that ordering is by profile, and is internal.
+// Letters run A..F by recommendation score (best first), so Route A is always
+// the recommended route. Ties break on distance, then time, then safety.
 function presentAsLetters(routes, recommended) {
   if (!routes.length) return routes;
   const ordered = [...routes].sort((a, b) =>
-    a.distM - b.distM || a.timeS - b.timeS || compareSafety(a, b));
+    recommendationScore(a) - recommendationScore(b)
+    || a.distM - b.distM || a.timeS - b.timeS || compareSafety(a, b));
 
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
