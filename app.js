@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.950';
+const APP_VERSION = '2026-08-30.951';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -16535,11 +16535,13 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'diversityWide', label: 'Wide search', min: 1.05, max: 4, step: .05 },
     { key: 'facilityNeutralStrength', label: 'Extra option: reduce trail pull', min: 0, max: 1, step: .05,
       hint: 'One extra search with the facility pull reduced this far toward neutral, finding routes that lose only because trail miles are priced shorter. 0 turns it off. Never changes the pricing of routes you see.' },
+  ], 'Alternatives'],
+  ['Duplicate filtering', 'When two routes share most of the same roads, these controls decide whether both are offered or one is folded away.', [
     { key: 'distinctRideMi', label: 'Different riding to stay separate (miles)', min: .05, max: 2, step: .05,
       hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
-    { key: 'twinTradeoffX', label: 'Safety difference to keep a near-twin (x)', min: .3, max: 3, step: .05,
+    { key: 'twinTradeoffX', label: 'Safety tradeoff to keep a near-twin (x)', min: .3, max: 3, step: .05,
       hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
-  ], 'Alternatives'],
+  ], 'Duplicates'],
 ];
 
 // Every weight the editor can reach, so a test can prove none was orphaned by
