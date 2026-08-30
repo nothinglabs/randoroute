@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.947';
+const APP_VERSION = '2026-08-30.948';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12073,6 +12073,8 @@ function allRoutesSummary(all) {
 // composition); the first phrasing not already used wins, so collisions fall
 // through to the next trait instead of forcing awkward uniqueness.
 function candidateRouteDescriptions(all) {
+  const offered = all.filter((c) => c.presented);
+  const board = offered.length >= 2 ? offered : all;
   const facts = all.map((c) => {
     const mi = c.distM / 1609.344;
     return {
@@ -12096,13 +12098,15 @@ function candidateRouteDescriptions(all) {
     const n = miText(x);
     return `${n} ${n === '1' ? 'mile' : 'miles'}`;
   };
-  const leads = (f, key, best, margin) => facts.length > 1
+  const boardIds = new Set(board.map((c) => c.profileId));
+  const boardFacts = facts.filter((f) => boardIds.has(f.c.profileId));
+  const leads = (f, key, best, margin) => boardFacts.length > 1
     && f[key] === best(key)
-    && facts.filter((g) => g[key] === f[key]).length === 1
+    && boardFacts.filter((g) => g[key] === f[key]).length === 1
     && Math.abs(maxVal(key) - minVal(key)) > margin;
-  const minVal = (key) => Math.min(...facts.map((f) => f[key]));
-  const maxVal = (key) => Math.max(...facts.map((f) => f[key]));
-  const minTime = Math.min(...all.map((c) => c.timeS));
+  const minVal = (key) => Math.min(...boardFacts.map((f) => f[key]));
+  const maxVal = (key) => Math.max(...boardFacts.map((f) => f[key]));
+  const minTime = Math.min(...board.map((c) => c.timeS));
   const QUALIFIERS = {
     safest:   { full: 'Fewest fails', short: 'Fewest fails' },
     trail:    { full: 'Most trail', short: 'Most trail' },
