@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.952';
+const APP_VERSION = '2026-08-30.953';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9254,6 +9254,7 @@ function onRouterMessage(ev) {
       routing.blockMismatchRetried = false;
     }
     routing.options = m.options;
+    routing.optionsExpanded = false;
     routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];
     routing.candidatesKey = m.candidatesKey || null;
     syncConsideredRoutesButton();
@@ -11796,11 +11797,27 @@ function renderRouteOptionControls() {
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
   };
-  let cells;
   // Fresh lineups render in portfolio order; the frozen-lineup rendering
   // (pin order, greyed unroutable letters) left with the pinning system.
-  cells = routing.options.map(buttonHtml);
+  const MAX_VISIBLE = 4;
+  const lettered = routing.options.filter((o) => !o.asShared);
+  const overflow = lettered.length > MAX_VISIBLE && !routing.optionsExpanded;
+  const cells = routing.options.map((option, index) => {
+    if (!option.asShared && overflow && index >= MAX_VISIBLE) return '';
+    return buttonHtml(option, index);
+  });
+  if (overflow) {
+    const extra = lettered.length - MAX_VISIBLE;
+    cells.splice(MAX_VISIBLE, 0,
+      `<button type="button" class="route-option-more" aria-label="Show ${extra} more route${extra > 1 ? 's' : ''}" title="Show more routes">`
+      + `<span>…</span></button>`);
+  }
   host.innerHTML = cells.join('');
+  const moreBtn = host.querySelector('.route-option-more');
+  if (moreBtn) moreBtn.addEventListener('click', () => {
+    routing.optionsExpanded = true;
+    renderRouteOptionControls();
+  });
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
