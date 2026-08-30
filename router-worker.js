@@ -5636,7 +5636,19 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (dominator) dominatorOf.set(candidate, dominator);
     return !dominator;
   });
-  const choices = useful.length ? useful : unique;
+  const trimmed = useful.length ? useful : unique;
+  for (const r of trimmed) r._triLens = triLensCost(r, rules);
+  const triLensDominatorOf = new Map();
+  const choices = trimmed.filter((candidate) => {
+    if (protectedCandidates.has(candidate)) return true;
+    const better = trimmed.find((other) => {
+      if (other === candidate) return false;
+      return !meaningfullyDifferent(candidate, other)
+        && other._triLens < candidate._triLens;
+    });
+    if (better) triLensDominatorOf.set(candidate, better);
+    return !better;
+  });
   progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
   const fastestOverall = choices.reduce((best, route) => route.timeS < best.timeS ? route : best, choices[0]);
@@ -6040,7 +6052,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // can explain absence rather than merely listing survivors. Order matters:
   // the earliest stage a route failed to reach is the one that removed it.
   const inReasonable = new Set(reasonable), inUnique = new Set(unique);
-  const inUseful = new Set(useful), inSelected = new Set(presented);
+  const inUseful = new Set(useful), inChoices = new Set(choices), inSelected = new Set(presented);
   const severeM = (route) => route.failM + (route.dismountM || 0) * 3;
   // The candidate's nearest offered route, by shared road. Only computed for
   // routes that reached the seating (offered and not-chosen): the earlier
@@ -6087,6 +6099,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           twin: twinVerdict(candidate, dominator, overlap),
           slowerS: candidate.timeS - dominator.timeS,
           moreSevereM: severeM(candidate) - severeM(dominator) };
+      }
+    } else if (inUseful.has(candidate) && !inChoices.has(candidate)) {
+      const dominator = triLensDominatorOf.get(candidate);
+      candidate._stage = 'dominated';
+      candidate._stageWhy = 'A near-twin scores better across all three lenses.';
+      if (dominator) {
+        const overlap = pairOverlap(candidate, dominator);
+        candidate._stageData = { mateId: dominator._profile.id, overlap,
+          twin: twinVerdict(candidate, dominator, overlap) };
       }
     } else {
       candidate._stage = 'not-chosen';
