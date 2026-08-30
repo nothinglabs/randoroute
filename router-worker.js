@@ -5822,6 +5822,19 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
+  const overlapTable = new Map();
+  const pairOverlap = (a, b) => {
+    let row = overlapTable.get(a);
+    if (!row) { row = new Map(); overlapTable.set(a, row); }
+    if (!row.has(b)) {
+      const value = edgeOverlap(a, b);
+      row.set(b, value);
+      let mirror = overlapTable.get(b);
+      if (!mirror) { mirror = new Map(); overlapTable.set(b, mirror); }
+      mirror.set(a, value);
+    }
+    return row.get(b);
+  };
   if (!rules.pureScoreSort) {
   // A ferry composition already represents the important trail/safety section
   // tradeoff on a boat trip. Prefer it over a second global trail extreme when
@@ -5921,19 +5934,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // edgeOverlap thousands of times per request and cost about three seconds --
   // most of a phone's patience, spent re-deriving the same numbers.
   const bench = selectionChoices.filter((route) => !selected.includes(route));
-  const overlapTable = new Map();
-  const pairOverlap = (a, b) => {
-    let row = overlapTable.get(a);
-    if (!row) { row = new Map(); overlapTable.set(a, row); }
-    if (!row.has(b)) {
-      const value = edgeOverlap(a, b);
-      row.set(b, value);
-      let mirror = overlapTable.get(b);
-      if (!mirror) { mirror = new Map(); overlapTable.set(b, mirror); }
-      mirror.set(a, value);
-    }
-    return row.get(b);
-  };
   const boardWorstOverlap = (board) => {
     let worst = 0;
     for (let i = 0; i < board.length; i++) {
