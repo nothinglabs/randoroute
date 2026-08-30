@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.946';
+const APP_VERSION = '2026-08-30.947';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4605,30 +4605,16 @@ function routeStressIndex(route) {
 }
 
 function routeRelationship(route) {
-  const options = (routing.options || []).filter((option) => option?.ok);
-  const suggested = options.find((option) => option.optimization?.recommended);
-  if (!suggested || route === suggested || route?.optimization?.recommended) {
-    return { label: 'Suggested', description: 'Suggested route' };
+  const all = routing.allCandidates || [];
+  const profileId = route?.optimization?.profileId;
+  if (all.length && profileId) {
+    const descs = candidateRouteDescriptions(all);
+    const entry = descs.get(profileId);
+    if (entry?.shortQualifier) {
+      return { label: entry.shortQualifier, description: entry.text };
+    }
   }
-
-  // Ignore block-end and rounding noise. On a long trip, half a percent is
-  // still a useful human-scale distinction; on a short trip, require 50 m.
-  const distanceThresholdM = Math.max(50, Number(suggested.distM || 0) * 0.005);
-  const distanceDeltaM = Number(route?.distM || 0) - Number(suggested.distM || 0);
-  if (distanceDeltaM < -distanceThresholdM) {
-    return { label: 'Shorter', description: 'Shorter than the Suggested route' };
-  }
-
-  // Roughly two hundredths of the normalized stress scale is enough to
-  // describe a route as meaningfully lower-stress without promoting tiny
-  // data noise.
-  if (routeStressIndex(route) < routeStressIndex(suggested) - 0.02) {
-    return { label: 'Lower Stress', description: 'Lower stress than the Suggested route' };
-  }
-  if (distanceDeltaM > distanceThresholdM) {
-    return { label: 'Longer', description: 'Longer than the Suggested route' };
-  }
-  return { label: 'Alternative', description: 'An alternative to the Suggested route' };
+  return { label: 'Suggested', description: 'Suggested route' };
 }
 
 function clearStoredRouteDetails() {
@@ -11790,8 +11776,6 @@ function renderRouteOptionControls() {
   // The shared route sits in its own slot after the lettered options, which
   // stay sequential A, B, C, D… by position.
   const sharedInPlay = routing.options.some((o) => o.asShared);
-  const all = routing.allCandidates || [];
-  const descs = all.length ? candidateRouteDescriptions(all) : new Map();
   const buttonHtml = (option, index) => {
     const optimization = option.optimization || {};
     const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
@@ -11817,11 +11801,6 @@ function renderRouteOptionControls() {
   // (pin order, greyed unroutable letters) left with the pinning system.
   cells = routing.options.map(buttonHtml);
   host.innerHTML = cells.join('');
-  const activeOption = routing.last;
-  const activeQual = activeOption && !activeOption.asShared
-    ? descs.get(activeOption.optimization?.profileId)?.shortQualifier || '' : '';
-  const qualHost = document.getElementById('routeQualifier');
-  if (qualHost) { qualHost.textContent = activeQual; qualHost.hidden = !activeQual; }
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
@@ -12128,14 +12107,14 @@ function candidateRouteDescriptions(all) {
     safest:   { full: 'Fewest fails', short: 'Fewest fails' },
     trail:    { full: 'Most trail', short: 'Most trail' },
     facility: { full: 'Most trails + bike lanes', short: 'Protected' },
-    quickest: { full: 'Quickest', short: 'Quickest' },
+    quickest: { full: 'Shorter', short: 'Shorter' },
     shortest: { full: 'Shortest', short: 'Shortest' },
     flattest: { full: 'Flattest', short: 'Flattest' },
     caution:  { full: 'Lower stress', short: 'Lower stress' },
     direct:   { full: 'More direct', short: 'Direct' },
     balanced: { full: 'Balanced', short: 'Balanced' },
     suggested:{ full: 'Suggested route', short: 'Suggested' },
-    alt:      { full: 'Alternative', short: 'Alt' },
+    alt:      { full: 'Alternative', short: 'Alternative' },
   };
   const qualifierKey = (f, isBaseline) => {
     if (leads(f, 'failMi', minVal, 0.3)) return 'safest';
