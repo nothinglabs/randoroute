@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.948';
+const APP_VERSION = '2026-08-30.949';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12087,6 +12087,7 @@ function candidateRouteDescriptions(all) {
       cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
       trafficCautionMi: (c.trafficCautionM || 0) / 1609.344,
       ascentFt: (c.ascentM || 0) * 3.28084,
+      unpavedMi: (c.unpavedM || 0) / 1609.344,
       ferry: (c.ferryM || 0) > 0,
     };
   });
@@ -12124,11 +12125,12 @@ function candidateRouteDescriptions(all) {
     if (leads(f, 'failMi', minVal, 0.3)) return 'safest';
     if (leads(f, 'trailMi', maxVal, 0.5)) return 'trail';
     if (leads(f, 'facilityMi', maxVal, 0.5)) return 'facility';
-    if (f.c.timeS === minTime && facts.filter((g) => g.c.timeS === minTime).length === 1
+    if (!isBaseline && f.c.timeS === minTime
+        && facts.filter((g) => g.c.timeS === minTime).length === 1
         && maxVal('mi') - minVal('mi') > 0.3) return 'quickest';
     if (leads(f, 'mi', minVal, 0.3)) return 'shortest';
     if (leads(f, 'ascentFt', minVal, 100)) return 'flattest';
-    if (leads(f, 'cautionMi', minVal, 0.3)) return 'caution';
+    if (!isBaseline && leads(f, 'cautionMi', minVal, 0.3)) return 'caution';
     if (isBaseline) return 'suggested';
     if (f.c.mode === 'direct') return 'direct';
     if (f.c.mode === 'balanced') return 'balanced';
@@ -12149,6 +12151,7 @@ function candidateRouteDescriptions(all) {
       parts.push(cautionClean ? 'no caution'
         : `${miles(f.cautionMi)} caution${trafficNote(f)}`);
     }
+    if (f.unpavedMi >= 0.1) parts.push(`${miles(f.unpavedMi)} unpaved`);
     if (f.trailMi >= 1) parts.push(`${miles(f.trailMi)} trail`);
     const laneMi = Math.max(0, f.facilityMi - f.trailMi);
     if (laneMi >= 1) parts.push(`${miles(laneMi)} bike lanes`);
