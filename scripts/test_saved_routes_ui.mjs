@@ -250,27 +250,57 @@ const navigationTab = await page.evaluate(async () => {
   // button that never moved -- and the same staleness hit whichever element
   // happened to be read first (routeTips, the chart, the button) as the load
   // shifted. One rule now: settle, then read everything in the same frame.
-  const stableRect = (el) => new Promise((resolve) => {
-    let last = null, calm = 0, frames = 0;
+  // An element that has no box yet is not "settled" -- it is unlaid. Keying
+  // on left/top alone made 0,0 a stable answer, so every before-rect could
+  // resolve to zeros three frames after the taps above and each shift below
+  // read as the button's whole position (636 px for Navigate). Size joins the
+  // key for the same reason a resize must not count as calm.
+  // Bounded by the CLOCK, not by a frame count. Animation frames are not a
+  // unit of time: 120 of them is two seconds idle and much less throttled,
+  // and the give-up path then handed back the very zero rect this is meant to
+  // outwait -- Navigate's "shift" read as its whole position, 636 px.
+  //
+  // All the reference rects settle TOGETHER, as one tuple. Settling them one
+  // at a time cannot work against a card that re-renders: the start button
+  // was calm, then went 0x0 again while the tips button was still settling,
+  // and the read after it took the zero. An element with no box is never
+  // calm, so the tuple waits for a frame in which every one of them is drawn
+  // and none has moved for 250 ms.
+  // Every wait in this block stays well under three seconds. app.js heals a
+  // lost WebGL context by reloading the page 3 s after the loss, and under
+  // swiftshader that fires often enough to matter: a five-second settle put
+  // the reload INSIDE this evaluate and Playwright lost the execution
+  // context outright.
+  const stableRects = (nodes) => new Promise((resolve) => {
+    let last = null, calmSince = 0;
+    const deadline = Date.now() + 1200;
+    const read = () => nodes.map((node) => node.getBoundingClientRect());
     const tick = () => {
-      const r = el.getBoundingClientRect();
-      const key = `${r.left},${r.top}`;
-      calm = key === last ? calm + 1 : 0;
-      last = key;
-      frames++;
-      if (calm >= 3 || frames > 120) return resolve(el.getBoundingClientRect());
+      const rects = read();
+      const boxed = rects.every((r) => r.width > 0 && r.height > 0);
+      const key = rects.map((r) => `${r.left},${r.top},${r.width},${r.height}`).join('|');
+      if (key !== last || !boxed) { last = key; calmSince = boxed ? Date.now() : 0; }
+      const settled = boxed && calmSince && Date.now() - calmSince >= 200;
+      if (settled || Date.now() > deadline) return resolve(read());
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   });
-  await stableRect(document.getElementById('navStartButton'));
+  // Takes NODES, not ids: half the call sites below settle elements selected
+  // by class (.nav-elevation-wrap has no id at all), and an id-keyed helper
+  // looked those up as null, threw inside the rAF tick, and left the promise
+  // pending -- the app's own context heal then reloaded the page out from
+  // under the evaluate.
+  const stableRect = async (el) => (await stableRects([el]))[0];
   // The tips button's right edge follows the panel width, and a scrollbar can
-  // toggle a few frames after the start button has already settled — the
+  // toggle a few frames after the start button has already settled -- the
   // reference then differed from the live view by exactly one scrollbar and
   // the alignment check read as a 4.5px shift of a button that never moved.
-  const routeTipsRect = await stableRect(document.getElementById('routeTipsBtn'));
-  const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
-  const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
+  const [startBefore, routeTipsRect, detailsBefore] = await stableRects([
+    document.getElementById('navStartButton'),
+    document.getElementById('routeTipsBtn'),
+    document.getElementById('routeDetailsBtn'),
+  ]);
   document.getElementById('navStartButton').click();
   // Navigation must actually ENGAGE before anything below is worth reading.
   // The click can land in the window where a late route request is active,
@@ -311,24 +341,36 @@ const navigationTab = await page.evaluate(async () => {
   // Starting navigation dismisses the planning inspection card. Tap the same
   // segment again in the live view: each mode should independently place the
   // marker at the same profile distance.
+  const navElevation = document.getElementById('navElevationCanvas');
+  // What the live chart marked BEFORE this tap. Starting navigation puts the
+  // rider's own progress on the chart (63 m in, on this fixture), and that is
+  // a perfectly stable value -- four calm frames, four hundred calm
+  // milliseconds, it survives either. The tap has not landed until the marker
+  // stops reading it, so that is what this waits for.
+  const navSelectionBeforeTap = navElevation.dataset.selectedDistanceM ?? null;
   renderReadout({
     layer: { id: 'route-seg-hit' },
     properties: routeSegProps(segment, segmentIndex),
     geometry: { type: 'LineString',
       coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
   }, tap, { x: 195, y: 360 }, { routeElevationIndex: segmentIndex });
-  const navElevation = document.getElementById('navElevationCanvas');
   // The selection lands on the canvas dataset when the chart redraws; under
-  // load the first read caught a mid-render value. Settle: present and
-  // unchanged across two frames, bounded so a genuinely wrong value still
-  // fails rather than waits forever.
+  // load the first read caught a mid-render value. Two identical frames were
+  // not enough on their own -- a value the previous draw left behind survives
+  // two frames just as easily, and this read 63 m against planning's 42,808
+  // on a route whose profile ends at 85,616. Wait for the chart to have a box
+  // first, then require four identical frames.
+  await stableRect(navElevation);
   const navigationSelection = await (async () => {
-    let last = null;
-    for (let i = 0; i < 60; i++) {
-      const value = navElevation.dataset.selectedDistanceM;
-      if (value != null && value === last) return Number(value);
-      last = value;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+    let last = null, calmSince = 0;
+    const deadline = Date.now() + 1200;
+    while (Date.now() < deadline) {
+      const value = navElevation.dataset.selectedDistanceM ?? null;
+      const landed = value != null && value !== navSelectionBeforeTap;
+      if (value !== last) { last = value; calmSince = landed ? Date.now() : 0; }
+      else if (landed && !calmSince) calmSince = Date.now();
+      if (calmSince && Date.now() - calmSince >= 200) return Number(last);
+      await new Promise((resolve) => setTimeout(resolve, 16));
     }
     return Number(last);
   })();
@@ -397,8 +439,12 @@ const navigationTab = await page.evaluate(async () => {
 check('starting navigation keeps the permanent sheet on Route',
   navigationTab.navigating && navigationTab.activeTab === 'tab-route'
     && navigationTab.oldNavigationRemoved && navigationTab.panelOpen
-    && navigationTab.navTipsVisible && navigationTab.navTipsSize.width >= 34
-    && navigationTab.navTipsSize.height >= 34 && navigationTab.helpRightAligned,
+    // 33 px, not 34: v901 shrank .route-tips-btn from 36 to 33 so the help
+    // mark stopped overlapping the destination line. The claim is that the
+    // button is still drawn at its real size in the live view, not that it
+    // has any particular one.
+    && navigationTab.navTipsVisible && navigationTab.navTipsSize.width >= 33
+    && navigationTab.navTipsSize.height >= 33 && navigationTab.helpRightAligned,
   JSON.stringify(navigationTab));
 check('Navigate and Route Details stay put when navigation starts',
   Math.abs(navigationTab.startShift.x) <= 1 && Math.abs(navigationTab.startShift.y) <= 1
@@ -444,9 +490,15 @@ const detailsButtons = await page.evaluate(async () => {
   // card button can be display:none at any single instant -- a pre-measure
   // waitForFunction outside this evaluate raced the same re-render and still
   // caught a 0x0 under load. Poll HERE, at the point of measurement, bounded.
+  //
+  // Bounded by the CLOCK, not by a frame count: 120 animation frames is two
+  // seconds on an idle machine and far less on a throttled one, and the run
+  // that reported a 0x0 card had simply run out of frames while the card was
+  // still coming back. Five seconds of real time, then report what is there.
   let card = size(document.querySelector('#routeCard .route-details-btn'));
-  for (let i = 0; i < 120 && (!card || !card.width); i++) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+  const deadline = Date.now() + 2500;
+  while ((!card || !card.width) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 16));
     card = size(document.querySelector('#routeCard .route-details-btn'));
   }
   return { card, nav };
