@@ -3984,6 +3984,7 @@ function candidateSummary(candidate) {
     why: profileExplanation(profile),
     stage: candidate._stage || 'considered',
     stageWhy: candidate._stageWhy || '',
+    seatReason: candidate._seatReason || null,
     // Stage-specific comparators for the "More" screen: who covered a
     // dominated route and by how much, which twin a duplicate matches, each
     // seated/near-miss candidate's closest offered route -- with `overlap`
@@ -6006,6 +6007,25 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
   }
   } // end !pureScoreSort
+
+  for (const route of selected) {
+    if (route._seatReason) continue;
+    if (rules.pureScoreSort) { route._seatReason = 'Top overall score'; continue; }
+    if (route === recommended) route._seatReason = 'Recommended';
+    else if (route === fastestOverall) route._seatReason = 'Quickest option';
+    else if (route === safestOverall) route._seatReason = 'Safest option';
+    else if (route === boundedSafer) route._seatReason = 'Safest practical option';
+    else if (route === trailRich) route._seatReason = 'Most trail distance';
+    else if (route === fullyMatching) route._seatReason = 'Fully matches your rules';
+    else if (route === ferryCrossBreed) route._seatReason = 'Ferry composition';
+    else if (route === sectionFrontier) route._seatReason = 'Section frontier';
+    else if (route === adaptiveCorridor) route._seatReason = 'Adaptive corridor';
+    else if (route === combinedCorridor) route._seatReason = 'Combined corridor';
+    else if (route === forwardProgressCandidate) route._seatReason = 'Avoids backtracking';
+    else if (route === preferredRouteAnchor) route._seatReason = 'Preferred route';
+    else if (route === strongPreferredCandidate) route._seatReason = 'Preferred route';
+    else route._seatReason = 'Distinct corridor';
+  }
 
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended, rules);
 

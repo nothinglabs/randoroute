@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.940';
+const APP_VERSION = '2026-08-30.941';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12383,6 +12383,7 @@ function renderAllRoutesList() {
       </div>` : ''}
       ${candidateLensRow(c, lensBests)}
       <p class="all-route-why"><b>Built as:</b> ${c.why}</p>
+      ${c.seatReason ? `<p class="all-route-why"><b>Seated because:</b> ${c.seatReason}</p>` : ''}
       ${candidateSimilarityLine(c, labelOf)}
       ${(() => {
         const detail = c.stage === 'offered' ? '' : candidateStageDetail(c, stage, labelOf);
