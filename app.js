@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.951';
+const APP_VERSION = '2026-08-30.952';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -207,7 +207,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // How much different riding (miles, on the shorter of the two) makes two
   // options genuinely different instead of one route offered twice. The
   // default is the field-tuned 800 m the dedupe shipped with.
-  distinctRideMi: 0.5,
+  distinctRideMi: 1.0,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
