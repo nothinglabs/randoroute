@@ -5788,22 +5788,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // loop still held two letters). When enough loop-free candidates exist to
   // fill the board, a route that materially rides alongside itself is not
   // seated at all; it stays in the corpus and the More screen says why.
-  // 400 m, not the score's 150 m allowance: seats are only denied for the
-  // unmistakable case. On a via trip the intended out-and-back is shared by
-  // every candidate, so the pool empties and the filter stands down.
-  // 400 -> 540 with the 2026-08-29 parallelism tightening: the measure
-  // shrank for everyone, so the fence moved out 35% with it. The U-Bridge
-  // loop measures 616 under the new terms.
-  const DOUBLE_BACK_SEAT_MAX_M = 540;
-  const doubledBack = (route) => {
-    if (route._doubleBackM === undefined) {
-      route._doubleBackM = Math.round(routeDoubleBackM(route.coords));
-    }
-    return route._doubleBackM > DOUBLE_BACK_SEAT_MAX_M;
-  };
-  const loopFree = stopBounded.filter((route) => !doubledBack(route)
-    || route === recommended);
-  const selectionChoices = loopFree.length >= MAX_OFFERED ? loopFree : stopBounded;
+  const selectionChoices = stopBounded;
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
@@ -6070,10 +6055,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           slowerS: candidate.timeS - dominator.timeS,
           moreSevereM: severeM(candidate) - severeM(dominator) };
       }
-    } else if ((candidate._doubleBackM || 0) > DOUBLE_BACK_SEAT_MAX_M) {
-      candidate._stage = 'not-chosen';
-      candidate._stageWhy = `Doubles back along itself for ${(candidate._doubleBackM / 1609.344).toFixed(1)} mi; the seats went to routes that do not.`;
-      candidate._stageData = nearestOffered(candidate);
     } else {
       candidate._stage = 'not-chosen';
       candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;
