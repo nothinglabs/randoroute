@@ -35,7 +35,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // while the Maps screen compared installs against the stale shell catalogue
 // and offered no update at all. A DATA release that regenerates either file
 // is a shell change.
-const VERSION = 'v944';
+const VERSION = 'v945';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //

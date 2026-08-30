@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.944';
+const APP_VERSION = '2026-08-30.945';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6468,8 +6468,9 @@ function openRouteDetails(detailTab = null, concernId = null) {
   if (desc) {
     const profileId = routing.last.optimization?.profileId;
     const all = routing.allCandidates || [];
-    const text = !turnNav.active && profileId && all.length
+    const entry = !turnNav.active && profileId && all.length
       ? candidateRouteDescriptions(all).get(profileId) : null;
+    const text = entry?.text || null;
     desc.innerHTML = routeDescriptionHtml(text || '');
     desc.hidden = !text;
   }
@@ -11789,6 +11790,8 @@ function renderRouteOptionControls() {
   // The shared route sits in its own slot after the lettered options, which
   // stay sequential A, B, C, D… by position.
   const sharedInPlay = routing.options.some((o) => o.asShared);
+  const all = routing.allCandidates || [];
+  const descs = all.length ? candidateRouteDescriptions(all) : new Map();
   const buttonHtml = (option, index) => {
     const optimization = option.optimization || {};
     const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
@@ -11804,10 +11807,12 @@ function renderRouteOptionControls() {
     const title = option.asShared
       ? 'The route exactly as shared. Colors use your settings; switching routes uses your settings.'
       : optimizationDescription(optimization);
+    const qualifier = !option.asShared
+      ? descs.get(optimization.profileId)?.shortQualifier || '' : '';
     return `<button type="button" data-route-option="${index}"${classes ? ` class="${classes}"` : ''}
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
-      <span>${shortLabel}</span></button>`;
+      <span>${shortLabel}</span>${qualifier ? `<span class="route-btn-qual">${qualifier}</span>` : ''}</button>`;
   };
   let cells;
   // Fresh lineups render in portfolio order; the frozen-lineup rendering
@@ -12116,19 +12121,32 @@ function candidateRouteDescriptions(all) {
   const minVal = (key) => Math.min(...facts.map((f) => f[key]));
   const maxVal = (key) => Math.max(...facts.map((f) => f[key]));
   const minTime = Math.min(...all.map((c) => c.timeS));
-  const qualifier = (f) => {
-    if (leads(f, 'failMi', minVal, 0.3)) return 'Fewest safety fails';
-    if (leads(f, 'trailMi', maxVal, 0.5)) return 'Most trail';
-    if (leads(f, 'facilityMi', maxVal, 0.5)) return 'Most trails + bike lanes';
+  const QUALIFIERS = {
+    safest:   { full: 'Fewest safety fails', short: 'Safest' },
+    trail:    { full: 'Most trail', short: 'Most trail' },
+    facility: { full: 'Most trails + bike lanes', short: 'Protected' },
+    quickest: { full: 'Quickest', short: 'Quickest' },
+    shortest: { full: 'Shortest', short: 'Shortest' },
+    flattest: { full: 'Flattest', short: 'Flattest' },
+    caution:  { full: 'Least caution', short: 'Least caution' },
+    direct:   { full: 'More direct', short: 'Direct' },
+    balanced: { full: 'Balanced', short: 'Balanced' },
+    suggested:{ full: 'Suggested route', short: 'Suggested' },
+    alt:      { full: 'Alternative', short: 'Alt' },
+  };
+  const qualifierKey = (f, isBaseline) => {
+    if (leads(f, 'failMi', minVal, 0.3)) return 'safest';
+    if (leads(f, 'trailMi', maxVal, 0.5)) return 'trail';
+    if (leads(f, 'facilityMi', maxVal, 0.5)) return 'facility';
     if (f.c.timeS === minTime && facts.filter((g) => g.c.timeS === minTime).length === 1
-        && maxVal('mi') - minVal('mi') > 0.3) return 'Quickest';
-    if (leads(f, 'mi', minVal, 0.3)) return 'Shortest';
-    if (leads(f, 'ascentFt', minVal, 100)) return 'Flattest';
-    if (leads(f, 'cautionMi', minVal, 0.3)) return 'Least caution';
-    const mode = f.c.mode;
-    if (mode === 'direct') return 'More direct';
-    if (mode === 'balanced') return 'Balanced';
-    return 'Alternative';
+        && maxVal('mi') - minVal('mi') > 0.3) return 'quickest';
+    if (leads(f, 'mi', minVal, 0.3)) return 'shortest';
+    if (leads(f, 'ascentFt', minVal, 100)) return 'flattest';
+    if (leads(f, 'cautionMi', minVal, 0.3)) return 'caution';
+    if (isBaseline) return 'suggested';
+    if (f.c.mode === 'direct') return 'direct';
+    if (f.c.mode === 'balanced') return 'balanced';
+    return 'alt';
   };
   const trafficNote = (f) => (f.trafficCautionMi >= 3
     && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
@@ -12155,7 +12173,9 @@ function candidateRouteDescriptions(all) {
     || facts.reduce((best, f) => (f.mi < best.mi ? f : best), facts[0]);
   const chosen = new Map();
   for (const f of facts) {
-    const q = qualifier(f);
+    const qk = qualifierKey(f, f === baseline);
+    const qFull = QUALIFIERS[qk].full;
+    const qShort = QUALIFIERS[qk].short;
     const fc = conditions(f);
     let opener;
     if (f === baseline) {
@@ -12165,7 +12185,10 @@ function candidateRouteDescriptions(all) {
       opener = deltaMi < 0.15 ? 'Same distance'
         : `${miles(deltaMi)} ${f.mi > baseline.mi ? 'longer' : 'shorter'}`;
     }
-    chosen.set(f.c.profileId, `${opener}. ${q}. ${fc}.`);
+    chosen.set(f.c.profileId, {
+      text: `${opener}. ${qFull}. ${fc}.`,
+      shortQualifier: qShort,
+    });
   }
   return chosen;
 }
@@ -12181,7 +12204,7 @@ function routeDescriptionHtml(text) {
   const escaped = String(text || '').replace(/[&<>]/g, (ch) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
   return escaped.replace(DESC_FIGURE, (whole, value, word) =>
-    (Number(value) > 0.5
+    (Number(value) > 0
       ? `<b class="desc-flag desc-flag-${DESC_FIGURE_KIND[word]}">${whole}</b>`
       : whole));
 }
@@ -12261,7 +12284,7 @@ function renderAllRoutesList() {
         <span class="all-route-badge stage-${stage.tone}">${stage.label}</span>
         ${active ? '<span class="all-route-badge cur">Showing</span>' : ''}
       </div>
-      <p class="all-route-desc">${routeDescriptionHtml(descriptions.get(c.profileId))}</p>
+      <p class="all-route-desc">${routeDescriptionHtml(descriptions.get(c.profileId)?.text)}</p>
       <div class="all-route-stats">
         <span><b>${s.mi.toFixed(1)}</b> mi</span>
         <span><b>${Math.floor(s.hours)}h${String(Math.round(s.hours % 1 * 60)).padStart(2, '0')}</b></span>
@@ -12380,12 +12403,12 @@ function showRouteDescriptionToast(option) {
     || routing.pendingRoute || routing.routeRequestActive) return;
   const profileId = option?.optimization?.profileId;
   const all = routing.allCandidates || [];
-  const text = profileId && all.length
+  const entry = profileId && all.length
     ? candidateRouteDescriptions(all).get(profileId) : null;
-  if (!text) { hideRouteDescriptionToast(); return; }
+  if (!entry) { hideRouteDescriptionToast(); return; }
   const body = document.createElement('span');
   body.className = 'route-desc-text';
-  body.innerHTML = routeDescriptionHtml(text);
+  body.innerHTML = routeDescriptionHtml(entry.text);
   // No ✕ (field ask, 2026-08-28): it cost the width of two words on every
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.
