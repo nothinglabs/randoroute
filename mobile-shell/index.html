@@ -120,6 +120,11 @@
   </script>
   <div id="map"></div>
   <div id="mapLoadingBar" role="status" aria-label="Loading map" hidden><span></span><span></span></div>
+  <!-- Body-level on purpose: inside a panel, the panel's stacking context
+       trapped the pill under the top toolbar (field, 2026-08-27: it drew as
+       a grey wash BEHIND the translucent endpoint card). -->
+  <div id="routeDescToast" class="route-desc-toast" role="status" aria-live="polite"></div>
+  <div id="mapBootStatus" role="status" aria-live="polite" hidden></div>
   <div id="topToolbar">
     <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
       <span id="navStartIcon" aria-hidden="true">▶</span> <span id="navStartLabel">Navigate</span>
@@ -325,6 +330,7 @@
           <div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button></div>
         </div>
         <div class="weights-body">
+          <nav id="weightsSubnav" class="weights-subnav" aria-label="Weight sections" hidden></nav>
           <div id="weightsModifiedNotice" class="weights-modified-notice" role="status" hidden>Advanced routing has been modified</div>
           <section id="advancedRoutingOptions" class="weights-route-options" aria-labelledby="advancedRoutingOptionsTitle"></section>
           <ul class="weights-key">
@@ -475,7 +481,7 @@
   <dialog id="allRoutesDialog" class="full-help-dialog all-routes-dialog" aria-label="All routes considered">
     <div class="full-help-head"><div><span>Troubleshooting</span><h2>All routes considered</h2></div><button class="dialog-close" data-close="allRoutesDialog" aria-label="Close all routes">✕</button></div>
     <div class="all-routes-body">
-      <p class="all-routes-lead">Every route the portfolio built for these points — the ones offered on the map and the ones it discarded. Tap any to load it. The <b>suggestion score</b> chooses the star from practical routes; lower is better. Search weights first build each route, as explained by <b>Built as</b>.</p>
+      <p class="all-routes-lead">Every route built for these points, offered and discarded. Tap one to load it; the lowest <b>suggestion score</b> wins the star.</p>
       <div id="allRoutesList" class="all-routes-list"></div>
     </div>
   </dialog>
@@ -491,8 +497,15 @@
     <div id="mapPointNavigateChoices" class="map-point-navigate-choices"></div>
   </dialog>
 
+  <dialog id="otherMapDialog" class="map-dialog map-point-navigate-dialog" aria-labelledby="otherMapTitle">
+    <div class="dialog-head"><h2 id="otherMapTitle">Open in another map</h2><button class="dialog-close" data-close="otherMapDialog" aria-label="Close">✕</button></div>
+    <p class="map-point-navigate-where" id="otherMapWhere"></p>
+    <div id="otherMapChoices" class="map-point-navigate-choices"></div>
+  </dialog>
+
   <dialog id="mapDebugDialog" class="map-debug-dialog" aria-labelledby="mapDebugTitle">
     <div class="map-debug-head"><div><span>Debug view</span><h2 id="mapDebugTitle">Map location</h2></div><button class="dialog-close" data-close="mapDebugDialog" aria-label="Close debug view">✕</button></div>
+    <div id="mapDebugFacts" class="map-debug-facts" hidden></div>
     <pre id="mapDebugOutput" tabindex="0"></pre>
   </dialog>
 
@@ -540,9 +553,7 @@
       <li><b>Show advanced options and routing weights</b> — reveals the ⚖ Settings tab and its expert route switches. Leave it off unless you want to tune how the router searches.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
     <section><h3>Advanced routing</h3><ul class="help-list">
-      <li><b>Heavily prefer designated bike routes</b> — favors signed bike-route corridors. Trails and physical bike infrastructure have their own independent routing preferences.</li>
       <li><b>Follow designated bike routes even if they fail safety rules <span class="rule-caution-copy">(use with caution)</span></b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
-      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided.</li>
       <li><b>Allow routes with ferries</b> — includes ferry itineraries in route searches.</li>
@@ -677,15 +688,18 @@
         <li><b>Concerns:</b> shows dismount points, sidewalk fallbacks, rule failures, highways, mountain-bike trails, steep uphill grades, uphill-curve cautions, and confirmed unpaved segments.</li>
         <li><b>All Steps:</b> every route segment in order.</li>
         <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
+        <li><b>Other Map…</b> on any road card hands the same point to Google Maps, Apple Maps or OpenStreetMap. On an iPhone the first two open their own app when it is installed, and the website otherwise; OpenStreetMap is always the website.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
         <li><b>Lime</b> — Trusted bike lane: a bike facility we would send you down without a caveat. Separated lanes and shared-use paths always qualify. A painted lane on a road the state rates worst-on-scale for traffic stress does not — that road still <b>passes</b>, and draws blue.</li>
         <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
-        <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
+        <li><b>Blue</b> — road that meets rules (speed and shoulder requirements).</li>
         <li><b>Red dashed</b> — a routed segment that fails your rules, such as a known safety conflict, a bike-legal freeway used as a last resort, or a walk-your-bike stretch longer than about 100 m. Permanent bicycle restrictions use the separate pale prohibited overlay and are never routed.</li>
         <li><b>Amber</b> — Caution. Several different things put a road here; <b>Settings Help</b> lists every one of them, generated from the safety model itself. A verdict outranks the facility: a road that cautions or fails draws amber or red even where it has a bike lane.</li>
         <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws as a band beneath the road and does not change the road’s verdict. Where your route follows one, the band widens.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
+        <li><b>Bike route fails rules</b> badge — the road is officially marked for bikes and still outside your limits. It covers two kinds of marking the map does not distinguish: a signed or mapped bicycle route, and a shared-lane marking (sharrow) painted in the traffic lane. Neither changes the verdict; a sharrow in particular is paint, not space of your own. The badge acknowledges the marking without endorsing the road.</li>
+        <li><b>Dismount / sidewalk present</b> badge — either walk your bike here, or, on a failing road, a sidewalk is mapped alongside to step onto. Only a positively tagged sidewalk earns it: the road still fails, but routes mildly prefer a failing road you can walk out of over one you cannot.</li>
       </ul></section>
       <section><h3>On a route, two verdicts move</h3>
       <ul>
@@ -699,7 +713,7 @@
   </template>
 
   <dialog id="routeDetailsDialog" class="route-details-dialog" aria-labelledby="routeDetailsDialogTitle">
-    <div class="route-details-dialog-head"><span id="routeDetailsDialogTitle">Route Details</span></div>
+    <div class="route-details-dialog-head"><span id="routeDetailsDialogTitle">Route Details</span><span id="routeDetailsDialogDesc" class="route-details-dialog-desc" hidden></span></div>
     <iframe id="routeDetailsFrame" title="Route details"></iframe>
   </dialog>
 
@@ -708,9 +722,11 @@
   <div id="route-status" class="sr-only" role="status" aria-live="polite"></div>
   <div id="navBanner" class="nav-banner" role="status" aria-live="polite" hidden>
     <div class="nav-banner-main">
+      <span id="navBannerArrow" class="nav-banner-arrow" hidden></span>
       <div class="nav-banner-copy">
         <span id="navBannerKicker">Turn-by-turn navigation</span>
         <strong id="navBannerText"></strong>
+        <span id="navBannerDetail" hidden></span>
         <span id="navBannerMeta"></span>
       </div>
     </div>
