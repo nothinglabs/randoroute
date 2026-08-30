@@ -6011,7 +6011,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   for (const route of selected) {
     if (route._seatReason) continue;
     if (rules.pureScoreSort) { route._seatReason = 'Top overall score'; continue; }
-    if (route === recommended) route._seatReason = 'Recommended';
+    if (route === recommended) route._seatReason = 'Score leader';
     else if (route === fastestOverall) route._seatReason = 'Quickest option';
     else if (route === safestOverall) route._seatReason = 'Safest option';
     else if (route === boundedSafer) route._seatReason = 'Safest practical option';
