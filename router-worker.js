@@ -3863,7 +3863,7 @@ function presentAsLetters(routes, recommended, rules) {
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
     const letter = String.fromCharCode(65 + i);
-    const isRecommended = route === recommended;
+    const isRecommended = i === 0;
     const lead = isRecommended
       ? 'Recommended — best balance of safety and practicality.'
       : 'A distinct alternative.';
