@@ -5790,7 +5790,17 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // seated at all; it stays in the corpus and the More screen says why.
   const selectionChoices = stopBounded;
   const selected = [];
-  if (selectionChoices.length <= MAX_OFFERED) {
+  if (rules.pureScoreSort) {
+    const scored = [...selectionChoices];
+    for (const r of scored) r._triLens = triLensCost(r, rules);
+    scored.sort((a, b) => a._triLens - b._triLens || a.distM - b.distM || compareSafety(a, b));
+    for (const candidate of scored) {
+      if (selected.length >= MAX_OFFERED) break;
+      if (selected.every((other) => edgeOverlap(candidate, other) < 0.96)) {
+        selected.push(candidate);
+      }
+    }
+  } else if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
   } else {
     selected.push(selectionChoices[0]);
@@ -5812,6 +5822,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
+  if (!rules.pureScoreSort) {
   // A ferry composition already represents the important trail/safety section
   // tradeoff on a boat trip. Prefer it over a second global trail extreme when
   // the six slots cannot hold both; on ferry-free trips reserve `trailRich`.
@@ -5994,6 +6005,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       if (at >= 0) selected[at] = fullyMatching;
     }
   }
+  } // end !pureScoreSort
 
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended, rules);
 

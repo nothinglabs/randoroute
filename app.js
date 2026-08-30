@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.938';
+const APP_VERSION = '2026-08-30.939';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -80,9 +80,10 @@ const ADVANCED_ROUTE_OPTION_DEFAULTS = Object.freeze({
   allowSidewalkFallback: true,
   allowMtbTrails: false,
   allowFerries: true,
+  pureScoreSort: false,
 });
 const ADVANCED_ROUTE_RULE_KEYS = Object.freeze([
-  'alwaysPreferBikeRoutes', 'allowSidewalkFallback', 'allowMtbTrails', 'allowFerries',
+  'alwaysPreferBikeRoutes', 'allowSidewalkFallback', 'allowMtbTrails', 'allowFerries', 'pureScoreSort',
 ]);
 const ADVANCED_ROUTE_PREFERENCE_KEYS = Object.freeze(['prefDesig', 'prefResidential']);
 const DEFAULT_RULES = Object.freeze({
@@ -126,6 +127,7 @@ const DEFAULT_RULES = Object.freeze({
   // 6,000 vehicles a day or a minor arterial where there is no count.
   busyNoShoulder: 3,
   allowSidewalkFallback: ADVANCED_ROUTE_OPTION_DEFAULTS.allowSidewalkFallback,
+  pureScoreSort: ADVANCED_ROUTE_OPTION_DEFAULTS.pureScoreSort,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -16810,6 +16812,7 @@ function buildAdvancedRoutingOptions() {
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
   add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
+  add('pureScoreSort', 'Pure score-based sorting with duplicate removal', rules, scheduleReroute);
 
   // ---- Debug: development aids, off by default, deliberately last.
   const debugHeading = document.createElement('h3');
