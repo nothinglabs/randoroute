@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.932';
+const APP_VERSION = '2026-08-30.933';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -165,6 +165,13 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.6,
   facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
   facilitySeparated: 0.32, facilityPath: 0.25,
+  // A failing road with a POSITIVELY TAGGED sidewalk stays failing, but it has
+  // a bailout: the rider can step off and walk. Rider direction 2026-08-29 --
+  // of two failing options, always prefer the one you can walk out of. Tagged
+  // only, never the Census-urban inference the walked-sidewalk escape uses:
+  // you cannot bail your bike onto an inference. MIRRORED in router-worker.js
+  // -- the two tables must agree (test_sidewalk_bailout.mjs pins it).
+  sidewalkBailout: 0.85,
   mtbTrail: 6,
   freeway: 12,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -9666,6 +9673,10 @@ const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
 // badge is allowed to coexist with a hill/traffic badge so neither warning can
 // accidentally erase the other.
 const FAIL_MARKER_SECOND_AT_M = 2500;
+// A failing run shorter than this gets its fail badge and nothing else: two
+// icons inside a block read as clutter, and the segment card still says a
+// sidewalk is mapped.
+const SIDEWALK_MARK_MIN_RUN_M = 250;
 function routeMarkerKinds(p, style) {
   const kinds = [];
   if (p.ferry === 1) return kinds;
@@ -9683,6 +9694,21 @@ function routeMarkerKinds(p, style) {
   if (isConfirmedUnpavedSurface(p.surface)) kinds.push('unpaved');
   return kinds;
 }
+// The display twin of sidewalkBailoutApplies() in router-worker.js: the same
+// question, asked of a route segment instead of a graph edge. Both must answer
+// alike, or the map marks a bailout the router did not price (or the reverse) --
+// the shape of every "card lies by omission" bug in docs/SAFETY-MODEL.md.
+// Tagged sidewalk ONLY; the urban inference is deliberately not consulted.
+function segmentSidewalkBailout(p, style) {
+  if (style !== 'fail' || !rules.allowSidewalkFallback) return false;
+  if (!((p.official || 0) & OFFICIAL_SIDEWALK)) return false;
+  if (p.ferry === 1 || p.fw === 1) return false;
+  if (!rules.noUpperLimit) {
+    const cap = Number(rules.upperMaxSpeed);
+    if (cap > 0 && Number(p.mph) > cap) return false;
+  }
+  return true;
+}
 function buildRouteMarkerData(sdata) {
   const feats = (sdata.features || []).map((feature, routeIndex) => {
     const p = feature.properties || {};
@@ -9695,7 +9721,11 @@ function buildRouteMarkerData(sdata) {
       // grade to do it -- a run qualifies at 7.5% over one block, or at a
       // gentler grade held for much longer.
       gradePct: Number(p.gradePct) || 0,
-      ferry: p.ferry === 1, fail: style === 'fail', designated: p.desig === 1 };
+      ferry: p.ferry === 1, fail: style === 'fail', designated: p.desig === 1,
+      // A sharrow is officialdom marking a road for bikes; the badge says so
+      // without changing the verdict. A tagged sidewalk is a way off the road.
+      sharrow: (p.facility || 0) === 1,
+      sidewalk: segmentSidewalkBailout(p, style) };
   });
   // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
   // onto the flats at a slip, and Clinton's flat terminal road booked 11%
@@ -9810,6 +9840,24 @@ function buildRouteMarkerData(sdata) {
         routeIndex: feats[index].routeIndex },
         geometry: { type: 'Point', coordinates: at } });
     }
+    // Interspersed bailout mark. It rides in the WALK collection, so it reuses
+    // the dismount icon, its tap target and its declutter rules for free --
+    // "recycle the dismount icon" (rider, 2026-08-29). It lands BETWEEN the
+    // fail badges (their midpoint when there are two, three-quarters along
+    // when there is one), so it never displaces a promise: every fail badge
+    // planted above still draws.
+    if (runLenM < SIDEWALK_MARK_MIN_RUN_M) return;
+    const mark = targets.length > 1
+      ? runStartM + runLenM / 2
+      : runStartM + runLenM * 0.75;
+    const markIndex = spans.findIndex((span) => mark >= span.startM && mark <= span.endM);
+    if (markIndex < 0 || !feats[markIndex].sidewalk) return;
+    const markAt = pointAt(feats[markIndex], spans[markIndex], mark);
+    if (!markAt) return;
+    walk.push({ type: 'Feature', properties: { kind: 'sidewalk',
+      slot: Math.round(mark / ROUTE_MARKER_SPACING_M), sort: ROUTE_MARKER_SLOT_SPAN,
+      atM: mark, routeIndex: feats[markIndex].routeIndex },
+      geometry: { type: 'Point', coordinates: markAt } });
   };
   // A walked stub at the route's very START sits inside the spacing clock's
   // opening gap (the first slot lands ~175 m in), so an 80 m endpoint walk
@@ -9826,7 +9874,11 @@ function buildRouteMarkerData(sdata) {
     if (!runEnds) { if (!qualified[i].includes('walk')) walkRunStart = -1; return; }
     const span = { startM: spans[walkRunStart].startM, endM: spans[i].endM };
     walkRunStart = -1;
-    const covered = walk.some((point) => point.properties.atM >= span.startM
+    // Only a real walk badge counts as covering a walk run: a sidewalk bailout
+    // mark shares this collection but answers a different question, and letting
+    // one satisfy the backfill would silently drop a "this bit is on foot" icon.
+    const covered = walk.some((point) => point.properties.kind === 'walk'
+      && point.properties.atM >= span.startM
       && point.properties.atM <= span.endM);
     if (covered) return;
     const mid = (span.startM + span.endM) / 2;
@@ -9839,7 +9891,12 @@ function buildRouteMarkerData(sdata) {
   });
   let failStart = -1, failKind = null;
   feats.forEach((f, i) => {
-    const kind = !f.fail ? null : (f.designated ? 'fail-designated' : 'fail');
+    // Officially marked for bikes -- a signed route relation OR shared-lane
+    // paint -- and still failing. One badge covers both; Help draws the
+    // distinction the map cannot. This reads facility 1 for DISPLAY only and
+    // is not a fourth leak of the facility >= 2 threshold (SAFETY-MODEL.md).
+    const kind = !f.fail ? null
+      : (f.designated || f.sharrow ? 'fail-designated' : 'fail');
     if (kind !== failKind) {
       if (failStart >= 0) placeFailMarks(failStart, i - 1, failKind);
       failStart = kind ? i : -1;
@@ -14303,8 +14360,16 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
       const shHere = shUnknown
         ? 'No shoulder is recorded here'
         : `The shoulder here is ${sh} ft${shSource}`;
+      // A mapped sidewalk that did NOT earn rung 7 -- this failure is lanes or
+      // traffic rather than speed -- still matters: it is a way off the road.
+      // Say it on the card itself, not only in Details, and say it wherever the
+      // router grants the matching sidewalk bailout credit. Reaching this rung
+      // at all means freeway, prohibited and over-the-cap failures are already
+      // out, which is exactly the credit's exclusion set.
+      const bailout = n.sidewalk === 'present' && rules.allowSidewalkFallback
+        ? ' A sidewalk is mapped here.' : '';
       return `Needs a bike lane or a safe-ish-width shoulder: ${why.join(', ')}.`
-        + ` ${shHere}, against your ${rules.minShoulder} ft minimum.`;
+        + ` ${shHere}, against your ${rules.minShoulder} ft minimum.${bailout}`;
     }
     case 'shares-lane':
       // This rung means none of the space triggers fired -- not fast, not wide,
@@ -18426,13 +18491,14 @@ function syncLayersToggle() {
 // ferry symbol is self-explanatory. Keep these six labels short enough to scan
 // at a glance; their fuller meaning remains in each item's accessible label.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount here.'],
+  ['route-dismount-marker-icon', 'Dismount / sidewalk present',
+    'Walk your bike here, or — on a failing road — a mapped sidewalk to step onto.'],
   ['route-marker-steep', 'Steep hill', '7.5% for a block, 5% held for 250 m, or 4% for 800 m.'],
   ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
   ['route-marker-unpaved', 'Unpaved', 'Loose surface.'],
   ['route-marker-fail', 'Fails rules', 'Outside your safety limits.'],
   ['route-marker-fail-designated', 'Bike route fails rules',
-    'Official route, but outside your safety limits.'],
+    'Officially marked for bikes, but outside your safety limits.'],
 ];
 
 function buildActiveRouteIconLegend() {

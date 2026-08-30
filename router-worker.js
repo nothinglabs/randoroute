@@ -1425,6 +1425,13 @@ const DEFAULT_WEIGHTS = Object.freeze({
   strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.6,
   facilityShared: 0.75, facilityLane: 0.42, facilityBuffered: 0.38,
   facilitySeparated: 0.32, facilityPath: 0.25,
+  // A failing road with a POSITIVELY TAGGED sidewalk stays failing, but it has
+  // a bailout: the rider can step off and walk. Rider direction 2026-08-29 --
+  // of two failing options, always prefer the one you can walk out of. Tagged
+  // only, never the Census-urban inference the walked-sidewalk escape uses:
+  // you cannot bail your bike onto an inference. MIRRORED in app.js -- the two
+  // tables must agree (test_sidewalk_bailout.mjs pins it).
+  sidewalkBailout: 0.85,
   mtbTrail: 6,
   // Per-metre freeway surcharge, on top of the level-4 multiplier. Calibrated
   // WITH FREEWAY_ENTRY_PENALTY_S against six trips whose right answer is known
@@ -1598,6 +1605,33 @@ function facilityRouteBonusApplies(level, safetyLevel) {
   // a failing road without allowing stronger facilities or signed-route-only
   // bonuses to conceal a failure.
   return safetyLevel < 4 || level === 1;
+}
+// The sidewalk bailout (rider direction, 2026-08-29). A road that FAILS the
+// rider's rules and carries a positively tagged sidewalk is still failing --
+// same verdict, same red, same failing mileage -- but the rider can step off
+// and walk it. Between two failing options the router should take the one
+// with a way out, so it earns a flat `sidewalkBailout` discount.
+//
+// Tagged ONLY. The walked-sidewalk escape above accepts Census-urban context
+// without an explicit sidewalk=no, because it only fires where the rider is
+// already walking to a door. This credit steers whole routes, so it demands
+// the positive tag: you cannot bail your bike onto an inference. That is a
+// deliberate divergence, not an oversight -- see docs/SAFETY-MODEL.md rung 7.
+//
+// The exclusions are the failures a sidewalk cannot answer: a freeway or a
+// ferry is not a road you walk beside, a prohibited direction is not one you
+// may enter at all, and a road over the rider's absolute speed cap was ruled
+// out by a limit that is not about riding space.
+function sidewalkBailoutApplies(ei, forward, rules, pricedLevel, fl) {
+  if (pricedLevel !== 4 || !rules.allowSidewalkFallback) return false;
+  if (!(eOfficial[ei] & EDGE_SIDEWALK)) return false;
+  if (fl & (4 | 32)) return false;                        // freeway, ferry
+  if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) return false;
+  if (!rules.noUpperLimit) {
+    const cap = Number(rules.upperMaxSpeed);
+    if (cap > 0 && edgeSpeed(ei, forward) > cap) return false;
+  }
+  return true;
 }
 function isResidential(i) {
   return eClass[i] === 1 || eClass[i] === 2; // residential / living_street
@@ -2275,6 +2309,9 @@ function useEdgeCostFloors(rules, searchRules, mode) {
   const mtbFloor = Math.min(1, activeWeights.mtbTrail);
   const designatedFloor = Math.min(1, activeWeights.strongDesignated);
   const residentialFloor = Math.min(1, activeWeights.residential);
+  // Mirrors the sidewalk bailout in edgeCostParts. min(1, w) keeps it a LOWER
+  // bound even if the advanced editor turns the weight into a penalty.
+  const sidewalkFloor = Math.min(1, activeWeights.sidewalkBailout);
   const facility = [1, activeWeights.facilityShared, activeWeights.facilityLane,
     activeWeights.facilityBuffered, activeWeights.facilitySeparated, activeWeights.facilityPath]
     .map((weight) => Math.min(1, weight));
@@ -2290,8 +2327,8 @@ function useEdgeCostFloors(rules, searchRules, mode) {
 
   floorKey = key;
   floorSetup = { rules, searchRules, mode, weights: modeWeights(mode), limitedFloor,
-    freewayFloor, mtbFloor, designatedFloor, residentialFloor, facility, belowRate,
-    noShoulderMax, climbRate };
+    freewayFloor, mtbFloor, designatedFloor, residentialFloor, sidewalkFloor,
+    facility, belowRate, noShoulderMax, climbRate };
 }
 
 /* What the search charges to ride edge `ei` in one direction.
@@ -2432,6 +2469,13 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   if (!trustSignedRoute && !(fl & (8 | 32 | 4))
       && !edgeLimited(ei, forward) && isResidential(ei)) {
     cost *= activeWeights.residential;
+  }
+  // A failing road the rider can step off is still failing, but it beats a
+  // failing road with nowhere to go. Priced against the level the SEARCH is
+  // charging, so a lens that reprices this edge as passing takes no bailout.
+  if (!trustSignedRoute
+      && sidewalkBailoutApplies(ei, forward, searchRules, searchLevel, fl)) {
+    cost *= activeWeights.sidewalkBailout;
   }
   // Alternative-corridor probes softly penalize ordinary road edges from
   // one already-found path. Protected lanes and shared paths may remain a
@@ -2579,7 +2623,8 @@ function prewarmArcCosts(rules, configs, id) {
 
 function edgeCostFloor(i, forward) {
   const { rules, searchRules, mode, weights, limitedFloor, freewayFloor, mtbFloor,
-    designatedFloor, residentialFloor, facility, belowRate, noShoulderMax, climbRate } = floorSetup;
+    designatedFloor, residentialFloor, sidewalkFloor, facility, belowRate, noShoulderMax,
+    climbRate } = floorSetup;
   const fl = eFlags[i];
   // The verdict the SEARCH prices against, and the verdict the RIDER's own
   // rules give. They are the same for every ordinary profile, and differ only
@@ -2594,6 +2639,10 @@ function edgeCostFloor(i, forward) {
   } else if (fl & 4) m *= freewayFloor;
   if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
   if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
+  if (!trustSignedRoute
+      && sidewalkBailoutApplies(i, forward, searchRules, searchLevel, fl)) {
+    m *= sidewalkFloor;
+  }
   const floorFacility = edgeFacility(i, forward);
   if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(i)
       && facilityRouteBonusApplies(floorFacility, level)) {

@@ -684,6 +684,46 @@ depending on which rung produced it, which is why `readoutVerdict` names the
 rung: "Caution — sidewalk instead of a shoulder" versus "Caution —
 limited-access highway".
 
+### The sidewalk bailout — a credit, not a rung
+
+Rung 7 answers the SHOULDER question, so it needs `tooFast`. A road that fails
+on lanes or traffic while inside the speed limit reaches `needs-space` instead
+and gets nothing from its sidewalk — level 4, full failure pricing, no mention
+on the card. That is the gap the **sidewalk bailout** fills, and it fills it
+without touching the ladder.
+
+The bailout is a routing weight (`sidewalkBailout`, 0.85) and a card sentence.
+It changes **no verdict**: the road stays level 4, draws red, and counts as
+failing mileage. It exists so that between two failing options the router takes
+the one the rider can step off. Rider direction, 2026-08-29.
+
+It applies when the edge is priced at level 4 AND carries a positively tagged
+sidewalk AND `allowSidewalkFallback` is on AND the edge is not a freeway, not a
+ferry, not a prohibited direction, and not over `upperMaxSpeed`. Those
+exclusions are the failures a sidewalk cannot answer: you do not walk beside a
+freeway, and a road ruled out by the absolute speed cap was ruled out by a limit
+that is not about riding space. Reaching `needs-space` at all already implies
+that set, which is why the card sentence lives in that rung's branch of
+`explainLevel()`.
+
+**Tagged sidewalks only.** The walked-sidewalk escape in `router-worker.js`
+accepts Census-urban context without an explicit `sidewalk=no`, because it only
+fires within 150 ft of a leg endpoint where the rider is walking to a door
+anyway. This credit steers whole routes, so it demands the positive tag. The
+rider's reason, and the reason not to "fix" the divergence later: *you cannot
+bail your bike onto an inference.* OSM sidewalk tagging reaches 23.5% of failing
+edges statewide; that coverage was judged sufficient precisely because what it
+buys is certainty.
+
+Three implementations have to agree, the same way the facility ladder does:
+`sidewalkBailoutApplies()` in `router-worker.js` prices it, the identical test
+inside `edgeCostFloor()` keeps the A* bound admissible (a discount the bound
+did not know about would make the heuristic overestimate), and
+`segmentSidewalkBailout()` in `app.js` decides the map badge. Where the walked
+sidewalk escape already reprices an edge as walking, that wins and the credit
+never applies — the escape replaces the cost outright rather than multiplying
+it.
+
 ## Two ways a card can lie by omission
 
 Both of these shipped. Neither was a wrong value — in each case the right value
@@ -974,7 +1014,7 @@ even the urban/rural split, is still honoured behind both.
 | `busyNoShoulder` | Road is busier than | rung 6, trigger 3 | via the verdict |
 | `minShoulder` | Minimum shoulder width to count as safe-ish | what satisfies rung 6 | via the verdict |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
-| `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
+| `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0, and gates the ×0.85 sidewalk bailout |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `allowFerries` | Allow routes with ferries (Advanced routing) | none | traversable at all |
@@ -1625,6 +1665,22 @@ against the shared ladder.
 
 Statewide the graph carries **385 mi of sharrow** against 7,884 mi of real
 facility, so this is a small correction in mileage and a large one in honesty.
+
+**The one place a sharrow surfaces.** A failing sharrowed road wears the
+`route-marker-fail-designated` badge — "Bike route fails rules" — the same badge
+a failing signed route wears. That is display-only and deliberate (rider
+direction, 2026-08-29): officialdom marked this road for bikes, it still does
+not meet your rules, and the badge acknowledges the marking without endorsing
+the road. Nothing else moves: no lime, no share of the trails/lanes percentage,
+no verdict change, no routing change beyond the `facilityShared` 0.75 a sharrow
+already carried.
+
+So `buildRouteMarkerData()` in `app.js` tests `facility === 1` on purpose. It is
+**not** a fourth leak of the `facility >= 2` threshold — that threshold governs
+what counts as riding space, and this test governs which of two failure badges
+to draw. Before "fixing" it, note that the badge says *fails rules* in both
+copies; a rule about what the map may CLAIM is not violated by a marker whose
+entire text is the opposite of a claim.
 
 ## The "More" screen — all routes considered
 
