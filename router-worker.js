@@ -3825,13 +3825,40 @@ function outcomeSnapshot(route) {
   return details.join(' · ');
 }
 
-// Letters run A..F by recommendation score (best first), so Route A is always
-// the recommended route. Ties break on distance, then time, then safety.
-function presentAsLetters(routes, recommended) {
+function triLensCost(route, rules) {
+  const edges = route.edgeIds || [];
+  const nodes = route.nodeIds || [];
+  if (!edges.length || nodes.length < edges.length) return Infinity;
+  let total = 0;
+  for (const mode of ['direct', 'balanced', 'low']) {
+    const modeW = modeWeights(mode);
+    let incomingEdge = -1;
+    for (let i = 0; i < edges.length; i++) {
+      const ei = edges[i], fromNode = nodes[i];
+      const forward = eA[ei] === fromNode;
+      const step = edgeCost(ei, forward, {
+        mode, modeW, rules, searchRules: rules,
+        prefDesig: !!route._profile?.prefDesig,
+        prefResidential: !!route._profile?.prefResidential,
+        boardingWaitS: (eFlags[ei] & 32) && nodeHasLand[fromNode]
+          ? activeWeights.ferryWaitMin * 60 : 0,
+        fromNode, incomingEdge,
+      });
+      if (!(step < Infinity)) { total += 1e9; break; }
+      total += step;
+      incomingEdge = ei;
+    }
+  }
+  return total;
+}
+
+// Letters run A..F by tri-lens cost (sum of direct + balanced + low-stress
+// edge costs). Route A is the best consensus pick across all three profiles.
+function presentAsLetters(routes, recommended, rules) {
   if (!routes.length) return routes;
+  for (const r of routes) r._triLens = triLensCost(r, rules);
   const ordered = [...routes].sort((a, b) =>
-    recommendationScore(a) - recommendationScore(b)
-    || a.distM - b.distM || a.timeS - b.timeS || compareSafety(a, b));
+    a._triLens - b._triLens || a.distM - b.distM || compareSafety(a, b));
 
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
@@ -5983,7 +6010,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
   }
 
-  let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
+  let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended, rules);
 
   // Every request presents a freshly ranked, freshly lettered portfolio.
   // Pinned requests -- re-running a frozen lineup's recipes under held
