@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.942';
+const APP_VERSION = '2026-08-30.943';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12088,183 +12088,74 @@ function allRoutesSummary(all) {
 function candidateRouteDescriptions(all) {
   const facts = all.map((c) => {
     const mi = c.distM / 1609.344;
-    const ridingM = Math.max(1, c.distM - (c.ferryM || 0));
     return {
       c, mi,
       trailMi: (c.trailM || 0) / 1609.344,
-      trailPct: (c.trailM || 0) / ridingM,
-      lanePct: Math.max(0, (c.facilityM || 0) - (c.trailM || 0)) / ridingM,
-      laneMi: Math.max(0, (c.facilityM || 0) - (c.trailM || 0)) / 1609.344,
-      resPct: (c.residentialM || 0) / ridingM,
-      resMi: (c.residentialM || 0) / 1609.344,
-      desigMi: (c.desigM || 0) / 1609.344,
+      facilityMi: (c.facilityM || 0) / 1609.344,
       failMi: (c.failM || 0) / 1609.344,
-      failPct: (c.failM || 0) / ridingM,
-      cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
-      cautionPct: ((c.levelM || [])[3] || 0) / ridingM,
-      trafficMi: (c.highStressM || 0) / 1609.344,
-      trafficCautionMi: (c.trafficCautionM || 0) / 1609.344,
       failRuns: c.failRunCount,
       failRunLongestMi: (c.failRunLongestM || 0) / 1609.344,
-      unpavedMi: (c.unpavedM || 0) / 1609.344,
-      ferry: (c.ferryM || 0) > 0,
+      cautionMi: ((c.levelM || [])[3] || 0) / 1609.344,
+      trafficCautionMi: (c.trafficCautionM || 0) / 1609.344,
       ascentFt: (c.ascentM || 0) * 3.28084,
-      ftPerMi: (c.ascentM || 0) * 3.28084 / Math.max(1, mi),
+      ferry: (c.ferryM || 0) > 0,
     };
   });
-  const min = (key) => Math.min(...facts.map((f) => f[key]));
-  const max = (key) => Math.max(...facts.map((f) => f[key]));
-  const minTime = Math.min(...all.map((c) => c.timeS));
-  const holds = (f, key, best, margin) => facts.length > 1 && f[key] === best(key)
-    && facts.filter((g) => g[key] === f[key]).length === 1
-    && Math.abs(max(key) - min(key)) > margin;
-  // Larger stretches of traffic get named (field ask, 2026-08-27): when the
-  // official traffic-stress rating caused at least half a route's caution
-  // mileage and spans 3+ miles, the caution mention says so. Parenthesized
-  // so it reads as the caution's cause — a trailing ", mostly heavy
-  // traffic" sounded like it described the whole route (field, same day).
-  const trafficNote = (f) => (f.trafficCautionMi >= 3
-    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
-  // One character phrase, then the conditions. Every fact appears exactly
-  // once (field review, 2026-08-28: "27 miles on signed bike routes … with
-  // 24 miles on trails" was one fact twice, and the percentage lines
-  // restated the mileage the conditions already carry). A phrase that
-  // implies trail mileage suppresses the trail condition; caution names
-  // traffic when traffic caused it, and separately-rated traffic is only
-  // added when the caution figure did not already say so.
   const miText = (x) => {
     const n = Math.max(0.1, Math.round(x * 10) / 10);
     return n >= 9.95 ? String(Math.round(n)) : String(n);
   };
-  // Under an hour, minutes; past it, quarter hours (field ask, 2026-08-29).
-  // "1h25" read as a clock time, and a rider planning an afternoon thinks in
-  // quarters, not in minutes they will not hold to anyway.
-  const rideText = (seconds) => {
-    const total = Math.max(1, Math.round((Number(seconds) || 0) / 60));
-    if (total < 60) return `${total} minute ride`;
-    const hours = Math.round(total / 15) / 4;
-    return `~${Number.isInteger(hours) ? hours : hours} hour ride`;
-  };
-  // Spelled out, not abbreviated: three lines leave room, and "mi" reads as
-  // a data label rather than a sentence (field ask, 2026-08-28).
   const miles = (x) => {
     const n = miText(x);
     return `${n} ${n === '1' ? 'mile' : 'miles'}`;
   };
-  // Every description opens with the distance (field ask, 2026-08-29), so a
-  // trait is no longer an opener competing for the row -- it is one clause
-  // inside the sentence, lower case, and two routes that share a trait may
-  // both say so. "Quickest" and "Ferry route" are gone: the ride estimate
-  // carries the first, and a ferry rides in the conditions with everything
-  // else that changes the ride.
-  const trait = (f) => {
-    if (holds(f, 'failMi', min, 0.3) && f.failMi > 0.05) return 'fewest fails';
-    if (f.trailPct >= 0.85) return 'nearly all trail';
-    if (f.trailPct >= 0.6) return 'mostly trail';
-    if (f.trailPct >= 0.4) return 'half trail and road';
-    if (f.trailPct + f.lanePct >= 0.5 && f.failPct < 0.08) return 'over half protected';
-    if (f.lanePct >= 0.5) return 'mostly bike lanes';
-    if (f.resPct >= 0.5) return 'mostly residential';
-    if (holds(f, 'ascentFt', min, 250)) return 'flattest option';
-    if (holds(f, 'ftPerMi', max, 20)) return 'hilliest option';
-    if (f.resPct >= 0.2) return 'part residential';
-    if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
-      return 'among the flatter';
-    }
-    return '';
+  const leads = (f, key, best, margin) => facts.length > 1
+    && f[key] === best(key)
+    && facts.filter((g) => g[key] === f[key]).length === 1
+    && Math.abs(maxVal(key) - minVal(key)) > margin;
+  const minVal = (key) => Math.min(...facts.map((f) => f[key]));
+  const maxVal = (key) => Math.max(...facts.map((f) => f[key]));
+  const minTime = Math.min(...all.map((c) => c.timeS));
+  const qualifier = (f) => {
+    if (leads(f, 'failMi', minVal, 0.3)) return 'Fewest safety fails';
+    if (leads(f, 'trailMi', maxVal, 0.5)) return 'Most trail';
+    if (leads(f, 'facilityMi', maxVal, 0.5)) return 'Most trails + bike lanes';
+    if (f.c.timeS === minTime && facts.filter((g) => g.c.timeS === minTime).length === 1
+        && maxVal('mi') - minVal('mi') > 0.3) return 'Quickest';
+    if (leads(f, 'mi', minVal, 0.3)) return 'Shortest';
+    if (leads(f, 'ascentFt', minVal, 100)) return 'Flattest';
+    if (leads(f, 'cautionMi', minVal, 0.3)) return 'Least caution';
+    return 'Alternative';
   };
-  // Fails and caution on every route, whatever the phrase says; then only
-  // what changes the ride: gravel, traffic the caution figure missed, a
-  // climbing day, and one implication-free extra.
-  const conditions = (f, phrase) => {
-    const out = [];
+  const trafficNote = (f) => (f.trafficCautionMi >= 3
+    && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
+  const failCaution = (f) => {
     const failClean = f.failMi <= 0.001, cautionClean = f.cautionMi <= 0.05;
-    if (failClean && cautionClean) {
-      out.push('no fails or caution');
-    } else {
-      // Crossing-sized dabs read as a count, not a mileage rounding to
-      // nothing ("just 2 short fails", each under a tenth of a mile).
-      out.push(failClean ? 'no fails'
-        : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
-          ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
-          : `${miles(f.failMi)} failing`);
-      // "no caution" is worth saying only when there is nothing else to
-      // report: after a failing mileage it is noise (field ask, 2026-08-29).
-      if (!cautionClean) out.push(`${miles(f.cautionMi)} caution${trafficNote(f)}`);
-      else if (failClean) out.push('no caution');
-    }
-    if (f.unpavedMi >= 1) out.push(`${miles(f.unpavedMi)} unpaved`);
-    // High-stress roads that did NOT become caution: the rating fails to
-    // caution only where no painted lane carries it, so a busy road with a
-    // lane is real exposure the caution figure never mentions.
-    if (f.trafficMi >= 3 && !out.some((part) => /traffic/.test(part))) {
-      out.push(`${miles(Math.round(f.trafficMi))} heavy traffic`);
-    }
-    if (f.ascentFt >= 2000 && !/flat|hilliest/i.test(phrase)) out.push('hilly');
-    // A ferry is a mode change, not a detail: it is named whenever the
-    // phrase does not already say so.
-    if (f.ferry && !/ferry/i.test(phrase)) out.push('ferry');
-    if (f.trailMi >= 2 && !/trail|protected|signed/i.test(phrase)) {
-      out.push(`${miles(f.trailMi)} on trail`);
-    }
-    // Three lines of room, filled in order of what decides a ride, and only
-    // while the line stays inside them. Each fact must also be worth its
-    // words: a 2.5-mile residential stretch on a 60-mile ride is noise, so
-    // the mileage thresholds scale with the route.
-    const line = () => `${f.mi.toFixed(1)} miles — `
-      + [phrase, ...out].filter(Boolean).join(', ');
-    let fills = 0;
-    const spend = (family, text) => {
-      if (fills >= 3 || family.test(line())) return;
-      // Three lines at the pill's ~36 characters a line, less the riding time
-      // appended after these. Past that the clamp eats the fact rather than
-      // showing it.
-      if (line().length + text.length + 2 > 94) return;
-      out.push(text);
-      fills += 1;
-    };
-    // What this route costs against the RECOMMENDED one: the star is the
-    // answer a rider decides against. The star itself is priced against the
-    // shortest option, so the row studied hardest is not the emptiest.
-    const baseline = facts.find((g) => g.c.recommended)
-      || facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
-    const shortest = facts.reduce((best, g) => (g.mi < best.mi ? g : best), facts[0]);
-    const deltaMi = f.mi - baseline.mi;
-    if (baseline === f) {
-      // The star is the reference, so it is never measured against another
-      // route (field ask, 2026-08-28: the comparison always names the
-      // recommendation, and pricing the star against the shortest broke
-      // that). It says only whether it is also the shortest.
-      if (shortest === f) spend(/shortest/i, 'shortest here');
-    } else if (Math.abs(deltaMi) >= 0.3 && baseline.c.label) {
-      spend(/longer|shorter|shortest/i, `${miles(Math.abs(deltaMi))} `
-        + `${deltaMi > 0 ? 'longer' : 'shorter'} than ${baseline.c.label}`);
-    }
-    const share = (mi) => Math.max(1.5, f.mi * 0.12) <= mi;
-    if (share(f.laneMi)) spend(/lane|protected/i, `${miles(f.laneMi)} on bike lanes`);
-    if (share(f.resMi)) spend(/residential/i, `${miles(f.resMi)} residential`);
-    if (f.desigMi >= 2) {
-      spend(/trail|signed|protected|off-street/i, `${miles(f.desigMi)} signed`);
-    }
-    // Riding time closes every description, always and last (field ask,
-    // 2026-08-28): the row beneath the pill shows it, the pill does not, and
-    // it is what the rest of the line is weighed against. Outside the filler
-    // budget, which reserves its room above.
-    out.push(rideText(f.c.timeS));
-    return out;
+    if (failClean && cautionClean) return 'no fails or caution';
+    const parts = [];
+    parts.push(failClean ? 'no fails'
+      : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
+        ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
+        : `${miles(f.failMi)} failing`);
+    if (!cautionClean) parts.push(`${miles(f.cautionMi)} caution${trafficNote(f)}`);
+    else if (failClean) parts.push('no caution');
+    return parts.join(', ');
   };
+  const baseline = facts.find((f) => f.c.recommended)
+    || facts.reduce((best, f) => (f.mi < best.mi ? f : best), facts[0]);
   const chosen = new Map();
-  // A trait earns its words by distinguishing this route from the others. On
-  // a board where nine of ten options are nearly all trail, saying so on each
-  // one says nothing (measured, 2026-08-29) -- and the trail MILEAGE, which
-  // the trait was suppressing, differs per route and returns in its place.
-  const traits = new Map(facts.map((f) => [f, trait(f)]));
-  const shared = (text) => text
-    && [...traits.values()].filter((other) => other === text).length > facts.length / 2;
   for (const f of facts) {
-    const pick = shared(traits.get(f)) ? '' : traits.get(f);
-    chosen.set(f.c.profileId, `${f.mi.toFixed(1)} miles — `
-      + [pick, ...conditions(f, pick)].filter(Boolean).join(', '));
+    const q = qualifier(f);
+    const fc = failCaution(f);
+    let opener;
+    if (f === baseline) {
+      opener = `${f.mi.toFixed(1)} mile ride`;
+    } else {
+      const deltaMi = Math.abs(f.mi - baseline.mi);
+      opener = deltaMi < 0.15 ? 'Same distance'
+        : `${miles(deltaMi)} ${f.mi > baseline.mi ? 'longer' : 'shorter'}`;
+    }
+    chosen.set(f.c.profileId, `${opener}. ${q}. ${fc}.`);
   }
   return chosen;
 }
