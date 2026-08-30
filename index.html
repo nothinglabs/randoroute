@@ -497,6 +497,12 @@
     <div id="mapPointNavigateChoices" class="map-point-navigate-choices"></div>
   </dialog>
 
+  <dialog id="otherMapDialog" class="map-dialog map-point-navigate-dialog" aria-labelledby="otherMapTitle">
+    <div class="dialog-head"><h2 id="otherMapTitle">Open in another map</h2><button class="dialog-close" data-close="otherMapDialog" aria-label="Close">✕</button></div>
+    <p class="map-point-navigate-where" id="otherMapWhere"></p>
+    <div id="otherMapChoices" class="map-point-navigate-choices"></div>
+  </dialog>
+
   <dialog id="mapDebugDialog" class="map-debug-dialog" aria-labelledby="mapDebugTitle">
     <div class="map-debug-head"><div><span>Debug view</span><h2 id="mapDebugTitle">Map location</h2></div><button class="dialog-close" data-close="mapDebugDialog" aria-label="Close debug view">✕</button></div>
     <div id="mapDebugFacts" class="map-debug-facts" hidden></div>
@@ -682,6 +688,7 @@
         <li><b>Concerns:</b> shows dismount points, sidewalk fallbacks, rule failures, highways, mountain-bike trails, steep uphill grades, uphill-curve cautions, and confirmed unpaved segments.</li>
         <li><b>All Steps:</b> every route segment in order.</li>
         <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
+        <li><b>Other Map…</b> on any road card hands the same point to Google Maps, Apple Maps or OpenStreetMap. On an iPhone the first two open their own app when it is installed, and the website otherwise; OpenStreetMap is always the website.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
         <li><b>Lime</b> — Trusted bike lane: a bike facility we would send you down without a caveat. Separated lanes and shared-use paths always qualify. A painted lane on a road the state rates worst-on-scale for traffic stress does not — that road still <b>passes</b>, and draws blue.</li>

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.933';
+const APP_VERSION = '2026-08-30.934';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15587,6 +15587,17 @@ function renderMapTapCard({
   streetViewBtn.addEventListener('click', () => openStreetView(lat, lng, streetViewHeading));
 
   // Everything not already above the fold, in the order the source built it.
+  // Beside Street View because it answers the same question -- "let me look at
+  // this place somewhere else" -- and because a rider who does not trust our
+  // verdict wants a second opinion, not a second app to go find.
+  const otherMapBtn = document.createElement('button');
+  otherMapBtn.type = 'button';
+  otherMapBtn.className = 'other-map-launch';
+  otherMapBtn.setAttribute('aria-label', 'Open this point in another map app');
+  otherMapBtn.textContent = 'Other Map…';
+  otherMapBtn.addEventListener('click',
+    () => openOtherMap(lat, lng, displayTitle || pointName));
+
   const detailRows = rows.filter(([key]) => !shownAbove.has(key));
   const detailsToggle = document.createElement('button');
   detailsToggle.type = 'button';
@@ -15672,6 +15683,9 @@ function renderMapTapCard({
   primaryActions.className = 'readout-primary-actions';
   if (navigateButton) primaryActions.append(navigateButton);
   if (showStreetView) primaryActions.append(streetViewBtn);
+  // Always offered, even on a ferry card where Street View is not: a crossing
+  // is exactly the kind of place a rider wants to check against another map.
+  primaryActions.append(otherMapBtn);
   primaryActions.append(detailsToggle);
   if (blockButton) {
     if (!blockButton.classList.contains('is-labelled')) primaryActions.classList.add('has-road-block');
@@ -16110,6 +16124,49 @@ const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/randoroute/stre
 // of two large WebGL surfaces at once.
 const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY);
 
+// The three "show me this spot somewhere else" destinations, as plain https.
+//
+// Apple Maps and Google Maps both register these hosts as iOS universal links,
+// so an installed app opens instead of the browser -- without comgooglemaps://
+// or maps://, neither of which a WKWebView will follow without native code and
+// an LSApplicationQueriesSchemes entry. Keeping this to https is what lets the
+// feature ship without touching BridgeViewController.swift, and it degrades to
+// the website everywhere the app is absent (all three on desktop, OSM always,
+// since OpenStreetMap ships no first-party iPhone app).
+function otherMapTargets(lat, lng) {
+  const at = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  return [
+    { key: 'google', label: 'Google Maps', url: googleMapsPointUrl(lat, lng) },
+    { key: 'apple', label: 'Apple Maps', url: `https://maps.apple.com/?ll=${at}&q=${encodeURIComponent('Dropped pin')}` },
+    { key: 'osm', label: 'OpenStreetMap',
+      url: `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lng.toFixed(6)}#map=17/${at.replace(',', '/')}` },
+  ];
+}
+
+function openOtherMap(lat, lng, placeName) {
+  const dialog = document.getElementById('otherMapDialog');
+  const host = document.getElementById('otherMapChoices');
+  if (!dialog || !host) { openExternalUrl(googleMapsPointUrl(lat, lng)); return; }
+  const where = document.getElementById('otherMapWhere');
+  if (where) where.textContent = placeName || 'This point';
+  const actions = document.createElement('div');
+  actions.className = 'readout-route-actions';
+  for (const target of otherMapTargets(lat, lng)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `other-map-${target.key}`;
+    button.textContent = target.label;
+    button.setAttribute('aria-label', `Open this point in ${target.label}`);
+    button.addEventListener('click', () => {
+      dialog.close();
+      openExternalUrl(target.url);
+    });
+    actions.append(button);
+  }
+  host.replaceChildren(actions);
+  if (!dialog.open) dialog.showModal();
+}
+
 function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
@@ -16123,23 +16180,32 @@ function setStreetViewLoadStatus(message = '', warning = false) {
   status.classList.toggle('warning', warning);
 }
 
+// A real link click (not window.open with a features string, which iOS turns
+// into a chrome-laden popup window) so the OS opens its clean in-app browser --
+// on an installed PWA that comes with a Done button back to here.
+//
+// The click is fired from INSIDE the card. The document's ordinary click-away
+// handler dismisses a pinned road card for body-level actions, and an external
+// handoff should not erase what the rider was inspecting when they return.
+//
+// On iOS this is also what hands a maps.apple.com or google.com/maps address to
+// the installed app rather than the browser: both are universal links, so the
+// OS claims them on a genuine navigation. That is why "Other Map" needs no
+// custom URL scheme and no native code -- see otherMapTargets().
+function openExternalUrl(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  readoutEl.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function openStreetView(lat, lng, heading = null) {
   const external = googleStreetViewUrl(lat, lng, heading);
   if (!STREET_VIEW_IN_APP) {
-    // A real link click (not window.open with a features string, which iOS
-    // turns into a chrome-laden popup window) so the OS opens its clean in-app
-    // browser — on an installed PWA that comes with a Done button back to here.
-    const a = document.createElement('a');
-    a.href = external;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    // Keep the synthetic click inside the card. The document's ordinary
-    // click-away handler dismisses a pinned road card for body-level actions;
-    // an external Street View handoff should not erase what the rider was
-    // inspecting when they return.
-    readoutEl.appendChild(a);
-    a.click();
-    a.remove();
+    openExternalUrl(external);
     return;
   }
   const dialog = document.getElementById('streetViewDialog');
