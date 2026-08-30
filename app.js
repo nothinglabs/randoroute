@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.949';
+const APP_VERSION = '2026-08-30.950';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12111,7 +12111,7 @@ function candidateRouteDescriptions(all) {
   const QUALIFIERS = {
     safest:   { full: 'Fewest fails', short: 'Fewest fails' },
     trail:    { full: 'Most trail', short: 'Most trail' },
-    facility: { full: 'Most trails + bike lanes', short: 'Protected' },
+    facility: { full: 'Most trails + bike lanes', short: 'Trails / Lanes' },
     quickest: { full: 'Shorter', short: 'Shorter' },
     shortest: { full: 'Shortest', short: 'Shortest' },
     flattest: { full: 'Flattest', short: 'Flattest' },

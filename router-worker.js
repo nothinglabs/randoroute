@@ -3748,7 +3748,7 @@ function twinOverlapLimit(a, b) {
   // this shipped with. The 25% cap keeps short trips able to offer close
   // variants; the 4% floor keeps ~12 mi+ trips at the old behaviour.
   const distinctM = activeWeights.distinctRideMi * 1609.344;
-  return 1 - Math.min(0.25, Math.max(0.04, distinctM / shorterM));
+  return 1 - Math.min(0.25, Math.max(0.06, distinctM / shorterM));
 }
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);
