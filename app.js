@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.945';
+const APP_VERSION = '2026-08-30.946';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11807,18 +11807,21 @@ function renderRouteOptionControls() {
     const title = option.asShared
       ? 'The route exactly as shared. Colors use your settings; switching routes uses your settings.'
       : optimizationDescription(optimization);
-    const qualifier = !option.asShared
-      ? descs.get(optimization.profileId)?.shortQualifier || '' : '';
     return `<button type="button" data-route-option="${index}"${classes ? ` class="${classes}"` : ''}
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
-      <span>${shortLabel}</span>${qualifier ? `<span class="route-btn-qual">${qualifier}</span>` : ''}</button>`;
+      <span>${shortLabel}</span></button>`;
   };
   let cells;
   // Fresh lineups render in portfolio order; the frozen-lineup rendering
   // (pin order, greyed unroutable letters) left with the pinning system.
   cells = routing.options.map(buttonHtml);
   host.innerHTML = cells.join('');
+  const activeOption = routing.last;
+  const activeQual = activeOption && !activeOption.asShared
+    ? descs.get(activeOption.optimization?.profileId)?.shortQualifier || '' : '';
+  const qualHost = document.getElementById('routeQualifier');
+  if (qualHost) { qualHost.textContent = activeQual; qualHost.hidden = !activeQual; }
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
@@ -12122,13 +12125,13 @@ function candidateRouteDescriptions(all) {
   const maxVal = (key) => Math.max(...facts.map((f) => f[key]));
   const minTime = Math.min(...all.map((c) => c.timeS));
   const QUALIFIERS = {
-    safest:   { full: 'Fewest safety fails', short: 'Safest' },
+    safest:   { full: 'Fewest fails', short: 'Fewest fails' },
     trail:    { full: 'Most trail', short: 'Most trail' },
     facility: { full: 'Most trails + bike lanes', short: 'Protected' },
     quickest: { full: 'Quickest', short: 'Quickest' },
     shortest: { full: 'Shortest', short: 'Shortest' },
     flattest: { full: 'Flattest', short: 'Flattest' },
-    caution:  { full: 'Least caution', short: 'Least caution' },
+    caution:  { full: 'Lower stress', short: 'Lower stress' },
     direct:   { full: 'More direct', short: 'Direct' },
     balanced: { full: 'Balanced', short: 'Balanced' },
     suggested:{ full: 'Suggested route', short: 'Suggested' },
@@ -12171,9 +12174,17 @@ function candidateRouteDescriptions(all) {
   };
   const baseline = facts.find((f) => f.c.recommended)
     || facts.reduce((best, f) => (f.mi < best.mi ? f : best), facts[0]);
+  const assigned = new Map();
+  const usedKeys = new Set();
+  for (const f of facts) {
+    let qk = qualifierKey(f, f === baseline);
+    if (usedKeys.has(qk)) qk = 'alt';
+    usedKeys.add(qk);
+    assigned.set(f, qk);
+  }
   const chosen = new Map();
   for (const f of facts) {
-    const qk = qualifierKey(f, f === baseline);
+    const qk = assigned.get(f);
     const qFull = QUALIFIERS[qk].full;
     const qShort = QUALIFIERS[qk].short;
     const fc = conditions(f);

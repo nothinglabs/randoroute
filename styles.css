@@ -195,8 +195,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   overflow: hidden;
 }
 #routeOptions button span:last-child { display: block; overflow-wrap: anywhere; }
-.route-btn-qual { display: block; font: 600 7.5px/1.1 system-ui; letter-spacing: .01em; opacity: .72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
-#routeOptions button.active .route-btn-qual { opacity: .85; }
+.route-qualifier { margin: 2px 3px 0; padding: 0; color: #3a6a8a; font: 600 10px/1.2 system-ui; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The shared route's button carries a word, so it needs more room and a
    smaller, distinctive style. */
 #routeOptions button.route-option-shared { flex: 2.4 1 0; font: 800 10px/1.05 system-ui; letter-spacing: -.1px; }
@@ -502,7 +501,7 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeOptions { gap: 4px; }
   #routeOptions::before { padding: 0 5px; font-size: 10.5px; letter-spacing: .05em; }
   #routeOptions button { min-height: 34px; padding: 4px 3px; font-size: 14px; }
-  .route-btn-qual { font-size: 8px; }
+  .route-qualifier { font-size: 11px; }
 }
 
 /* One button, two views. The label is stacked rather than wrapped so the
