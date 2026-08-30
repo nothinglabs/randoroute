@@ -3978,6 +3978,7 @@ function candidateSummary(candidate) {
   const profile = candidate._profile;
   return {
     profileId: profile.id,
+    mode: profile.mode,
     label: candidate._outcome?.label || profile.label,
     presented: !!candidate._outcome,
     recommended: !!candidate._outcome?.recommended,

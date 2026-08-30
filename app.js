@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.943';
+const APP_VERSION = '2026-08-30.944';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12125,20 +12125,30 @@ function candidateRouteDescriptions(all) {
     if (leads(f, 'mi', minVal, 0.3)) return 'Shortest';
     if (leads(f, 'ascentFt', minVal, 100)) return 'Flattest';
     if (leads(f, 'cautionMi', minVal, 0.3)) return 'Least caution';
+    const mode = f.c.mode;
+    if (mode === 'direct') return 'More direct';
+    if (mode === 'balanced') return 'Balanced';
     return 'Alternative';
   };
   const trafficNote = (f) => (f.trafficCautionMi >= 3
     && f.trafficCautionMi >= f.cautionMi * 0.5 ? ' (traffic)' : '');
-  const failCaution = (f) => {
-    const failClean = f.failMi <= 0.001, cautionClean = f.cautionMi <= 0.05;
-    if (failClean && cautionClean) return 'no fails or caution';
+  const conditions = (f) => {
     const parts = [];
-    parts.push(failClean ? 'no fails'
-      : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
-        ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
-        : `${miles(f.failMi)} failing`);
-    if (!cautionClean) parts.push(`${miles(f.cautionMi)} caution${trafficNote(f)}`);
-    else if (failClean) parts.push('no caution');
+    const failClean = f.failMi <= 0.001, cautionClean = f.cautionMi <= 0.05;
+    if (failClean && cautionClean) {
+      parts.push('no fails or caution');
+    } else {
+      parts.push(failClean ? 'no fails'
+        : (f.failRuns >= 1 && f.failRuns <= 3 && f.failRunLongestMi < 0.1)
+          ? `${f.failRuns} short fail${f.failRuns === 1 ? '' : 's'}`
+          : `${miles(f.failMi)} failing`);
+      parts.push(cautionClean ? 'no caution'
+        : `${miles(f.cautionMi)} caution${trafficNote(f)}`);
+    }
+    if (f.trailMi >= 1) parts.push(`${miles(f.trailMi)} trail`);
+    const laneMi = Math.max(0, f.facilityMi - f.trailMi);
+    if (laneMi >= 1) parts.push(`${miles(laneMi)} bike lanes`);
+    if (f.ferry) parts.push('ferry');
     return parts.join(', ');
   };
   const baseline = facts.find((f) => f.c.recommended)
@@ -12146,7 +12156,7 @@ function candidateRouteDescriptions(all) {
   const chosen = new Map();
   for (const f of facts) {
     const q = qualifier(f);
-    const fc = failCaution(f);
+    const fc = conditions(f);
     let opener;
     if (f === baseline) {
       opener = `${f.mi.toFixed(1)} mile ride`;
