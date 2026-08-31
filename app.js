@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.957';
+const APP_VERSION = '2026-08-30.958';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5374,6 +5374,8 @@ function navDestinationSegment(segs, currentIndex) {
   const leavingPath = navPathLike(current);
   let traveledM = 0;
   let fallback = null;
+  let pathRunM = 0;
+  let firstPath = null;
   for (let i = currentIndex + 1; i < segs.length && traveledM <= 120; i++) {
     const seg = segs[i];
     const name = navRoadName(seg?.name);
@@ -5387,6 +5389,21 @@ function navDestinationSegment(segs, currentIndex) {
     // destination. Continue looking only through an unnamed/very short stub.
     if (!leavingPath && i === currentIndex + 1 && name && (Number(seg.lenM) || 0) > 35) {
       return { index: i, seg, name };
+    }
+    // Turning off a street onto an unnamed off-street path: once the junction
+    // has put the rider onto a real stretch of it, the path IS the
+    // destination. Without this, the only name in the window is a metres-long
+    // sliver that still carries the departed street's name, so the prompt
+    // read "turn left to STAY ON Northeast 65th Street, heading south" while
+    // sending the rider south off an east-west street (field, 2026-08-30,
+    // issue 19 -- the ON NOW card even showed the 16 ft sliver).
+    if (!leavingPath && !name && navPathLike(seg)) {
+      if (!firstPath) firstPath = { index: i, seg };
+      pathRunM += Number(seg.lenM) || 0;
+      if (pathRunM > 35) {
+        return { index: firstPath.index, seg: firstPath.seg,
+          name: (firstPath.seg.facility || 0) >= 4 ? 'the bike path' : 'the path' };
+      }
     }
     traveledM += Number(seg?.lenM) || 0;
   }
@@ -8964,6 +8981,14 @@ function stopTurnNavigation(announce = true) {
   if (!nativeNavigationPlugin() && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
+  // An app update whose worker took control mid-ride was held back rather
+  // than reloading a live navigation session out from under the rider. The
+  // ride is over now; take the update. A beat of delay lets the stop/arrival
+  // words start before the page turns over.
+  if (pendingControllerReload) {
+    pendingControllerReload = false;
+    setTimeout(() => { try { saveStateNow(); } finally { location.reload(); } }, 4000);
+  }
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -18966,6 +18991,9 @@ offerSharedRouteTip();
 
 let pendingUpdateWorker = null;
 let deferredUpdateWorker = null;
+// A controllerchange that arrived while turn navigation was active; the
+// reload it wanted runs when the ride ends instead (see stopTurnNavigation).
+let pendingControllerReload = false;
 // Set the moment the rider takes an update, so the handover that follows is
 // known to be one they asked for even on a page that started uncontrolled.
 let updateAccepted = false;
@@ -19013,6 +19041,14 @@ async function setupAutomaticUpdates() {
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloading || !(wasControlled || updateAccepted)) return;
+      // Never yank a live ride. Turn navigation does not survive a reload --
+      // the page comes back in planning mode on whatever plan localStorage
+      // holds -- so a new worker taking control mid-ride silently ended the
+      // ride and could resurface a stale plan (issue 20, 2026-08-30: mid-ride
+      // the app came back planning a previous trip, "To: Sheridan Beach",
+      // 0.0 mi done). The ride keeps the shell it started on; the reload
+      // happens the moment navigation ends instead.
+      if (turnNav.active) { pendingControllerReload = true; return; }
       reloading = true;
       // The reload is the point; a storage failure in the save must not eat it.
       try { saveStateNow(); } finally { location.reload(); }

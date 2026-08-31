@@ -132,17 +132,19 @@ lives somewhere else entirely.
 
 ---
 
-### 19. Turn prompt contradicts itself
-Field, 2026-08-30, navigating Lake Forest Park to Greenwood. At Roosevelt Way
-NE and NE 65th Street the banner read:
+### 19. Turn prompt contradicts itself — identified and FIXED (v958)
+Field, 2026-08-30, at Roosevelt Way NE and NE 65th Street: "Turn left to stay
+on Northeast 65th Street, heading south" on an east-west street.
 
-> **Now: Left turn** — Turn left to stay on Northeast 65th Street, heading south
-
-NE 65th Street runs east-west, so "heading south" and "stay on Northeast 65th
-Street" cannot both be true. The card below already showed NE 65th as the road
-being ridden, so the prompt also says to turn to stay on the street it says the
-rider is on. Whether the wrong half is the heading or the street name is not
-established.
+The street name was the wrong half; the heading and the turn were right. The
+route was leaving 65th for the unnamed separated track, and the only name in
+the instruction's look-ahead window was a 16 ft sliver still carrying
+"Northeast 65th Street" (the ON NOW card in the screenshot shows that very
+sliver). Same name behind and "ahead" reads as staying on the street.
+`navDestinationSegment` now treats a real stretch of unnamed path after the
+junction as the destination itself: the same movement announces "Bear left
+onto the bike path, heading south". Reproduced and pinned on the real graph
+in `scripts/test_turn_onto_unnamed_path.mjs`.
 
 ---
 
@@ -158,11 +160,25 @@ established.
 Field, 2026-08-30. Navigation was running with the app in the background; on
 reopening it, the destination had become **"Sheridan Beach"**, which the rider
 did not choose, and the screen showed **OFF ROUTE — rejoin 2.6 miles north on
-32nd Avenue Northeast**.
+32nd Avenue Northeast**. Progress read **0.0 mi done, 3.2 mi left**.
 
-Progress read **0.0 mi done, 3.2 mi left** despite the ride being underway,
-which suggests the route was replaced rather than merely re-labelled. May be
-hard to reproduce; the ask is to research it, not to force a repro.
+**Fable DIAGNOSIS:** the plan was replaced, not relabelled — the To: line
+reads `routing.endName`, so the app was genuinely navigating a stored
+~3.2 mi trip ending at Sheridan Beach. Ruled out: no code path swaps the
+destination during navigation (reroute, off-route recovery and the
+connectors all keep `routing.end`), and navigation state does not survive a
+reload, so the active session in the screenshot began after any reload.
+
+One real defect found and FIXED (v958): a service-worker update taking
+control reloaded every open copy of the app — including one navigating
+mid-ride. The ride's state died and the page came back in planning mode on
+whatever plan localStorage last held. v934–v954 all shipped on 2026-08-30,
+so an update reload during that evening's ride is the likely first domino;
+mid-ride reloads are now held until navigation ends. Not established from
+here: how navigation became active on the stale plan afterwards — a Navigate
+tap on reopening would do it, and nothing else found would. Two field
+answers would settle it: was Navigate tapped after reopening, and was a
+short Sheridan Beach loop planned earlier that day?
 
 ---
 
