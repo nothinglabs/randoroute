@@ -154,10 +154,14 @@ threshold.
 ---
 
 ### 15. Get iPhone notifications working
-The lock-screen Live Activity is written but has never compiled: its widget
-extension target does not exist in the Xcode project, and it cannot be
-created from a text editor. `docs/IOS-HANDOFF.md` section 3c has the Xcode
-procedure and the device checks. Nothing else visual exists today.
+The lock-screen Live Activity compiles as of 2026-08-30 — clean, no warnings,
+verified with a positive control because `#if canImport(ActivityKit)` can hide
+an empty pass. What blocks it is unchanged: the `RandoRouteActivity` widget
+extension target does not exist in the Xcode project and cannot be created
+from a text editor, so the built `App.app` has no `PlugIns/` and
+`Activity.request` no-ops behind `try?`. Steps 1-4 of `docs/IOS-HANDOFF.md`
+section 3c need the Xcode GUI; the device checks then need a physical iPhone.
+No card has rendered anywhere yet.
 
 ---
 

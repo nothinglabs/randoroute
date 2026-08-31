@@ -12,6 +12,11 @@ shared web tests and simulator checks are real coverage; locked-screen GPS,
 audio mixing, battery, and thermals still require a physical iPhone and a real
 ride.
 
+On 2026-08-30 at `.954` the Live Activity Swift compiled for the first time,
+clean, and the App target built Release with no Swift warnings. The
+`RandoRouteActivity` extension target still does not exist, so no lock-screen
+card has yet rendered anywhere. §3c carries that audit.
+
 ---
 
 ## 1. What the native app actually is
@@ -240,8 +245,9 @@ same treatment there; the payload is already carrying what it would need.
 
 ## 3c. Live Activity: next maneuver on the lock screen
 
-Written 2026-08-26, never yet compiled — this container has no Swift
-toolchain, so the first Xcode build is the first real test. The code shows
+Written 2026-08-26. **The Swift now compiles; the extension target still does
+not exist, so nothing renders yet.** See the 2026-08-30 audit below for what
+that means. The code shows
 the next maneuver on the lock screen and in the Dynamic Island while
 navigating: a maneuver arrow, "Left turn in 0.2 miles" as the headline, the
 full instruction sentence, and remaining trip distance. It is driven by
@@ -281,6 +287,61 @@ minutes; Stop removes it immediately; and Settings → RandoRoute → Live
 Activities off degrades silently (guidance and voice unaffected).
 `scripts/test_native_lock_screen_activity.mjs` is only a source-text
 tripwire for all of this.
+
+### Audit 2026-08-30 — Swift compiles, target absent, device unverified
+
+macOS, Xcode 26.6 (17F113), iOS 26.5 SDK, Capacitor 8.4.2, at `7b9ffdf`
+(`APP_VERSION` .954). `npm run ios:sync` came back clean, confirming
+`d9b12a6`'s regeneration; no shell change, so the version trio was not
+bumped.
+
+**The Live Activity Swift compiles.** Its first compile since being written
+on 2026-08-26 was clean — no errors and no warnings in
+`NavigationLiveActivity.swift`, `RandoRouteActivityBundle.swift` or
+`NavigationActivityAttributes.swift`, type-checked together at
+`-target arm64-apple-ios16.2`:
+
+```
+xcrun swiftc -typecheck -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+  -target arm64-apple-ios16.2 \
+  ios/App/App/NavigationActivityAttributes.swift \
+  ios/App/RandoRouteActivity/NavigationLiveActivity.swift \
+  ios/App/RandoRouteActivity/RandoRouteActivityBundle.swift
+```
+
+Both source files sit behind `#if canImport(ActivityKit)`, so a clean pass
+could have meant the guard was false and nothing was checked. It was not:
+seeding a bad type inside the guarded region reproduced the expected
+`cannot find type` error, and an `ActivityAuthorizationInfo` probe imported
+ActivityKit cleanly at the same target. The pass is real. In particular the
+`if #available(iOS 16.2, *)` with no `else` inside `WidgetBundle.body`
+type-checks — `WidgetBundleBuilder` accepts the limited-availability block.
+
+The App target also builds Release for `generic/platform=iOS` with no Swift
+warnings, so `BridgeViewController`'s request/update/end call sites compile.
+Unsigned product 357 MiB.
+
+**The blocker is unchanged and now measured in the product.**
+`grep -c RandoRouteActivity ios/App/App.xcodeproj/project.pbxproj` is still
+`0`. The built `App.app` carries `NSSupportsLiveActivities = true` and has
+**no `PlugIns/` directory** — there is no widget extension for ActivityKit
+to match, and `Activity.request` is behind `try?`, so the failure mode is a
+silent no-card rather than a crash. Steps 1–4 above are still required and
+still need the Xcode GUI; they were not done in this audit.
+
+After creating the target, these two commands are the objective check that
+the wiring took — both must change from the values recorded here:
+
+```
+grep -c RandoRouteActivity ios/App/App.xcodeproj/project.pbxproj   # 0 -> nonzero
+ls "$(find ~/Library/Developer/Xcode/DerivedData -name App.app -path '*Release-iphoneos*' | head -1)/PlugIns"
+```
+
+**No device check in this audit.** Every item in the device list above —
+card on lock, arrow/headline tracking, Dynamic Island compact view,
+off-route warning state, arrival card and self-dismissal, Stop, and the
+Live-Activities-off degradation — remains unverified. Compiling is not
+rendering: nothing here shows that a card has ever appeared on a screen.
 
 ## 4. Still device-only
 
