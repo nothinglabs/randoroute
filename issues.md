@@ -87,16 +87,6 @@ Choose and approve the final public name for the app before release.
 
 ---
 
-### 10. Rebuild the Washington and Oregon graphs
-The released graphs predate two shipped fixes that only take effect at
-build time: directional bike lanes (a lane on one side of a two-way street
-is stored and judged per direction of travel, but shipped graphs still
-claim both directions) and the DEM water clamp (pier nodes sampled the sea
-floor, inventing thousands of feet of climb; the routing engines repair it
-at load, the build now samples it correctly at the source). One rebuild
-session with `build_graph.py` plus the partition build activates both.
-
----
 
 ### 11. Removing a road block does not correctly update the route
 Adding a road block reroutes as expected; removing one does not put the
@@ -105,18 +95,3 @@ behaviour is not pinned down yet. `removeRoadBlock` in `app.js` is the entry
 point, and Help states the contract a removal has to keep: road blocks hold
 the current route recipes and letters, so clearing one should re-deal that
 same lineup without the block.
-
----
-
-### 15. Get iPhone notifications working
-Build side done 2026-08-30: the Live Activity compiles clean and the
-`RandoRouteActivity` extension target now exists (hand-authored into the
-pbxproj — the "needs the Xcode GUI" claim proved wrong). The Release device
-build embeds a signed `RandoRouteActivity.appex`, WidgetKit extension point,
-iOS 16.2 floor, attributes type in both binaries, deep codesign passing.
-First render on a physical iPhone confirmed the same evening — card, headline,
-instruction, and distance all correct, but white-on-white; fixed with explicit
-ink colors (the lock screen is a dark environment, so adaptive styles come out
-light). Remaining §3c device checks: arrow/headline turn tracking, Dynamic
-Island views, off-route, arrival self-dismiss, Stop, Live-Activities-off
-degradation — plus re-checking contrast on the rebuilt card.

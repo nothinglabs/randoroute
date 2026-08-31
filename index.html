@@ -486,10 +486,6 @@
     </div>
   </dialog>
 
-  <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
-    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
-    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><p id="streetViewLoadStatus" class="sv-load-status" role="status" aria-live="polite" hidden></p><div class="sv-overlay-notes"><p class="sv-coverage-note"><b>Location note:</b> The nearest available view may be up to 250 m away. For trails, it may show a nearby road.</p></div></div>
-  </dialog>
 
   <dialog id="mapPointNavigateDialog" class="map-dialog map-point-navigate-dialog" aria-labelledby="mapPointNavigateTitle">
     <div class="dialog-head"><h2 id="mapPointNavigateTitle">Use this point</h2><button class="dialog-close" data-close="mapPointNavigateDialog" aria-label="Close">✕</button></div>
@@ -498,7 +494,7 @@
   </dialog>
 
   <dialog id="otherMapDialog" class="map-dialog map-point-navigate-dialog" aria-labelledby="otherMapTitle">
-    <div class="dialog-head"><h2 id="otherMapTitle">Open in another map</h2><button class="dialog-close" data-close="otherMapDialog" aria-label="Close">✕</button></div>
+    <div class="dialog-head"><h2 id="otherMapTitle">View this point</h2><button class="dialog-close" data-close="otherMapDialog" aria-label="Close">✕</button></div>
     <p class="map-point-navigate-where" id="otherMapWhere"></p>
     <div id="otherMapChoices" class="map-point-navigate-choices"></div>
   </dialog>
@@ -595,7 +591,7 @@
       <li>Tap <b>Details</b> to inspect statistics, concerns, and route segments. Use <b>Settings</b> to change riding rules.</li>
       <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
     </ol>
-    <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>.</p>
+    <p class="app-help-note">Tap any road or trail to get more information, or use <b>View Street…</b> to open it in <b>Google Street View</b>.</p>
     <div class="app-help-update">
       <p id="appVersion" class="app-help-version" aria-label="App version"></p>
       <div class="app-help-actions">
@@ -688,7 +684,7 @@
         <li><b>Concerns:</b> shows dismount points, sidewalk fallbacks, rule failures, highways, mountain-bike trails, steep uphill grades, uphill-curve cautions, and confirmed unpaved segments.</li>
         <li><b>All Steps:</b> every route segment in order.</li>
         <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
-        <li><b>Other Map…</b> on any road card hands the same point to Google Maps, Apple Maps or OpenStreetMap. On an iPhone the first two open their own app when it is installed, and the website otherwise; OpenStreetMap is always the website.</li>
+        <li><b>View Street…</b> on any road card hands the same point to Google Maps, Google Street View, Apple Maps or OpenStreetMap. On an iPhone the first three open their own app when it is installed, and the website otherwise; OpenStreetMap is always the website.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
         <li><b>Lime</b> — Trusted bike lane: a bike facility we would send you down without a caveat. Separated lanes and shared-use paths always qualify. A painted lane on a road the state rates worst-on-scale for traffic stress does not — that road still <b>passes</b>, and draws blue.</li>

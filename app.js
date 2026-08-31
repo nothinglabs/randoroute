@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.955';
+const APP_VERSION = '2026-08-30.956';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15562,24 +15562,19 @@ function renderMapTapCard({
     navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
   }
 
-  const streetViewBtn = document.createElement('button');
-  streetViewBtn.type = 'button';
-  streetViewBtn.className = 'streetview-launch';
-  streetViewBtn.setAttribute('aria-label', 'Open Street View in this app');
-  streetViewBtn.textContent = 'Street View';
-  streetViewBtn.addEventListener('click', () => openStreetView(lat, lng, streetViewHeading));
-
-  // Everything not already above the fold, in the order the source built it.
-  // Beside Street View because it answers the same question -- "let me look at
-  // this place somewhere else" -- and because a rider who does not trust our
-  // verdict wants a second opinion, not a second app to go find.
+  // One button for the whole "let me look at this place somewhere else"
+  // question. Street View used to sit beside this as its own button; it is now
+  // the first choice inside the sheet, under Google Maps, so a rider who does
+  // not trust our verdict finds every second opinion in one place rather than
+  // choosing between two adjacent buttons (field ask, 2026-08-30).
   const otherMapBtn = document.createElement('button');
   otherMapBtn.type = 'button';
   otherMapBtn.className = 'other-map-launch';
-  otherMapBtn.setAttribute('aria-label', 'Open this point in another map app');
-  otherMapBtn.textContent = 'Other Map…';
+  otherMapBtn.setAttribute('aria-label', 'View this point in Street View or another map app');
+  otherMapBtn.textContent = 'View Street…';
   otherMapBtn.addEventListener('click',
-    () => openOtherMap(lat, lng, displayTitle || pointName));
+    () => openOtherMap(lat, lng, displayTitle || pointName,
+      { heading: streetViewHeading, streetView: showStreetView }));
 
   const detailRows = rows.filter(([key]) => !shownAbove.has(key));
   const detailsToggle = document.createElement('button');
@@ -15665,9 +15660,9 @@ function renderMapTapCard({
   const primaryActions = document.createElement('div');
   primaryActions.className = 'readout-primary-actions';
   if (navigateButton) primaryActions.append(navigateButton);
-  if (showStreetView) primaryActions.append(streetViewBtn);
-  // Always offered, even on a ferry card where Street View is not: a crossing
-  // is exactly the kind of place a rider wants to check against another map.
+  // Always offered, even on a ferry card, where the sheet drops its Street View
+  // row: a crossing is exactly the kind of place a rider wants to check against
+  // another map.
   primaryActions.append(otherMapBtn);
   primaryActions.append(detailsToggle);
   if (blockButton) {
@@ -16096,16 +16091,12 @@ readoutEl.addEventListener('click', (e) => {
   dismissRoadInfo();
 });
 
-// A static web/native bundle cannot keep a Google API key secret. Street View
-// therefore uses the external Google Maps handoff until key ownership,
-// restrictions and terms are verified outside the repository. The empty value
-// deliberately keeps the existing fallback path active.
-const GOOGLE_MAPS_EMBED_KEY = '';
-const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/randoroute/street-view-embed.html';
-// Keep Street View in the app on every platform. While it is open we hide the
-// MapLibre canvas below the modal, so iOS composites only the panorama instead
-// of two large WebGL surfaces at once.
-const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY);
+// Street View is an external handoff, and only that. A static web/native
+// bundle cannot keep a Google API key secret, so the in-app Embed API path --
+// its dialog, iframe, hosted native bridge and load-state plumbing -- was
+// carried behind a permanently empty key and never ran. It is gone (2026-08-30,
+// issue 8). Adding it back means owning a restricted key outside this
+// repository first.
 
 // The three "show me this spot somewhere else" destinations, as plain https.
 //
@@ -16116,17 +16107,25 @@ const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY);
 // feature ship without touching BridgeViewController.swift, and it degrades to
 // the website everywhere the app is absent (all three on desktop, OSM always,
 // since OpenStreetMap ships no first-party iPhone app).
-function otherMapTargets(lat, lng) {
+function otherMapTargets(lat, lng, { heading = null, streetView = true } = {}) {
   const at = `${lat.toFixed(6)},${lng.toFixed(6)}`;
   return [
     { key: 'google', label: 'Google Maps', url: googleMapsPointUrl(lat, lng) },
+    // Directly under Google Maps because it is the same provider and the most
+    // asked-for second opinion. Carries the road bearing so the panorama opens
+    // looking along the road rather than at whatever Google picks. Dropped on
+    // cards where a panorama means nothing, such as a ferry crossing.
+    ...(streetView
+      ? [{ key: 'streetview', label: 'Google Street View',
+          url: googleStreetViewUrl(lat, lng, heading) }]
+      : []),
     { key: 'apple', label: 'Apple Maps', url: `https://maps.apple.com/?ll=${at}&q=${encodeURIComponent('Dropped pin')}` },
     { key: 'osm', label: 'OpenStreetMap',
       url: `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lng.toFixed(6)}#map=17/${at.replace(',', '/')}` },
   ];
 }
 
-function openOtherMap(lat, lng, placeName) {
+function openOtherMap(lat, lng, placeName, options = {}) {
   const dialog = document.getElementById('otherMapDialog');
   const host = document.getElementById('otherMapChoices');
   if (!dialog || !host) { openExternalUrl(googleMapsPointUrl(lat, lng)); return; }
@@ -16134,7 +16133,7 @@ function openOtherMap(lat, lng, placeName) {
   if (where) where.textContent = placeName || 'This point';
   const actions = document.createElement('div');
   actions.className = 'readout-route-actions';
-  for (const target of otherMapTargets(lat, lng)) {
+  for (const target of otherMapTargets(lat, lng, options)) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `other-map-${target.key}`;
@@ -16154,15 +16153,6 @@ function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
 
-let streetViewLoadTimer = null;
-function setStreetViewLoadStatus(message = '', warning = false) {
-  const status = document.getElementById('streetViewLoadStatus');
-  if (!status) return;
-  status.textContent = message;
-  status.hidden = !message;
-  status.classList.toggle('warning', warning);
-}
-
 // A real link click (not window.open with a features string, which iOS turns
 // into a chrome-laden popup window) so the OS opens its clean in-app browser --
 // on an installed PWA that comes with a Done button back to here.
@@ -16173,7 +16163,7 @@ function setStreetViewLoadStatus(message = '', warning = false) {
 //
 // On iOS this is also what hands a maps.apple.com or google.com/maps address to
 // the installed app rather than the browser: both are universal links, so the
-// OS claims them on a genuine navigation. That is why "Other Map" needs no
+// OS claims them on a genuine navigation. That is why "View Street…" needs no
 // custom URL scheme and no native code -- see otherMapTargets().
 function openExternalUrl(url) {
   const a = document.createElement('a');
@@ -16186,77 +16176,8 @@ function openExternalUrl(url) {
 }
 
 function openStreetView(lat, lng, heading = null) {
-  const external = googleStreetViewUrl(lat, lng, heading);
-  if (!STREET_VIEW_IN_APP) {
-    openExternalUrl(external);
-    return;
-  }
-  const dialog = document.getElementById('streetViewDialog');
-  const frame = document.getElementById('streetViewFrame');
-  const externalLink = document.getElementById('streetViewExternal');
-  if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
-  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  const nativeRuntime = document.documentElement.dataset.appRuntime === 'native'
-    || window.location.protocol === 'capacitor:'
-    || Boolean(window.Capacitor?.isNativePlatform?.());
-  clearTimeout(streetViewLoadTimer);
-  map.stop();
-  document.body.classList.add('street-view-open');
-  frame.dataset.streetViewActive = '1';
-  frame.dataset.streetViewBridge = nativeRuntime ? '1' : '0';
-  setStreetViewLoadStatus('Loading Street View…');
-  streetViewLoadTimer = setTimeout(() => {
-    if (frame.dataset.streetViewActive === '1') {
-      setStreetViewLoadStatus('Street View is taking longer than expected. Try Open in Google Maps.', true);
-    }
-  }, 12000);
-  frame.src = nativeRuntime
-    ? `${NATIVE_STREET_VIEW_BRIDGE}?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}${headingParam}`
-    : `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
-  if (!dialog.open) dialog.showModal();
+  openExternalUrl(googleStreetViewUrl(lat, lng, heading));
 }
-
-document.getElementById('streetViewFrame').addEventListener('load', (event) => {
-  if (event.currentTarget.dataset.streetViewActive !== '1') return;
-  // The native frame first loads the hosted bridge. Wait for its inner Google
-  // panorama to report ready instead of hiding feedback on this outer load.
-  if (event.currentTarget.dataset.streetViewBridge === '1') return;
-  clearTimeout(streetViewLoadTimer);
-  streetViewLoadTimer = null;
-  setStreetViewLoadStatus();
-});
-document.getElementById('streetViewFrame').addEventListener('error', (event) => {
-  if (event.currentTarget.dataset.streetViewActive !== '1') return;
-  clearTimeout(streetViewLoadTimer);
-  streetViewLoadTimer = null;
-  setStreetViewLoadStatus('Street View could not load. Try Open in Google Maps.', true);
-});
-window.addEventListener('message', (event) => {
-  if (event.origin !== 'https://nothinglabs.github.io'
-    || event.data?.type !== 'jra-street-view') return;
-  const frame = document.getElementById('streetViewFrame');
-  if (frame.dataset.streetViewActive !== '1' || frame.dataset.streetViewBridge !== '1') return;
-  clearTimeout(streetViewLoadTimer);
-  streetViewLoadTimer = null;
-  setStreetViewLoadStatus(event.data.state === 'ready'
-    ? '' : 'Street View could not load. Try Open in Google Maps.', event.data.state !== 'ready');
-});
-
-// Stop the panorama streaming (and free the connection) when the dialog closes.
-document.getElementById('streetViewDialog').addEventListener('close', () => {
-  clearTimeout(streetViewLoadTimer);
-  streetViewLoadTimer = null;
-  const frame = document.getElementById('streetViewFrame');
-  frame.dataset.streetViewActive = '0';
-  frame.dataset.streetViewBridge = '0';
-  frame.src = 'about:blank';
-  setStreetViewLoadStatus();
-  document.body.classList.remove('street-view-open');
-  requestAnimationFrame(() => {
-    map.resize();
-    map.triggerRepaint?.();
-  });
-});
 
 // A pinned road card belongs to the map inspection interaction. Any click on
 // the app UI outside the map dismisses it, while clicks on the map can inspect

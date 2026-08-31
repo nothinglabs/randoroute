@@ -112,14 +112,22 @@ const streetViewHandoff = await page.evaluate(() => new Promise((resolve) => {
     HTMLAnchorElement.prototype.click = original;
     resolve(this.href);
   };
-  document.querySelector('#readout .streetview-launch').click();
+  // Street View stopped being its own button on 2026-08-30; it is now a row in
+  // the "View Street…" sheet, under Google Maps. showModal() is synchronous, so
+  // the row is present immediately after the launch click.
+  document.querySelector('#readout .other-map-launch').click();
+  document.querySelector('#otherMapChoices .other-map-streetview').click();
   setTimeout(() => resolve('(no handoff link clicked)'), 5000);
 }));
 check('Street View hands off to Google Maps without embedding a repository credential',
   /google\.com\/maps/.test(streetViewHandoff) && !/key=/.test(streetViewHandoff)
-    && await page.evaluate(() => !document.getElementById('streetViewDialog').open
-      && !document.body.classList.contains('street-view-open')),
+    // The in-app Embed API path is gone (2026-08-30, issue 8), so there is no
+    // longer a dialog or iframe that could open instead of the handoff.
+    && await page.evaluate(() => !document.getElementById('streetViewDialog')
+      && !document.getElementById('streetViewFrame')),
   streetViewHandoff);
+check('choosing a destination closes the sheet rather than leaving it over the map',
+  await page.evaluate(() => !document.getElementById('otherMapDialog').open));
 
 await page.locator('#readout .readout-details-toggle').click();
 const originalDetails = await page.evaluate(() => ({
@@ -198,10 +206,10 @@ check('Options no longer contains an Add stop visibility setting', await page.ev
 const expanded = await page.evaluate(() => ({
   disabled: document.querySelector('#readout .readout-details-toggle')?.disabled,
   detailsText: document.getElementById('mapTapDetails')?.textContent,
-  streetView: !!document.querySelector('#readout .streetview-launch'),
+  viewStreet: !!document.querySelector('#readout .other-map-launch'),
 }));
-check('a bare point offers Debug view under Details and still offers Street View',
-  expanded.disabled === false && expanded.streetView && /Debug view/.test(expanded.detailsText),
+check('a bare point offers Debug view under Details and still reaches Street View',
+  expanded.disabled === false && expanded.viewStreet && /Debug view/.test(expanded.detailsText),
   JSON.stringify(expanded));
 check('and never invents GPS coordinates to fill it',
   !/47\.95000|-122\.30500|Location/.test(expanded.detailsText), expanded.detailsText);

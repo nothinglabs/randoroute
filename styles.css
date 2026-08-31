@@ -985,7 +985,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
-.readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
 .readout-primary-actions .readout-road-block {
   display: grid; place-items: center; padding: 0; border-color: #d09a86;
   background: #fdf1ec; color: #9c3f18; font-size: 17px;
@@ -1020,12 +1019,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-primary-actions .readout-road-block.is-labelled {
   width: auto; padding: 5px 3px; font-size: 9.5px;
 }
-.streetview-launch {
-  min-height: 32px; padding: 5px 6px; border: 1px solid #9fc4da; border-radius: 7px;
-  background: #edf7fc; color: #075f91; font: 750 10px/1.1 system-ui; cursor: pointer;
-}
-.streetview-launch:hover { background: #dceff8; }
-.streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
 
 .status {
   /* Map-data notices used to sit behind the endpoint card. Keep them visible
@@ -1823,26 +1816,6 @@ body.navigation-active #routeBar { display: none; }
 
 .weights-dialog { overflow: hidden; }
 .weights-head-actions { display: flex; align-items: center; gap: 8px; }
-/* In-app Street View: a full-screen dialog whose body is the Google Maps
-   Embed API iframe. Falls back to opening Google Maps externally when no
-   embed key is configured (see GOOGLE_MAPS_EMBED_KEY in app.js). */
-.sv-head-actions { display: flex; align-items: center; gap: 10px; }
-.sv-external { color: #0a66c2; font: 700 12.5px system-ui; text-decoration: none; white-space: nowrap; }
-.sv-external:hover { text-decoration: underline; }
-.full-help-head .streetview-close { display: inline-flex; align-items: center; gap: 5px; width: auto; min-height: 42px; padding: 0 11px; border: 1px solid #b9382f; border-radius: 9px; background: #fff3f1; color: #a32820; font: 800 12px/1 system-ui; }
-.streetview-close span:first-child { color: currentColor; font-size: 16px; line-height: 1; }
-.sv-dialog[open] { display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; }
-.sv-dialog > .full-help-head { position: relative; flex: none; }
-.sv-body { position: relative; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; background: #0b0f13; }
-#streetViewFrame { display: block; width: 100%; height: 100%; border: 0; }
-
-body.street-view-open #map { visibility: hidden; }
-.sv-load-status { position: absolute; z-index: 2; top: 14px; left: 50%; max-width: calc(100% - 28px); margin: 0; padding: 7px 10px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; background: rgba(16,27,35,.88); color: #fff; font: 700 11px/1.3 system-ui; text-align: center; white-space: nowrap; }
-.sv-load-status.warning { border-color: rgba(255,204,116,.7); background: rgba(76,48,10,.92); white-space: normal; }
-.sv-load-status[hidden] { display: none; }
-.sv-overlay-notes { position: absolute; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); left: 14px; pointer-events: none; }
-.sv-coverage-note { margin: 0; padding: 9px 11px; border: 1px solid rgba(255,211,118,.72); border-left: 4px solid #f0b44d; border-radius: 9px; background: rgba(16,27,35,.94); box-shadow: 0 2px 10px rgba(0,0,0,.28); color: #f6fafc; font: 700 12px/1.35 system-ui; text-align: center; }
-.sv-coverage-note b { color: #ffd376; font-weight: 850; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-modified-notice { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #d59a3b; border-left: 5px solid #b66a00; border-radius: 9px; background: #fff4df; color: #714000; font: 850 15px/1.2 system-ui; }
@@ -2192,6 +2165,7 @@ body.settings-panel-active .settings-weights-pane .weights-body {
 .map-point-navigate-choices .readout-route-actions { grid-template-columns: 1fr; gap: 7px; margin: 0; }
 .map-point-navigate-choices .readout-route-actions button { min-height: 46px; font-size: 13.5px; }
 .map-point-navigate-choices .other-map-google { border-color: #9db6d8; background: #eef3fb; color: #24467e; }
+.map-point-navigate-choices .other-map-streetview { border-color: #9db6d8; background: #eef3fb; color: #24467e; }
 .map-point-navigate-choices .other-map-apple { border-color: #b3bcc2; background: #f4f6f7; color: #33424a; }
 .map-point-navigate-choices .other-map-osm { border-color: #a9c9a4; background: #f0f7ee; color: #2f6329; }
 

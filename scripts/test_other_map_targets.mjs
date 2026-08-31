@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// "Other Map" hands this spot to Google Maps, Apple Maps or OpenStreetMap.
+// "View Street…" hands this spot to Google Maps, Google Street View, Apple
+// Maps or OpenStreetMap. Street View joined the sheet on 2026-08-30, when it
+// stopped being its own button on the road card.
 //
 // The property worth pinning is the one that makes it open the APP on an
 // iPhone: every address is plain https. Apple and Google both claim their map
@@ -17,28 +19,56 @@ import vm from 'node:vm';
 import { check, checkEqual, done, source } from './testlib/harness.mjs';
 
 const appSrc = source('app.js');
-function lift(name) {
-  const at = appSrc.indexOf(`function ${name}(`);
-  assert.ok(at >= 0, `app.js still defines ${name}`);
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, end = open;
-  for (; end < appSrc.length; end++) {
-    if (appSrc[end] === '{') depth++;
-    else if (appSrc[end] === '}' && --depth === 0) break;
+const commonSrc = source('route-common.js');
+function lift(name, src = appSrc, where = 'app.js') {
+  const at = src.indexOf(`function ${name}(`);
+  assert.ok(at >= 0, `${where} still defines ${name}`);
+  // Walk the parameter list to its closing paren first. A destructured or
+  // defaulted parameter carries its own braces, so the body does NOT start at
+  // the first '{' after the name -- reading it that way ended the function
+  // early and threw "Unexpected end of input".
+  let i = src.indexOf('(', at), parens = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === '(') parens++;
+    else if (src[i] === ')' && --parens === 0) break;
   }
-  return appSrc.slice(at, end + 1);
+  const open = src.indexOf('{', i);
+  let depth = 0, end = open;
+  for (; end < src.length; end++) {
+    if (src[end] === '{') depth++;
+    else if (src[end] === '}' && --depth === 0) break;
+  }
+  return src.slice(at, end + 1);
 }
-const box = { encodeURIComponent };
+const box = { encodeURIComponent, Number, Math };
 vm.createContext(box);
 vm.runInContext(lift('googleMapsPointUrl'), box);
+vm.runInContext(lift('googleStreetViewUrl', commonSrc, 'route-common.js'), box);
 vm.runInContext(lift('otherMapTargets'), box);
 
 const targets = box.otherMapTargets(47.6062, -122.3321);
-checkEqual('three destinations are offered', targets.length, 3);
-checkEqual('in the order the rider asked for',
-  targets.map((t) => t.key).join(','), 'google,apple,osm');
+checkEqual('four destinations are offered', targets.length, 4);
+checkEqual('Street View sits directly under Google Maps',
+  targets.map((t) => t.key).join(','), 'google,streetview,apple,osm');
 checkEqual('labelled as the services name themselves',
-  targets.map((t) => t.label).join(' / '), 'Google Maps / Apple Maps / OpenStreetMap');
+  targets.map((t) => t.label).join(' / '),
+  'Google Maps / Google Street View / Apple Maps / OpenStreetMap');
+
+// A ferry crossing has no panorama worth opening, so that card drops the row
+// rather than handing the rider a dead end.
+const ferry = box.otherMapTargets(47.6062, -122.3321, { streetView: false });
+checkEqual('a card without Street View still offers the other three',
+  ferry.map((t) => t.key).join(','), 'google,apple,osm');
+
+// The road bearing is why the panorama opens looking ALONG the road instead of
+// at whatever Google picks; losing it silently would be invisible in review.
+const aimed = box.otherMapTargets(47.6062, -122.3321, { heading: 137.4 });
+check('Street View carries the road heading, rounded',
+  aimed.find((t) => t.key === 'streetview').url.includes('&heading=137'),
+  aimed.find((t) => t.key === 'streetview').url);
+check('Street View omits heading when the road bearing is unknown',
+  !targets.find((t) => t.key === 'streetview').url.includes('heading='),
+  targets.find((t) => t.key === 'streetview').url);
 
 for (const target of targets) {
   check(`${target.key} is plain https, never a custom scheme`,
