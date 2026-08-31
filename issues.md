@@ -88,15 +88,6 @@ Choose and approve the final public name for the app before release.
 ---
 
 
-### 11. Removing a road block does not correctly update the route
-Adding a road block reroutes as expected; removing one does not put the
-route back the way it should. Reported from the field — the exact wrong
-behaviour is not pinned down yet. `removeRoadBlock` in `app.js` is the entry
-point, and Help states the contract a removal has to keep: road blocks hold
-the current route recipes and letters, so clearing one should re-deal that
-same lineup without the block.
-
----
 
 ### 17. Tweak the segment details page
 Three asks from the field, 2026-08-30.
@@ -111,4 +102,3 @@ Three asks from the field, 2026-08-30.
 - **Name the highway.** Segments say the generic word `highway`
   (`route-details.js:740`) where `stateHighwayName` could resolve the actual
   route number.
-
