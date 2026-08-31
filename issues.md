@@ -76,19 +76,9 @@ launch validation, and post-launch support plan.
 
 ---
 
-### 7. Stability issues / random crashing — possibly zoom-related
-Reproduce and diagnose the random crashes, determine whether zoom behavior is
-the cause, and fix the underlying stability issue. The known
-ride-length-scaling mechanisms are fixed; needs a field verdict on whether
-the random restarts persist.
-
----
-
-### 8. Data licensing and Google Maps key usage
+### 8. Data licensing
 Verify OSM and every other data source's licensing and attribution
-requirements. Rotate/revoke the previously exposed Google Maps Embed key in
-Google Cloud and verify API restrictions and terms before any in-app embed
-is re-enabled.
+requirements.
 
 ---
 
@@ -115,33 +105,6 @@ behaviour is not pinned down yet. `removeRoadBlock` in `app.js` is the entry
 point, and Help states the contract a removal has to keep: road blocks hold
 the current route recipes and letters, so clearing one should re-deal that
 same lineup without the block.
-
----
-
-### 12. A short trip routes as forty-nine miles
-Jackson Avenue Southeast (Port Orchard) to Bremerton is a few miles across
-Sinclair Inlet and roughly ten by road around it. Route F came back
-**49.5 mi / 5 h 12 m**, swinging south to Gig Harbor and looping back up the
-peninsula. It claims 0% fails rules, so the router is satisfied with it —
-this looks like the direct way being refused rather than a scoring slip.
-Screenshot from the field. First thing to check: whether routes A–E are also
-~50 mi. If they are, the connection around the inlet is being refused for
-everyone; if only F is, it is the lower-stress profile.
-
----
-
-### 13. Show sidewalks on failing segments, and price them into routing
-A failing segment never mentions a mapped sidewalk unless the rung-7 fallback
-fires, and that fallback is narrow: `sidewalkFallbackApplies` in
-`safety-model.js` wants the sidewalk `present`, no bike facility, and a known
-speed over the no-shoulder limit — an untagged shoulder counts as 0 ft by
-design, so a missing shoulder never blocks it. What gets nothing is a road
-that fails on lanes or traffic while inside the speed limit, or at any rung
-above 6 — such a road can fail, have a sidewalk, and never say so. Two
-parts: surface the sidewalk on failing segments whether or not the fallback
-fired, and let it count in routing cost in those cases too (today it prices
-in only through rung 7, at ×1.9 / ×3.8 / ×8.0). Mechanics changes belong in
-`docs/SAFETY-MODEL.md`.
 
 ---
 
