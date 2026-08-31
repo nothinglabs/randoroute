@@ -107,7 +107,11 @@ Three asks from the field, 2026-08-30.
 Three from the field, 2026-08-30. Not yet diagnosed.
 
 - **Lake Forest Park to Phinney offers Bothell Way as Route C**, a dangerous
-  arterial, while the safe backroad option is not offered at all.
+  arterial, while the safe backroad option is not offered at all. Route C is
+  offered as **"Shorter", 8.8 mi / 45 min, and 21% Fails Rules** — a fifth of
+  the ride failing, on the option the chooser presents as the short one.
+
+![Lake Forest Park to Phinney Ridge, Route C selected: 8.8 mi, 21% Fails Rules w:330](issue-media/issue-18-lfp-phinney-route-c.png)
 - **Phinney Ridge to Lake Forest Park routes via Lake City Way.**
 - **Routing to Vancouver lists a bunch of ferry terminals** as destinations.
 
@@ -118,4 +122,34 @@ the backroad is being built and then dropped in selection, or never built.
 
 The third is a destination-search problem, not a scoring one, so it likely
 lives somewhere else entirely.
+
+---
+
+### 19. Turn prompt contradicts itself
+Field, 2026-08-30, navigating Lake Forest Park to Greenwood. At Roosevelt Way
+NE and NE 65th Street the banner read:
+
+> **Now: Left turn** — Turn left to stay on Northeast 65th Street, heading south
+
+NE 65th Street runs east-west, so "heading south" and "stay on Northeast 65th
+Street" cannot both be true. The card below already showed NE 65th as the road
+being ridden, so the prompt also says to turn to stay on the street it says the
+rider is on. Whether the wrong half is the heading or the street name is not
+established.
+
+![Navigation banner reading "Turn left to stay on Northeast 65th Street, heading south" w:330](issue-media/issue-19-turn-prompt-heading.png)
+
+---
+
+### 20. Destination changed on its own while navigating in the background
+Field, 2026-08-30. Navigation was running with the app in the background; on
+reopening it, the destination had become **"Sheridan Beach"**, which the rider
+did not choose, and the screen showed **OFF ROUTE — rejoin 2.6 miles north on
+32nd Avenue Northeast**.
+
+Progress read **0.0 mi done, 3.2 mi left** despite the ride being underway,
+which suggests the route was replaced rather than merely re-labelled. May be
+hard to reproduce; the ask is to research it, not to force a repro.
+
+![Off-route card with destination "Sheridan Beach" and 0.0 mi done w:330](issue-media/issue-20-destination-changed.png)
 
