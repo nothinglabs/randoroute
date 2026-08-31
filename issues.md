@@ -100,3 +100,22 @@ Three asks from the field, 2026-08-30.
 - **Name the highway.** Segments say the generic word `highway`
   (`route-details.js:740`) where `stateHighwayName` could resolve the actual
   route number.
+
+---
+
+### 18. Routing problems
+Three from the field, 2026-08-30. Not yet diagnosed.
+
+- **Lake Forest Park to Phinney offers Bothell Way as Route C**, a dangerous
+  arterial, while the safe backroad option is not offered at all.
+- **Phinney Ridge to Lake Forest Park routes via Lake City Way.**
+- **Routing to Vancouver lists a bunch of ferry terminals** as destinations.
+
+The first two are the same corridor in both directions, and Bothell Way and
+Lake City Way are both SR 522 — so this reads as one complaint: the arterial
+is being offered where a quieter parallel route exists. Worth checking whether
+the backroad is being built and then dropped in selection, or never built.
+
+The third is a destination-search problem, not a scoring one, so it likely
+lives somewhere else entirely.
+
