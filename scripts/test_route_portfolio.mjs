@@ -80,14 +80,18 @@ const scenarios = [
     // portfolio contract, not an exact-mileage snapshot: the broad section
     // bounds distinguish the hybrid from both the direct-island and
     // long-mainland parents while allowing the graph data to improve.
+    //
+    // The hybrid used to seat as a `crossBred` cross-breed; the v935-v954
+    // portfolio rework now delivers it as a section-frontier candidate (the
+    // two flags co-occur on it), and which mechanism wins the slot depends on
+    // tuning this test should not pin. So this asks only for a route using
+    // BOTH ferries whose Mukilteo-first mainland leg is substantial and whose
+    // island leg is bounded -- the hybrid's shape, not its internal name. The
+    // expectEach below still pins that a section-frontier hybrid is offered.
     expectAny: {
-      crossBred: true,
       ferries: ['Mukilteo-Clinton Ferry', 'Port Townsend-Coupeville Ferry'],
-      // Leg-1 floor 30 -> 28: the 2026-08-26 elevation smoothing removed
-      // phantom climb from the direct Seattle-Mukilteo approach and the leg
-      // now routes at 28.8-29.0 mi — a more direct line, the same corridor.
-      landMinMi: [28, 32],
-      landMaxMi: [42, 45],
+      landMinMi: [28, 30],
+      landMaxMi: [45, 45],
     },
     expectEach: [{
       sectionFrontier: true,
