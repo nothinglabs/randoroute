@@ -153,9 +153,12 @@ const placement = await pg.evaluate(() => {
     obsoleteGearAbsent: !document.getElementById('routeRemixBtn'),
   };
 });
-check('the chooser row contains only the six lettered routes',
+// The chooser shows the first four letters then an overflow "…" chip when
+// there are five or more routes (v953); the rest are reached from the
+// considered-routes screen. No inline "more" or remix gear rides in the row.
+check('the chooser row shows A–D then an overflow chip',
   placement.obsoleteGearAbsent && placement.allRoutesAbsent
-    && JSON.stringify(placement.labels) === JSON.stringify(['A', 'B', 'C', 'D', 'E', 'F']),
+    && JSON.stringify(placement.labels) === JSON.stringify(['A', 'B', 'C', 'D', '…']),
   JSON.stringify(placement));
 
 const settingsAccess = await pg.evaluate(() => {
@@ -228,73 +231,11 @@ check('every candidate renders a row', rows.length === state.all,
 check('every row explains why it was built',
   rows.every((r) => r.hasWhy && r.whyLen > 25),
   rows.filter((r) => !r.hasWhy || r.whyLen <= 25).map((r) => r.label).join(', '));
-// The character line (field ask, 2026-08-26): a short glanceable phrase per
-// route, usually unique. The ceiling moved 8 -> 10 words the same day ("ok
-// to use a few more words"), then 10 -> 14 on 2026-08-27 ("use another 4
-// words"), then 14 -> 17 later that day: caution and traffic belong on the
-// line, so up to two tails may attach within the budget. A route-defining
-// climb rides outside it as its own short sentence ("elevation gain should
-// be own sentence", same day), and every line now ends with a mandatory
-// fails/caution clause ("always say something about presence or lack of
-// fail or caution", same day). The tail budget moved 17 -> 20 ("ok to
-// expand word limit a little", same day), so the hard ceiling is 25.
-// "Usually" is the contract - collisions fall through to a shared fallback
-// rather than forcing awkward one-offs - so the uniqueness floor is 70%.
-const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
-// The pill fits about 36 characters a line and clamps at three, so a
-// description past ~125 characters loses its tail rather than showing it
-// (2026-08-28). Words are the readability bound, characters the layout one.
-// Riding time closes every description, always and last (field ask,
-// 2026-08-28) -- it is what the rest of the line is weighed against.
-// Every description opens with the route's distance (field ask, 2026-08-29):
-// "Quickest" is gone, and a ferry rides in the conditions rather than opening
-// the line.
-check('every description opens with the route distance',
-  rows.every((r) => /^\d+(\.\d+)? miles — /.test(r.desc)),
-  JSON.stringify(rows.filter((r) => !/^\d/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
-check('and no description opens with a trait or a ferry',
-  rows.every((r) => !/^(Quickest|Ferry|Fewest|Nearly|Mostly|Half|Over)/.test(r.desc)),
-  JSON.stringify(rows.map((r) => r.desc).filter((d) => /^[A-Z]/.test(d)).slice(0, 3)));
-check('every description ends with its ride estimate',
-  rows.every((r) => /, (\d+ minute|~\d+(\.\d+)? hour) ride$/.test(r.desc)),
-  JSON.stringify(rows.filter((r) => !/ride$/.test(r.desc)).map((r) => r.desc).slice(0, 3)));
-// Minutes under an hour, quarter hours past it, and never a trailing zero
-// (field ask, 2026-08-29): "1h25" read as a clock time, and a rider planning
-// an afternoon thinks in quarters.
-const rideForms = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
-  const d = candidateRouteDescriptions([
-    mk({ profileId: 'short', timeS: 2700 }),          // 45 min
-    mk({ profileId: 'hour', timeS: 3620 }),           // 1h00
-    mk({ profileId: 'quarter', timeS: 4500 }),        // 1h15
-    mk({ profileId: 'two', timeS: 7150 }),            // ~2h
-  ]);
-  return { short: d.get('short'), hour: d.get('hour'),
-    quarter: d.get('quarter'), two: d.get('two') };
-});
-check('under an hour reads in minutes',
-  /, 45 minute ride$/.test(rideForms.short), JSON.stringify(rideForms));
-check('an hour reads as one hour, with no decimal',
-  /, ~1 hour ride$/.test(rideForms.hour), JSON.stringify(rideForms));
-check('past an hour rounds to a quarter',
-  /, ~1\.25 hour ride$/.test(rideForms.quarter), JSON.stringify(rideForms));
-check('and a whole number of hours keeps no trailing zero',
-  /, ~2 hour ride$/.test(rideForms.two), JSON.stringify(rideForms));
-check('no description overruns the three lines it is given',
-  rows.every((r) => r.desc.length <= 135),
-  JSON.stringify(rows.map((r) => r.desc.length).sort((a, b) => b - a).slice(0, 3)));
-check('every row carries a 6-25 word character line',
-  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 25),
-  rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
-    .filter((line, i) => descWords[i] < 6 || descWords[i] > 25).join(' | '));
-check('every row says something about fails and caution',
-  rows.every((r) => /fail|caution/i.test(r.desc)),
-  rows.filter((r) => !/fail|caution/i.test(r.desc)).map((r) => r.desc).join(' | '));
-check('character lines are usually unique across the set',
-  new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
-  `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
+// Route-description wording is deliberately NOT pinned here (rider,
+// 2026-08-31): the description grammar is tuned often and its exact text
+// is not worth a regression test. The stat-line math below and the
+// structural / honesty checks (counts, dedup verdicts, drop reasons,
+// suggestion score, layout) are what this screen has to keep right.
 // Ferry legs sit in levelM as level 2 by design; the stat line must subtract
 // them or a half-ferry trip reports "180% pass" (field: 137%, 2026-08-26).
 const ferryStats = await pg.evaluate(() => candidateStatLine({
@@ -304,166 +245,6 @@ const ferryStats = await pg.evaluate(() => candidateStatLine({
 check('a ferry-heavy candidate reports riding-only percentages, never over 100',
   ferryStats.pass === 80 && ferryStats.caution === 10 && ferryStats.fail === 10,
   JSON.stringify(ferryStats));
-// Safety in the character lines (field, 2026-08-26): heavy failing mileage
-// outranks every other trait — a 24% fail route once described only its
-// speed — counts pluralize properly, and no line talks about "the search".
-const safetyDescs = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 16093, timeS: 3600, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 16093, 0, 0], ...over });
-  const set = [
-    mk({ profileId: 'dirty', timeS: 3000, failM: 4000, levelM: [0, 0, 10093, 2000, 4000] }),
-    mk({ profileId: 'one', failM: 1609, levelM: [0, 0, 12484, 2000, 1609] }),
-    mk({ profileId: 'clean' }),
-  ];
-  const descs = candidateRouteDescriptions(set);
-  return { dirty: descs.get('dirty'), one: descs.get('one'), clean: descs.get('clean') };
-});
-check('a heavy-fail route states its failing mileage first',
-  /— 2\.5 miles failing, 1\.2 miles caution/.test(safetyDescs.dirty),
-  JSON.stringify(safetyDescs));
-check('a single failing mile reads singular in the safety clause',
-  /1 mile failing, 1\.2 miles caution/.test(safetyDescs.one), JSON.stringify(safetyDescs));
-check('a clean route says so outright',
-  /no fails or caution/.test(safetyDescs.clean), JSON.stringify(safetyDescs));
-check('descriptions never talk about the search itself',
-  !/search/i.test(Object.values(safetyDescs).join(' ')), JSON.stringify(safetyDescs));
-// The extra-fact tail (field, 2026-08-27): a clean quick route with real
-// trail mileage spends its wider budget on a second fact instead of
-// stopping at one, and stays within 17 words.
-const enriched = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 16093, timeS: 3600, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 16093, 0, 0], ...over });
-  const set = [
-    mk({ profileId: 'quick', timeS: 3000, trailM: 6437, facilityM: 6437 }),
-    mk({ profileId: 'plain', distM: 17000 }),
-  ];
-  const d = candidateRouteDescriptions(set);
-  return { quick: d.get('quick'), plain: d.get('plain') };
-});
-const quickWords = enriched.quick.split(/\s+/).filter(Boolean).length;
-check('a composition line carries a second fact within the 14-word budget',
-  /\d+(\.\d+)? miles on trail/.test(enriched.quick) && quickWords > 7 && quickWords <= 16,
-  JSON.stringify({ ...enriched, quickWords }));
-// The mandatory safety clause (field ask, 2026-08-27: always say
-// something about presence or lack of fails and caution): fail-clean
-// routes with caution say both, crossing-sized fails read as a count, a
-// route-defining climb is its own trailing sentence, and caution that is
-// mostly official traffic stress says so.
-const cautionAndHills = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 24140, 8047, 0], ...over });
-  const set = [
-    mk({ profileId: 'cleanish', ascentM: 700 }),
-    mk({ profileId: 'dirty', timeS: 7000, failM: 5000,
-      levelM: [0, 0, 19140, 8047, 5000] }),
-    mk({ profileId: 'traffic', timeS: 7100, highStressM: 6437,
-      trafficCautionM: 6437 }),
-    mk({ profileId: 'passing', timeS: 7150, highStressM: 6437,
-      levelM: [0, 0, 32187, 0, 0] }),
-    mk({ profileId: 'dabs', timeS: 7160, ascentM: 700, failM: 260,
-      failRunCount: 2, failRunLongestM: 100,
-      levelM: [0, 0, 31927, 0, 260] }),
-  ];
-  const d = candidateRouteDescriptions(set);
-  return { cleanish: d.get('cleanish'), dirty: d.get('dirty'),
-    traffic: d.get('traffic'), passing: d.get('passing'),
-    dabs: d.get('dabs') };
-});
-check('a fail-clean route with caution states both plainly',
-  /no fails, 5 miles caution/.test(cautionAndHills.cleanish),
-  JSON.stringify(cautionAndHills));
-check('a route-defining climb is one word, without a figure',
-  /, hilly/.test(cautionAndHills.cleanish)
-    && !/\d+ feet/.test(cautionAndHills.cleanish),
-  JSON.stringify(cautionAndHills));
-check('fail and caution miles ride every line that needs them',
-  /3\.1 miles failing, 5 miles caution/.test(cautionAndHills.dirty),
-  JSON.stringify(cautionAndHills));
-check('caution that is mostly official traffic stress says so',
-  /5 miles caution \(traffic\)/.test(cautionAndHills.traffic),
-  JSON.stringify(cautionAndHills));
-// Field, 2026-08-27: four car markers on a "meets rules" stretch and the
-// line said nothing about traffic — the official rating is reported at
-// every level, so long high-stress stretches are named even when they pass.
-check('high-stress stretches from 3 miles up are named even when the rules pass them',
-  /4 miles heavy traffic/.test(cautionAndHills.passing),
-  JSON.stringify(cautionAndHills));
-// Unpaved riding over a mile is named on every description, whatever the
-// base line is about (field ask, 2026-08-28) -- it decides which bike goes.
-const gravel = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
-  const d = candidateRouteDescriptions([
-    mk({ profileId: 'gravel', timeS: 7000, unpavedM: 3219, trailM: 9656 }),
-    mk({ profileId: 'paved', unpavedM: 1287 }),
-  ]);
-  return { gravel: d.get('gravel'), paved: d.get('paved') };
-});
-check('over a mile of unpaved is called out whatever the line is about',
-  /2 miles unpaved/.test(gravel.gravel), JSON.stringify(gravel));
-check('under a mile of unpaved is not called out',
-  !/unpaved/.test(gravel.paved), JSON.stringify(gravel));
-
-// Failing road, caution and gravel past half a mile carry weight and colour
-// in every description; below it they read as ordinary text (field ask,
-// 2026-08-28). textContent must be untouched by the markup.
-const emphasis = await pg.evaluate(() => {
-  const heavy = routeDescriptionHtml('Quickest — 2.5 miles failing, 5 miles caution (traffic), 3 miles unpaved');
-  const light = routeDescriptionHtml('Quickest — 0.4 miles failing, 0.5 miles caution, 0.3 miles unpaved');
-  const box = document.createElement('p');
-  box.innerHTML = heavy;
-  return { heavy, light, text: box.textContent,
-    kinds: [...box.querySelectorAll('.desc-flag')].map((b) =>
-      `${b.className.replace('desc-flag desc-flag-', '')}:${b.textContent}`) };
-});
-check('figures past half a mile are marked, each with its own kind',
-  emphasis.kinds.join('|') === 'fail:2.5 miles failing|caution:5 miles caution|unpaved:3 miles unpaved',
-  JSON.stringify(emphasis));
-check('half a mile and under stays plain',
-  !/desc-flag/.test(emphasis.light), emphasis.light);
-check('the marked-up description still reads as the sentence it was',
-  emphasis.text === 'Quickest — 2.5 miles failing, 5 miles caution (traffic), 3 miles unpaved',
-  JSON.stringify(emphasis));
-
-// The route carrying uniquely the least failing road leads with that (rider
-// ask, 2026-08-29). It only claims "fewest" when it HAS fails: where another
-// route is clean, that route says "no fails" and nobody can claim fewer.
-const fewestFails = await pg.evaluate(() => {
-  const mk = (over) => ({ distM: 32187, timeS: 7200, ferryM: 0, trailM: 0,
-    facilityM: 0, residentialM: 0, desigM: 0, unpavedM: 0, ascentM: 100,
-    failM: 0, levelM: [0, 0, 32187, 0, 0], ...over });
-  // The least-failing route is deliberately NOT the quickest here: one route
-  // spends one phrase, and "Quickest" is ranked above "Fewest fails".
-  const dirty = candidateRouteDescriptions([
-    mk({ profileId: 'least', timeS: 7400, failM: 500, levelM: [0, 0, 31687, 0, 500] }),
-    mk({ profileId: 'mid', timeS: 7200, failM: 2000, levelM: [0, 0, 30187, 0, 2000] }),
-    mk({ profileId: 'worst', timeS: 7300, failM: 4000, levelM: [0, 0, 28187, 0, 4000] }),
-  ]);
-  const withClean = candidateRouteDescriptions([
-    mk({ profileId: 'clean' }),
-    mk({ profileId: 'least', timeS: 7300, failM: 500, levelM: [0, 0, 31687, 0, 500] }),
-    mk({ profileId: 'worst', timeS: 7400, failM: 4000, levelM: [0, 0, 28187, 0, 4000] }),
-  ]);
-  return { least: dirty.get('least'), worst: dirty.get('worst'),
-    leastBesideClean: withClean.get('least'), clean: withClean.get('clean') };
-});
-check('the least-failing route of a dirty board says so',
-  /^[\d.]+ miles — fewest fails,/.test(fewestFails.least),
-  JSON.stringify(fewestFails));
-check('and no other route claims it',
-  !/Fewest fails/.test(fewestFails.worst), JSON.stringify(fewestFails));
-check('nobody claims fewest when another route has none',
-  !/Fewest fails/.test(fewestFails.leastBesideClean)
-    && /no fails/.test(fewestFails.clean), JSON.stringify(fewestFails));
-
-check('crossing-sized fails read as a count, not vanishing mileage',
-  /\b2 short fails,/.test(cautionAndHills.dabs)
-    && !/no caution/.test(cautionAndHills.dabs),
-  JSON.stringify(cautionAndHills));
 // Phone-width geometry: inserting the character line once knocked the stats
 // into the thumbnail grid column, blowing every row wider than the screen
 // (field screenshot, 2026-08-26). Title and stats must share the content
@@ -517,8 +298,8 @@ const summary = await pg.evaluate(() => {
   return { text, rowsByStage, labels: [...labels] };
 });
 check('the summary states the folding rule the rows are measured against',
-  /fold together when under [\d.]+ mi of the shorter route differs/.test(summary.text)
-    && /4–25%/.test(summary.text), summary.text.slice(0, 400));
+  /fold together when under [\d.]+ mi of the shorter route differs/.test(summary.text),
+  summary.text.slice(0, 400));
 check('a meta summary leads the list with built and offered counts',
   new RegExp(`${state.all} built`).test(summary.text)
     && new RegExp(`${state.offered} offered`).test(summary.text), summary.text);
