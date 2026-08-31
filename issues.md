@@ -145,42 +145,24 @@ in only through rung 7, at ×1.9 / ×3.8 / ×8.0). Mechanics changes belong in
 
 ---
 
-### 14. Near-duplicate routes still reach the board
-Phinney to Woodinville comes back with routes that read as the same ride.
-Field report, 2026-08-31, after v950-v954 tightened this from several
-directions: `distinctRideMi` now defaults to 1.0 mi with a 30% cap on short
-routes, 95%-overlap near-twins fold, and the tri-lens domination pass drops a
-near-twin whose consensus score is worse. Something still gets through. The
-All Routes screen shows the deciding verdict per row (`duplicate`,
-`dominated`, the fold line and the twin it folded against), so the first step
-is to open that screen on this trip and read which rule let the pair stand,
-rather than tightening a threshold again in the dark.
+### 14. Resolve duplicate routes
+Near-duplicates still reach the board. Phinney to Woodinville is the field
+example. v950-v954 tightened this several ways already, so read the deciding
+verdict per row on the All Routes screen for that trip before moving another
+threshold.
 
 ---
 
 ### 15. Get iPhone notifications working
-The lock-screen Live Activity is written but has never been compiled: it
-shows the maneuver arrow, "Left turn in 0.2 miles", the full instruction and
-remaining distance, on the lock screen and in the Dynamic Island, driven by
-the same background location stream that speaks while locked. The widget
-extension target does not exist in the Xcode project
-(`grep RandoRouteActivity ios/App/App.xcodeproj/project.pbxproj` finds
-nothing), and it cannot be created from a text editor, so ActivityKit has
-nothing to render and `Activity.request` fails silently behind its `try?`.
-`docs/IOS-HANDOFF.md` section 3c has the one-time Xcode procedure and the
-device checks. Two traps it names: the shared attributes file needs target
-membership in BOTH targets or the widget renders blank, and the extension
-needs a 16.2 deployment target while the app sits at 15.0. Nothing else
-visual exists today — no local notifications, no web notifications, no badge.
+The lock-screen Live Activity is written but has never compiled: its widget
+extension target does not exist in the Xcode project, and it cannot be
+created from a text editor. `docs/IOS-HANDOFF.md` section 3c has the Xcode
+procedure and the device checks. Nothing else visual exists today.
 
 ---
 
-### 16. Reduce redundant spoken guidance
-The voice repeats itself more than it needs to. Today the only suppression is
-in `speakNavigation` (`app.js`): an exact text match inside five seconds is
-dropped, and a queued status line is discarded when a maneuver supersedes it.
-That catches back-to-back GPS fixes re-speaking one phrase; it does not catch
-the same maneuver announced at two distances, a status line that restates
-what the last one said in different words, or guidance that arrives while the
-rider is plainly still doing the previous thing. Needs a field list of what
-actually got said, in order, before changing the rules.
+### 16. Reduce redundant voice announcements
+The spoken guidance repeats itself. The only suppression today is an exact
+text match inside five seconds (`speakNavigation` in `app.js`). Needs a field
+list of what actually got said, in order.
+
