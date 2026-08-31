@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.956';
+const APP_VERSION = '2026-08-30.957';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11476,15 +11476,31 @@ function snapToDrawnRoute(lngLat) {
 // the point Add would actually place -- the snapped one -- so the question the
 // button answers is exactly "would pressing this again put a second block on
 // top of the first?", which is what makes Add/Remove the right pair.
+// Is one of the rider's blocks at this point? Measured from the raw tap AND,
+// when snapping is on, from the snapped point -- whichever finds a block.
+//
+// Snapping ALONE is wrong here, and was the bug behind issue 11. A block is
+// placed snapped onto the route, and the route then detours around it. Looking
+// the block up later re-snaps the tap onto that DETOUR -- moving it as far as
+// BLOCK_SNAP_PX (34) from the block, past this 30 px match radius. The card
+// then reports no block and offers "Avoid this road", so the rider's removal
+// tap silently ADDS A SECOND BLOCK and the route never comes back. It healed
+// once the detour passed 34 px, because then snapping stopped firing at all,
+// which is why the field saw it come and go. Taking the nearer of the two can
+// only ever find more blocks, never fewer, so the snap keeps its original job
+// of matching a tap that lands just off the road.
 function roadBlockNear(lngLat, withinPx = 30, { snap = true, ferryName = null } = {}) {
-  const target = map.project(snap ? snapToDrawnRoute(lngLat) : lngLat);
+  const targets = [map.project(lngLat)];
+  if (snap) targets.push(map.project(snapToDrawnRoute(lngLat)));
   let found = null;
   let best = Infinity;
   for (const block of routing.blocks) {
     if (ferryName && block.ferryName !== ferryName) continue;
     const p = map.project(block.pt);
-    const distance = Math.hypot(p.x - target.x, p.y - target.y);
-    if (distance < best && distance <= withinPx) { best = distance; found = block; }
+    for (const target of targets) {
+      const distance = Math.hypot(p.x - target.x, p.y - target.y);
+      if (distance < best && distance <= withinPx) { best = distance; found = block; }
+    }
   }
   return found;
 }

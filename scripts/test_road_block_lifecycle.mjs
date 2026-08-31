@@ -11,7 +11,9 @@
 // FIRST search for this trip runs with the block (poisoning the cache),
 // then the same trip with the block removed — which must match a baseline
 // from a worker that never saw a block.
-import { appDefaultRules, check, done, routerWorker } from './testlib/harness.mjs';
+import assert from 'node:assert';
+import vm from 'node:vm';
+import { appDefaultRules, check, done, routerWorker, source } from './testlib/harness.mjs';
 
 // Across the Fremont Bridge: a pinch point, so the block forces a real
 // detour (another canal crossing), which is what makes a poisoned bound
@@ -48,5 +50,85 @@ check('the engine echoes how many blocks each search used',
     && baseline.blocksApplied === 0,
   JSON.stringify({ detour: detour.blocksApplied, healed: healed.blocksApplied,
     baseline: baseline.blocksApplied }));
+
+// ---------------------------------------------------------------------------
+// The engine above was never the whole story. Issue 11 kept being reported
+// after the goal-potential fix because the second half is in the CARD: the
+// road card asks roadBlockNear() whether a block is already here, and that
+// lookup snapped the tap onto the drawn route. The block is what pushed that
+// route away, so the lookup measured from the detour -- as far as
+// BLOCK_SNAP_PX (34) from the block, past the 30 px match radius. The card
+// then showed "Avoid this road", and the rider's removal tap ADDED A SECOND
+// BLOCK. It healed once the detour passed 34 px (snapping stops firing), which
+// is why it looked intermittent.
+//
+// Evaluated, not read: the real functions are lifted out of app.js and run
+// against a stub projection.
+const appSrc = source('app.js');
+function lift(name) {
+  const at = appSrc.indexOf(`function ${name}(`);
+  assert.ok(at >= 0, `app.js still defines ${name}`);
+  let i = appSrc.indexOf('(', at), parens = 0;
+  for (; i < appSrc.length; i++) {
+    if (appSrc[i] === '(') parens++;
+    else if (appSrc[i] === ')' && --parens === 0) break;
+  }
+  const open = appSrc.indexOf('{', i);
+  let depth = 0, end = open;
+  for (; end < appSrc.length; end++) {
+    if (appSrc[end] === '{') depth++;
+    else if (appSrc[end] === '}' && --depth === 0) break;
+  }
+  return appSrc.slice(at, end + 1);
+}
+
+const SCALE = 100000;                       // 0.0001 deg == 10 px
+const box = {
+  Math, Array, JSON, Infinity,
+  BLOCK_SNAP_PX: Number(/const BLOCK_SNAP_PX = (\d+)/.exec(appSrc)[1]),
+  map: {
+    project: (ll) => (Array.isArray(ll)
+      ? { x: ll[0] * SCALE, y: -ll[1] * SCALE }
+      : { x: ll.lng * SCALE, y: -ll.lat * SCALE }),
+    unproject: ([x, y]) => ({ lng: x / SCALE, lat: -y / SCALE }),
+  },
+  routing: { last: null, blocks: [] },
+};
+vm.createContext(box);
+vm.runInContext(lift('snapToDrawnRoute'), box);
+vm.runInContext(lift('roadBlockNear'), box);
+
+const LAT = 47.65;
+const BLOCK = [-122.345, LAT];
+// The rider taps their own block; the post-block route runs detourPx away.
+const looksUp = (detourPx, tapOffsetPx = 0) => {
+  box.routing.blocks = [{ pt: BLOCK, ferryName: null }];
+  box.routing.last = { ok: true,
+    coords: [[-122.35, LAT + detourPx / SCALE], [-122.34, LAT + detourPx / SCALE]] };
+  return !!box.roadBlockNear(
+    { lng: BLOCK[0] + tapOffsetPx / SCALE, lat: LAT }, 30,
+    { snap: true, ferryName: null });
+};
+
+// The dead zone that produced the field report: wider than the 30 px match
+// radius, but still inside BLOCK_SNAP_PX, so the tap was dragged onto the
+// detour and the block went missing.
+const deadZone = [31, 33, 34];
+check('a block is still found when its own detour sits in the snap dead zone',
+  deadZone.every((d) => looksUp(d)),
+  JSON.stringify(deadZone.map((d) => ({ detourPx: d, found: looksUp(d) }))));
+check('and when the rider taps a little off the block, as on a phone',
+  deadZone.every((d) => looksUp(d, 10)),
+  JSON.stringify(deadZone.map((d) => ({ detourPx: d, found: looksUp(d, 10) }))));
+// Distances either side of the dead zone always worked; they must keep working.
+check('near and far detours keep finding the block',
+  [5, 10, 20, 28, 36, 50, 200].every((d) => looksUp(d)),
+  JSON.stringify([5, 10, 20, 28, 36, 50, 200].map((d) => ({ detourPx: d, found: looksUp(d) }))));
+// The radius must still mean something: a block genuinely elsewhere is not a hit.
+box.routing.blocks = [{ pt: [-122.3400, LAT], ferryName: null }];
+box.routing.last = { ok: true, coords: [[-122.35, LAT], [-122.34, LAT]] };
+check('a block far from the tap is still not reported as here',
+  !box.roadBlockNear({ lng: -122.3450, lat: LAT }, 30, { snap: true, ferryName: null }),
+  'block 500 px away must not match a 30 px lookup');
 
 done();
