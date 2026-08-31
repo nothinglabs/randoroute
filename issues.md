@@ -133,44 +133,49 @@ lives somewhere else entirely.
 ---
 
 ### Fable analysis of issue 18
-Measured 2026-08-31 at v958, default rules, place-picker endpoints
-(Lake Forest Park → Phinney Ridge).
+Reproduced exactly, 2026-08-31 at v958, default rules and weights, through
+the app's own request path (place-picker Lake Forest Park → Phinney Ridge):
+Route A `direct-lens-friendly` 14.1 mi / 70 min clean (recommended), Route B
+`alt-wide` 14.2 mi clean, **Route C `direct-lens` 8.8 mi / 45 min with
+1.92 mi failing** — the field board to the decimal.
 
-**What the board does today.** Under default rules all twenty candidates ride
-the Burke-Gilman — 11.5 mi of a 14.2 mi ride, every profile including `quick`
-and `facility-neutral` — 18 of 20 fold as duplicates, and the board offers two
-near-identical trail routes at 70–72 min. The direct corridor is never built
-at all. The field board's Route C (8.8 mi / 45 min, 1.9 mi failing on SR 522)
-appears under the rider's tuned weights, where the direct corridor IS built —
-and rides the arterial, because nothing prices a direct-but-clean middle.
+**Mechanism.** Route C is the direct-lens discovery probe. By design it
+scales every subjective multiplier down in log space (exponent 0.22), which
+turns the 9× failing-road wall into about 1.6× — that is what lets it find
+the SR 522 corridor. It is the ONLY candidate in the whole portfolio that
+builds a direct corridor: every ordinary profile, the facility-neutral and
+alternative-corridor probes included, rides the Burke-Gilman (11.5 of
+14.2 mi). So the only "Shorter" option this board can ever offer here is one
+priced by a search that deliberately under-weighs fails, and it takes the
+seat with no eligibility test.
 
-**Two defects, in order of importance.**
-1. **The safe-direct middle candidate is missing.** Nothing in the grid
-   searches "direct-ish, fails at full price, facility pull off". The
-   backstreets parallel to SR 522 are never explored: the trail discount
-   pulls every profile — alternative-corridor and facility-neutral probes
-   included — onto the same Burke-Gilman spine.
-2. **No fail ceiling on a seat.** A candidate with 21% failing mileage takes
-   the "Shorter" seat beside clean options with no eligibility test.
+**Two defects.**
+1. **The safe-direct middle candidate is missing.** No probe searches
+   "direct-ish with fails at FULL price, facility pull off". The backstreets
+   parallel to SR 522 are never explored.
+2. **No fail ceiling on a seat.** The discovery product (21% failing) is
+   offered as "Shorter" beside clean options, unmarked as the
+   rules-relaxed search it is except deep in the All Routes screen.
 
 **Suggested actions, for another agent.**
-- Corridor-monoculture check in the diversity rounds: when nearly every
-  built candidate shares one spine (here 20/20 on the Burke-Gilman), re-run
-  one search with that spine's edges surcharged. The alternative-corridor
-  machinery exists; measure why its penalty loses to the trail discount and
-  scale it accordingly.
 - Add a direct-clean probe to the grid: direct mode, facility/trail
   discounts neutralized, fail multipliers at full price. Its job is exactly
-  the rider's ask — the quickest route that touches no failing road.
-- Gate seats by fails: a candidate failing more than ~0.5 mi or ~5% of its
-  riding may be offered only when every clean option costs at least ~1.35×
-  its time (tune the ratio). Keep the inverse guarantee: when nothing clean
-  is within the ratio, the failing route is offered, and says why.
-- Honesty check on this very trip: the clean board is 70 min against the
-  failing 45 — 1.56×, so the SR 522 route would legitimately survive a
-  1.35× gate today. The gate only bites once an action above has put the
-  safe-direct middle on the board; land those first.
-- Re-measure this exact trip, both directions, after each step. The third
-  bullet of issue 18 (ferry terminals in the Vancouver destination search)
-  is a separate search problem and is untouched by all of this.
-
+  the rider's ask — the quickest route that touches no failing road. Compare
+  its result here against the 8.8 mi arterial line and the 14.2 mi trail
+  ride; the interesting corridor is between them.
+- Gate discovery/direct-lens candidates by fails at seating: they carry
+  `optimization.directLens`, so the gate is cheap — offer one with more than
+  ~0.5 mi or ~5% failing only when every clean option costs at least ~1.35×
+  its time (tune the ratio), and say on the card why it is being offered.
+- Keep the corridor-monoculture check in mind but second: 20 of 20 ordinary
+  candidates on one Burke-Gilman spine means the alternative-corridor
+  penalty loses to the trail discount; measure before scaling it.
+- Honesty check on this trip: clean 70 min vs failing 45 is 1.56×, so a
+  1.35× gate alone would NOT remove Route C today — the direct-clean probe
+  has to land first and produce the middle option that beats it.
+- Re-measure this exact trip, both directions, after each step
+  (`start [-122.28096, 47.75677]`, `end [-122.35403, 47.67213]`, via the
+  app path or a worker request carrying `directProbeWeights` — a worker
+  probe WITHOUT that field never runs the direct-lens search and cannot
+  reproduce the board). The ferry-terminals bullet of issue 18 is a
+  separate search problem, untouched by all of this.
