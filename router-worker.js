@@ -1496,9 +1496,9 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // that search. Never touches the pricing of any offered route.
   facilityNeutralStrength: 0.5,
   // How much different riding (miles, on the shorter of the two) makes two
-  // options genuinely different instead of one route offered twice. The
-  // default is the field-tuned 800 m the dedupe shipped with.
-  distinctRideMi: 1.0,
+  // options genuinely different instead of one route offered twice. Raised
+  // to 1.5 mi (field, 2026-08-31) with the floor below; see the app.js mirror.
+  distinctRideMi: 1.5,
   // Scales every outcome threshold in materialTradeoff below: under 1,
   // smaller safety/facility differences keep a near-identical pair
   // separate; above 1 only large ones do. 1 is the shipped behaviour.
@@ -3745,10 +3745,13 @@ function twinVerdict(a, b, overlap) {
 function twinOverlapLimit(a, b) {
   const shorterM = Math.max(1, Math.min(a.distM, b.distM));
   // The rider's distinctRideMi slider. The 30% cap keeps short trips able
-  // to offer close variants; the 6% floor keeps long trips from showing
-  // near-identical routes.
+  // to offer close variants; the floor keeps long trips from showing
+  // near-identical routes. Floor raised 0.06 -> 0.08 (field, 2026-08-31):
+  // at ~19 mi, distinctRideMi lands below the floor, so the floor alone sets
+  // the limit -- and Phinney -> Woodinville's two 93.8%-shared routes needed
+  // the limit under 0.938 (0.92 now) to fold into one.
   const distinctM = activeWeights.distinctRideMi * 1609.344;
-  return 1 - Math.min(0.30, Math.max(0.06, distinctM / shorterM));
+  return 1 - Math.min(0.30, Math.max(0.08, distinctM / shorterM));
 }
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);

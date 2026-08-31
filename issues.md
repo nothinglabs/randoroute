@@ -108,14 +108,6 @@ same lineup without the block.
 
 ---
 
-### 14. Resolve duplicate routes
-Near-duplicates still reach the board. Phinney to Woodinville is the field
-example. v950-v954 tightened this several ways already, so read the deciding
-verdict per row on the All Routes screen for that trip before moving another
-threshold.
-
----
-
 ### 15. Get iPhone notifications working
 Build side done 2026-08-30: the Live Activity compiles clean and the
 `RandoRouteActivity` extension target now exists (hand-authored into the
@@ -128,11 +120,3 @@ ink colors (the lock screen is a dark environment, so adaptive styles come out
 light). Remaining §3c device checks: arrow/headline turn tracking, Dynamic
 Island views, off-route, arrival self-dismiss, Stop, Live-Activities-off
 degradation — plus re-checking contrast on the rebuilt card.
-
----
-
-### 16. Reduce redundant voice announcements
-The spoken guidance repeats itself. The only suppression today is an exact
-text match inside five seconds (`speakNavigation` in `app.js`). Needs a field
-list of what actually got said, in order.
-

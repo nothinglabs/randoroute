@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.954';
+const APP_VERSION = '2026-08-30.955';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -205,9 +205,11 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // that search. Rationale with the worker's copy.
   facilityNeutralStrength: 0.5,
   // How much different riding (miles, on the shorter of the two) makes two
-  // options genuinely different instead of one route offered twice. The
-  // default is the field-tuned 800 m the dedupe shipped with.
-  distinctRideMi: 1.0,
+  // options genuinely different instead of one route offered twice. Raised
+  // to 1.5 mi (field, 2026-08-31): Phinney -> Woodinville still offered two
+  // routes 93.8% shared, a hair under the old 94% limit. The floor in
+  // twinOverlapLimit does the catching at this length; this raises the middle.
+  distinctRideMi: 1.5,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
@@ -5284,6 +5286,7 @@ function advancePassedNavigationManeuvers(instructions, startIndex, routeM) {
     instruction.approach = true;
     instruction.ahead = true;
     instruction.now = true;
+    instruction.advanceSpoken = true;
     index++;
   }
   return index;
@@ -6278,11 +6281,15 @@ function rejoinRoute(nearest, previousFix, reachedText = 'Back on route') {
       && instructions[turnNav.next].distanceM < turnNav.routeM - 35) {
     instructions[turnNav.next].approach = true;
     instructions[turnNav.next].now = true;
+    instructions[turnNav.next].advanceSpoken = true;
     turnNav.next++;
   }
   for (let i = turnNav.next; i < instructions.length; i++) {
     instructions[i].approach = false;
+    instructions[i].ahead = false;
     instructions[i].now = false;
+    instructions[i].advanceSpoken = false;
+    instructions[i].lastVoiceAt = 0;
   }
   const road = routeRoadNameAt(nearest.index);
   const routeBearing = routeForwardBearing(nearest.index);
@@ -8542,6 +8549,40 @@ function finishTurnNavigation() {
   speakNavigation('You have arrived at your destination. Navigation has ended.');
 }
 
+// A rider should hear at most one heads-up plus the turn itself for any one
+// maneuver -- two announcements, never a third -- and never two about the same
+// turn inside this window. Reported from the road (2026-08-31): on a single
+// turn, the approach, the "ahead" and the imperative could all land within a
+// fifteen-second window and talk over each other.
+const MANEUVER_VOICE_GAP_MS = 12000;
+// Decides which voice phase (if any) a maneuver is due for, and records that it
+// spoke. The imperative -- the turn instruction at the junction -- is exempt
+// from BOTH the count and the spacing: a missed "turn here" is the one failure
+// this whole system exists to prevent, so it is spoken whenever its window is
+// reached even if a heads-up went out three seconds earlier. The two advance
+// phases (approach, then ahead) collapse to a single `advanceSpoken` heads-up,
+// which is what removes the third announcement.
+function maneuverVoicePhase(next, remaining, windows, now) {
+  if (!next.now && remaining <= windows.immediateM) {
+    next.now = next.ahead = next.approach = next.advanceSpoken = true;
+    next.lastVoiceAt = now;
+    return 'now';
+  }
+  if (next.advanceSpoken) return null;
+  if (now - (next.lastVoiceAt || 0) < MANEUVER_VOICE_GAP_MS) return null;
+  if (remaining <= windows.aheadM) {
+    next.advanceSpoken = next.ahead = next.approach = true;
+    next.lastVoiceAt = now;
+    return 'ahead';
+  }
+  if (remaining <= windows.approachM) {
+    next.advanceSpoken = next.approach = true;
+    next.lastVoiceAt = now;
+    return 'approach';
+  }
+  return null;
+}
+
 function updateTurnNavigation(pos) {
   if (!turnNav.active || !turnNav.route) return;
   const { longitude, latitude } = pos.coords;
@@ -8690,26 +8731,27 @@ function updateTurnNavigation(pos) {
       const road = routeRoadNameAt(nearest.index);
       speakNavigation(`Head ${heading}${road ? ` on ${road}` : ''}. `
         + navSpokenApproach(remaining, next));
-      if (remaining <= approachM) next.approach = true;
+      // Orientation folds in the first maneuver's heads-up, so it counts as
+      // that turn's one advance warning and starts its spacing clock --
+      // otherwise the approach branch would repeat it a fix later.
+      next.advanceSpoken = next.approach = true;
+      next.lastVoiceAt = Date.now();
       spoke = true;
     }
     // Inside the immediate window the turn prompt below says it all.
   }
-  if (!next.now && remaining <= immediateM) {
-    // Inside the immediate window: speak only the turn itself, never both
-    // the approach and the turn back-to-back.
-    next.now = true;
-    next.ahead = true;
-    next.approach = true;
+  // One heads-up, then the turn itself. maneuverVoicePhase caps a maneuver at
+  // two announcements and spaces the heads-up, but never withholds the
+  // imperative -- see its definition above.
+  const voicePhase = maneuverVoicePhase(next, remaining,
+    { immediateM, aheadM, approachM }, Date.now());
+  if (voicePhase === 'now') {
     speakNavigation(`${navInstructionText(next)}.`);
     spoke = true;
-  } else if (!next.ahead && remaining <= aheadM) {
-    next.ahead = true;
-    next.approach = true;
+  } else if (voicePhase === 'ahead') {
     speakNavigation(navSpokenAhead(next));
     spoke = true;
-  } else if (!next.approach && remaining <= approachM) {
-    next.approach = true;
+  } else if (voicePhase === 'approach') {
     speakNavigation(navSpokenApproach(remaining, next));
     spoke = true;
   }
@@ -12079,7 +12121,7 @@ function allRoutesSummary(all) {
     ${recommended ? `<p>★ <b>${recommended.label}</b> — ${basis}</p>` : ''}
     <p class="all-routes-rule">Options fold together when under
       <b>${Number(routingWeights.distinctRideMi).toFixed(2)} mi</b> of the shorter
-      route differs (held to 4–25%). Each row carries its own two numbers.</p>`;
+      route differs (held to 8–30%). Each row carries its own two numbers.</p>`;
   return meta;
 }
 

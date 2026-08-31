@@ -75,30 +75,35 @@ check('naming the road under the wheels',
   /on Pine Street/.test(spoken[0]?.text || ''), JSON.stringify(spoken));
 check('and folding in the first maneuver',
   /turn left onto 1st Avenue\.$/i.test(spoken[0]?.text || ''), JSON.stringify(spoken));
+// Orientation folds in the first maneuver, so that fold IS the turn's one
+// heads-up (2026-08-31). It marks the maneuver's advance spent, and the
+// approach/ahead windows below no longer repeat it -- the reduction a rider
+// asked for. Before this, the first turn was announced four times: orientation
+// with the turn folded in, then approach, then ahead, then the imperative.
 const approachEarly = await page.evaluate(() => turnNav.route.instructions[0].approach);
-check('without consuming the approach announcement still 700 m out',
-  approachEarly === false, String(approachEarly));
+check('marking the first maneuver'
+  + "'s single heads-up spent, so it is not repeated",
+  approachEarly === true, String(approachEarly));
 
 /* ------------------------------------------------------- and only ever once */
 await page.evaluate(() => window.__fix(-122.2996));
 spoken = await page.evaluate(() => window.__spoken);
 check('a later fix does not re-orient', spoken.length === 1, JSON.stringify(spoken));
 
-/* ----------------------- the ordinary windows still fire, later down the road */
-await page.evaluate(() => window.__fix(-122.2953)); // ~350 m ridden, ~350 m to the turn
+/* ------------------- the folded heads-up is not repeated as the turn nears */
+await page.evaluate(() => window.__fix(-122.2953)); // ~350 m to the turn
 spoken = await page.evaluate(() => window.__spoken);
-check('the approach window announces the turn with its distance',
-  spoken.length === 2 && /^In .*turn left onto 1st Avenue\.$/i.test(spoken[1].text),
-  JSON.stringify(spoken));
-await page.evaluate(() => window.__fix(-122.2913)); // ~650 m ridden, inside the turn window
+check('the approach window does not repeat a turn orientation already covered',
+  spoken.length === 1, JSON.stringify(spoken));
+await page.evaluate(() => window.__fix(-122.2913)); // closer to the turn
 spoken = await page.evaluate(() => window.__spoken);
-check('the advance window says the maneuver is ahead',
-  spoken.length === 3 && /^Ahead, turn left onto 1st Avenue\.$/.test(spoken[2].text),
-  JSON.stringify(spoken));
+check('nor does the ahead window', spoken.length === 1, JSON.stringify(spoken));
+
+/* -------------- but the turn itself is always spoken at the junction */
 await page.evaluate(() => window.__fix(-122.29075)); // final few metres before the turn
 spoken = await page.evaluate(() => window.__spoken);
-check('only the immediate window speaks the bare turn command',
-  spoken.length === 4 && /^Turn left onto 1st Avenue\.$/.test(spoken[3].text),
+check('the imperative still speaks the bare turn command at the junction',
+  spoken.length === 2 && /^Turn left onto 1st Avenue\.$/.test(spoken[1].text),
   JSON.stringify(spoken));
 
 /* ----------------------------------------- the windows grow with rider speed */
