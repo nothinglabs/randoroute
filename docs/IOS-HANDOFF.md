@@ -13,9 +13,11 @@ audio mixing, battery, and thermals still require a physical iPhone and a real
 ride.
 
 On 2026-08-30 at `.954` the Live Activity Swift compiled for the first time,
-clean, and the App target built Release with no Swift warnings. The
-`RandoRouteActivity` extension target still does not exist, so no lock-screen
-card has yet rendered anywhere. §3c carries that audit.
+clean, and later the same day the `RandoRouteActivity` extension target was
+authored into the project: the Release device build embeds a signed
+`RandoRouteActivity.appex` with the WidgetKit extension point and an iOS 16.2
+floor. §3c carries both audits. The device checks — a card actually rendering
+on a locked iPhone — remain the open work.
 
 ---
 
@@ -245,9 +247,9 @@ same treatment there; the payload is already carrying what it would need.
 
 ## 3c. Live Activity: next maneuver on the lock screen
 
-Written 2026-08-26. **The Swift now compiles; the extension target still does
-not exist, so nothing renders yet.** See the 2026-08-30 audit below for what
-that means. The code shows
+Written 2026-08-26. **The Swift compiles and the extension target exists,
+builds, and embeds signed as of 2026-08-30; only the device checks remain.**
+The two audits below carry the evidence. The code shows
 the next maneuver on the lock screen and in the Dynamic Island while
 navigating: a maneuver arrow, "Left turn in 0.2 miles" as the headline, the
 full instruction sentence, and remaining trip distance. It is driven by
@@ -259,8 +261,11 @@ The glance line and arrow arrive pre-resolved from the web layer with the
 in-app banner's exact thresholds, so locked and unlocked guidance cannot
 disagree.
 
-**One-time Xcode setup (the extension target cannot be created from a text
-editor):**
+**One-time setup — done 2026-08-30.** This section originally claimed the
+extension target cannot be created from a text editor; that proved wrong. The
+target was hand-authored directly into `project.pbxproj` (second audit below)
+and every numbered step is complete in the repo. The steps stay as the record
+of what the wiring contains:
 
 1. File → New → Target… → **Widget Extension**. Name it exactly
    `RandoRouteActivity`, uncheck "Include Configuration App Intent", check
@@ -326,8 +331,8 @@ Unsigned product 357 MiB.
 `0`. The built `App.app` carries `NSSupportsLiveActivities = true` and has
 **no `PlugIns/` directory** — there is no widget extension for ActivityKit
 to match, and `Activity.request` is behind `try?`, so the failure mode is a
-silent no-card rather than a crash. Steps 1–4 above are still required and
-still need the Xcode GUI; they were not done in this audit.
+silent no-card rather than a crash. (Superseded later the same day — the
+next audit created the target.)
 
 After creating the target, these two commands are the objective check that
 the wiring took — both must change from the values recorded here:
@@ -342,6 +347,49 @@ card on lock, arrow/headline tracking, Dynamic Island compact view,
 off-route warning state, arrival card and self-dismissal, Stop, and the
 Live-Activities-off degradation — remains unverified. Compiling is not
 rendering: nothing here shows that a card has ever appeared on a screen.
+
+### Audit 2026-08-30, later — extension target authored; builds, embeds, signs
+
+Same machine and toolchain, same day. The `RandoRouteActivity` target was
+hand-authored directly into `project.pbxproj` — a full widget-extension
+target graph (native target, product `RandoRouteActivity.appex`, its three
+build phases, the App target's Embed Foundation Extensions copy phase with
+`dstSubfolderSpec = 13`, target dependency and container proxy, and
+Debug/Release configurations) plus a minimal
+`ios/App/RandoRouteActivity/Info.plist` carrying only the `NSExtension`
+dict; `GENERATE_INFOPLIST_FILE = YES` merges the rest. The extension's
+Sources phase compiles the two committed widget files and, via a second
+`PBXBuildFile` against the same file reference,
+`App/NavigationActivityAttributes.swift` — the dual target membership §3c
+step 3 requires. Deployment floor `IPHONEOS_DEPLOYMENT_TARGET = 16.2`
+(step 4), `CODE_SIGN_STYLE = Automatic` on team `TBQLTPSM64`, bundle id
+`io.github.nothinglabs.clauding.RandoRouteActivity`, `SKIP_INSTALL = YES`.
+
+`xcodebuild -scheme App -configuration Release -destination
+'generic/platform=iOS' -allowProvisioningUpdates build` succeeded;
+automatic signing minted an iOS Team Provisioning Profile for the
+extension's bundle id. Measured in the built product:
+
+- `App.app/PlugIns/RandoRouteActivity.appex` exists — the morning audit's
+  `ls PlugIns` check, previously "No such file or directory".
+- Its `Info.plist`: `NSExtensionPointIdentifier =
+  com.apple.widgetkit-extension`, `CFBundleIdentifier =
+  io.github.nothinglabs.clauding.RandoRouteActivity`,
+  `MinimumOSVersion = 16.2`.
+- `NavigationActivityAttributes` type metadata is present in both the appex
+  binary and the App binary — the type-identity precondition for ActivityKit
+  matching.
+- The appex links ActivityKit, WidgetKit, and SwiftUI.
+- `codesign --verify --deep --strict App.app` passes with the nested appex.
+- `grep -c RandoRouteActivity project.pbxproj` moved 0 → 26.
+
+`xcodebuild -list` shows both targets; the auto-surfaced RandoRouteActivity
+scheme was left alone (the App scheme builds the appex through the
+dependency, as §3c step 1 intends).
+
+**Still no device check.** The whole §3c device list is untouched: nothing
+above proves a card has rendered. Next session with the physical iPhone:
+install this build, start Navigate, lock the phone, and walk the list.
 
 ## 4. Still device-only
 

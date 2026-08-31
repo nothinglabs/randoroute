@@ -154,13 +154,14 @@ threshold.
 ---
 
 ### 15. Get iPhone notifications working
-The lock-screen Live Activity compiles as of 2026-08-30 — clean, no warnings,
-verified with a positive control because `#if canImport(ActivityKit)` can hide
-an empty pass. What blocks it is unchanged: the `RandoRouteActivity` widget
-extension target does not exist in the Xcode project and cannot be created
-from a text editor, so the built `App.app` has no `PlugIns/` and
-`Activity.request` no-ops behind `try?`. Steps 1-4 of `docs/IOS-HANDOFF.md`
-section 3c need the Xcode GUI; the device checks then need a physical iPhone.
+Build side done 2026-08-30: the Live Activity compiles clean and the
+`RandoRouteActivity` extension target now exists (hand-authored into the
+pbxproj — the "needs the Xcode GUI" claim proved wrong). The Release device
+build embeds a signed `RandoRouteActivity.appex`, WidgetKit extension point,
+iOS 16.2 floor, attributes type in both binaries, deep codesign passing.
+What remains is exactly the §3c device list in `docs/IOS-HANDOFF.md` on a
+physical iPhone: card on lock, arrow/headline tracking, Dynamic Island,
+off-route, arrival self-dismiss, Stop, Live-Activities-off degradation.
 No card has rendered anywhere yet.
 
 ---
