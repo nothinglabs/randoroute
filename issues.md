@@ -84,21 +84,3 @@ requirements.
 
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.
-
----
-
-
-
-### 17. Tweak the segment details page
-Three asks from the field, 2026-08-30.
-
-- **Information richness.** The per-segment rows lost content over time and now
-  read thin; decide what belongs back. `route-details.js` renders them and has
-  not changed since v894 (`f55b868`, 2026-08-27), which retired the shoulder
-  line.
-- **Easy to close.** `routeDetailsDialog` in `index.html` has no close control
-  at all — its head is a title and a description, then the iframe. Every other
-  full-screen dialog carries a `dialog-close` button.
-- **Name the highway.** Segments say the generic word `highway`
-  (`route-details.js:740`) where `stateHighwayName` could resolve the actual
-  route number.
