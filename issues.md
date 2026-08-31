@@ -179,3 +179,69 @@ seat with no eligibility test.
   probe WITHOUT that field never runs the direct-lens search and cannot
   reproduce the board). The ferry-terminals bullet of issue 18 is a
   separate search problem, untouched by all of this.
+
+---
+
+### Fable analysis of issue 18, part 2 — the middle exists, and one value finds it
+All measured 2026-08-31 at v958, default rules, on the exact field trip.
+
+**The rider's premise is verified.** A safe-direct middle exists on the
+ground: 9.7 mi / 52 min / 0.00 mi failing, via the 20th Ave NE / Roosevelt /
+N 90th / Greenwood backstreet grid — 7 min over the failing Route C, 18 min
+under the clean board. Route C's 1.92 failing miles buy almost nothing.
+
+**The hiding mechanism is the trail discount, not fail pricing.** A direct
+search with the failing-road wall raised to 60× but facility discounts left
+at default still rides the Burke-Gilman 14.2 mi ride. Neutralize the
+facility/trail discounts instead and the backstreet middle appears
+immediately. Every default-discount search — all twenty profiles — finds the
+discounted 11.5 trail miles cheaper than any street, so the only probe that
+escapes the trail is the one that also discounts fails, and it escapes in
+the arterial's direction.
+
+**The fix candidate is one value, verified end-to-end.** The
+facility-neutral diversity round already exists; its
+`facilityNeutralStrength` default of 0.5 halves the discount pull, and
+halving is not enough here. At 1.0 (full neutral, still one extra search,
+still priced for offer at the rider's real weights) the same trip returns a
+six-option board spanning the whole time/exposure range:
+
+| option | profile | mi | min | failing mi |
+|---|---|---|---|---|
+| A/B | efficient, alt-wide | 14.2 | 70 | 0 |
+| C | facility-neutral | 10.2 | 54 | **0** |
+| D | combined-corridor-2 | 9.9 | 53 | 0.44 |
+| E | combined-corridor | 9.8 | 51 | 0.67 |
+| F | direct-lens | 8.8 | 45 | 1.92 |
+
+The combined-corridor stitcher produced D and E on its own once the neutral
+round put the corridor in the pool — the frontier fills in without new
+machinery.
+
+**Gate math, recomputed.** With the clean 54-min option on the board, the
+failing 45-min ride costs 1.20× to avoid — under a ~1.35× gate Route F now
+folds, which is the rider's rule realized: the failing arterial is offered
+only when no good clean choice exists. Without the strength change the gate
+does nothing here (part 1's 1.56× measurement stands).
+
+**Actions, in order.**
+1. Change the `facilityNeutralStrength` default 0.5 → 1.0 (it stays a
+   slider, so it can be dialed back). Then run the portfolio,
+   corridor-severance and all-routes gates, and re-measure known trips both
+   directions — this one, Phinney → Woodinville, University District →
+   Woodland Park Zoo (the 11th Ave NE corridor lesson), Seattle → Port
+   Townsend. The 0.5 was itself rider-set (2026-08-27), so the change needs
+   a field verdict.
+2. Then the fail gate on discovery products (`optimization.directLens`):
+   offer one with over ~0.5 mi or ~5% failing only when every clean offered
+   option costs at least ~1.35× its time; label it when it survives.
+   Decide whether partial-fail intermediates (D, E above) pass through the
+   gate or are held to the same test.
+3. The part-1 "new direct-clean probe" is superseded — the existing round at
+   full strength does its job for free. The corridor-monoculture check
+   stays worth a look but is no longer the lead.
+4. Flag for the rider: after step 1 the star stayed on the 70-min trail
+   ride while a clean 54-min direct exists. The suggestion score's trail
+   bonus is what holds it there; whether that is right is a field question,
+   not settled here.
+
