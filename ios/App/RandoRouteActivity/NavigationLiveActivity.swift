@@ -14,25 +14,30 @@ import ActivityKit
 struct NavigationLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NavigationActivityAttributes.self) { context in
-            // Lock screen / banner presentation.
+            // Lock screen / banner presentation. The lock screen renders in a
+            // dark environment, so the system default text styles come out
+            // near-white — invisible on this pale tint (first device render,
+            // 2026-08-30). Every color here is explicit ink, not adaptive.
             HStack(spacing: 14) {
                 Image(systemName: context.state.arrowSymbol)
                     .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(Color(red: 0.09, green: 0.31, blue: 0.27))
                     .frame(width: 52, height: 52)
                     .background(Color(red: 0.09, green: 0.31, blue: 0.27).opacity(0.14))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(context.state.headline)
                         .font(.title2.bold())
+                        .foregroundStyle(Color(red: 0.04, green: 0.13, blue: 0.11))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(context.state.detail)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.black.opacity(0.62))
                         .lineLimit(2)
                     Text(context.state.meta)
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.black.opacity(0.45))
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)

@@ -159,10 +159,12 @@ Build side done 2026-08-30: the Live Activity compiles clean and the
 pbxproj — the "needs the Xcode GUI" claim proved wrong). The Release device
 build embeds a signed `RandoRouteActivity.appex`, WidgetKit extension point,
 iOS 16.2 floor, attributes type in both binaries, deep codesign passing.
-What remains is exactly the §3c device list in `docs/IOS-HANDOFF.md` on a
-physical iPhone: card on lock, arrow/headline tracking, Dynamic Island,
-off-route, arrival self-dismiss, Stop, Live-Activities-off degradation.
-No card has rendered anywhere yet.
+First render on a physical iPhone confirmed the same evening — card, headline,
+instruction, and distance all correct, but white-on-white; fixed with explicit
+ink colors (the lock screen is a dark environment, so adaptive styles come out
+light). Remaining §3c device checks: arrow/headline turn tracking, Dynamic
+Island views, off-route, arrival self-dismiss, Stop, Live-Activities-off
+degradation — plus re-checking contrast on the rebuilt card.
 
 ---
 

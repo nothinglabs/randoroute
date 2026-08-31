@@ -387,9 +387,16 @@ extension's bundle id. Measured in the built product:
 scheme was left alone (the App scheme builds the appex through the
 dependency, as §3c step 1 intends).
 
-**Still no device check.** The whole §3c device list is untouched: nothing
-above proves a card has rendered. Next session with the physical iPhone:
-install this build, start Navigate, lock the phone, and walk the list.
+**First device render, same evening.** The rider installed the build on a
+physical iPhone: the card appeared on the lock screen during navigation with
+the correct headline, instruction, and remaining distance — but white-on-white.
+The lock screen renders Live Activities in a dark environment, so the default
+adaptive text styles came out near-white against the card's pale tint. Fixed
+by making every lock-screen color explicit ink (dark-green arrow and
+headline, black-alpha detail and meta); the Dynamic Island regions keep the
+adaptive defaults because the island is always on black. The rest of the §3c
+device list — turn tracking, Dynamic Island views, off-route, arrival
+self-dismissal, Stop, Live-Activities-off — is still unverified.
 
 ## 4. Still device-only
 
