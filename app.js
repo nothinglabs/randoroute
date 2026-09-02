@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.961';
+const APP_VERSION = '2026-08-30.962';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9157,16 +9157,55 @@ function refreshedRouteSelection(options) {
   if (!options.length) return null;
   const recommended = options.find((option) => option.optimization?.recommended);
   if (routing.selectRecommendedNext) return recommended || options[0];
-  // Selection continuity is by LETTER, not recipe. Letters are rank positions
-  // in a freshly sorted portfolio, so "the new C" is a route of similar
-  // standing to the old C rather than the old C's recipe re-run -- the field
-  // decision that replaced the frozen-lineup system. A letter past the end of
-  // a shorter lineup falls to the last (closest) one.
-  const previousLetter = (routing.last?.optimization?.label || '').replace(/^Route /, '');
-  if (!previousLetter || previousLetter.length !== 1) return recommended || options[0];
-  const sameLetter = options.find((option) =>
-    (option.optimization?.label || '').replace(/^Route /, '') === previousLetter);
-  return sameLetter || options[options.length - 1];
+  // Selection continuity is by GEOMETRY: after a re-plan (a road block, a
+  // moved pin, a changed rule) the rider stays on whichever new route shares
+  // the most road with the one they were looking at, whatever letter or
+  // recipe that is. Two earlier designs are gone. Letter continuity ("the new
+  // C") put the rider on a stranger with the same rank. Before that, the
+  // worker gave the selected recipe a guaranteed seat and immunity from every
+  // pruning filter -- which is why a route the seat gate had rejected came
+  // straight back when it happened to be selected (2026-09-01). The worker no
+  // longer knows or cares what was selected; this is the only continuity.
+  const previous = routing.last?.ok ? routing.last.coords : null;
+  if (!Array.isArray(previous) || previous.length < 2) return recommended || options[0];
+  let best = null, bestScore = -1;
+  for (const option of options) {
+    const score = routeSimilarity(previous, option.coords);
+    if (score > bestScore || (score === bestScore && option === recommended)) {
+      best = option; bestScore = score;
+    }
+  }
+  return best || recommended || options[0];
+}
+
+// Fraction of one route's length that lies within 40 m of another's. Up to
+// 160 evenly spaced samples of `from`, each measured to the nearest segment of
+// `to` in local metres -- a few hundred thousand cheap operations per board,
+// well under a frame. Vertices are not enough on their own: a straight arterial
+// can run half a mile between them, so distance is taken to the segment.
+function routeSimilarity(from, to) {
+  if (!Array.isArray(to) || to.length < 2) return 0;
+  const lat0 = (from[0][1] * Math.PI) / 180;
+  const kx = 111320 * Math.cos(lat0), ky = 110540;
+  const seg = to.map((c) => [c[0] * kx, c[1] * ky]);
+  const step = Math.max(1, Math.floor(from.length / 160));
+  let hits = 0, samples = 0;
+  for (let i = 0; i < from.length; i += step) {
+    const px = from[i][0] * kx, py = from[i][1] * ky;
+    let nearest = Infinity;
+    for (let j = 1; j < seg.length && nearest > 1600; j++) {
+      const [ax, ay] = seg[j - 1], [bx, by] = seg[j];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      const ex = ax + t * dx - px, ey = ay + t * dy - py;
+      const d2 = ex * ex + ey * ey;
+      if (d2 < nearest) nearest = d2;
+    }
+    if (nearest <= 1600) hits++;
+    samples++;
+  }
+  return samples ? hits / samples : 0;
 }
 
 function onRouterMessage(ev) {

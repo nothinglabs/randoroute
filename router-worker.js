@@ -5575,7 +5575,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   unique.sort((a, b) => a._profile.order - b._profile.order
     || b.aggression - a.aggression || a.timeS - b.timeS);
 
-  const preferred = unique.find((r) => r._profile.id === preferredProfileId);
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
   const fullyMatching = unique.filter((route) => route.failM <= 0.5)
     .reduce((best, route) => !best || recommendationScore(route) < recommendationScore(best)
@@ -5594,8 +5593,17 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const combinedCorridor = unique.find((r) => r._profile.id.startsWith('combined-corridor'));
   const strongPreferredCandidate = preferredRoutesActive(rules)
     ? bestStrongPreferredCandidate(unique) : null;
+  // The rider's current selection (`preferred`, matched by profile id) is
+  // deliberately NOT in this set and gets no seat guarantee below. It used to:
+  // placing a road block re-plans, and the guarantee kept the selected recipe
+  // from being scrambled. The cost was that the one route the rider is looking
+  // at bypassed every filter in this pipeline -- domination, twin folding, and
+  // on 2026-09-01 the direct-lens seat gate, which let a gated route straight
+  // back onto the board. Continuity now lives in the app: after a re-plan it
+  // selects whichever new route is geometrically closest to the old one,
+  // whatever letter or recipe that turns out to be (refreshedRouteSelection).
   const protectedCandidates = new Set([
-    preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
+    bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
     sectionFrontier, combinedCorridor, strongPreferredCandidate,
   ].filter(Boolean));
   // A route may be objectively slower and no safer yet still give the rider a
@@ -5671,16 +5679,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     .filter((c) => (c.failM || 0) <= CLEAN_FAIL_M)
     .reduce((best, c) => (!best || c.timeS < best.timeS ? c : best), null);
   const lensGatedOf = new Map();
-  // `preferred` is deliberately NOT a shield here. The app sends the rider's
-  // current selection as preferredProfileId on every re-plan, so a lens route
-  // the rider happened to have selected came straight back through the gate
-  // (v960 on the phone: Lake Forest Park -> Fremont still showed the 58 min
-  // lens as Route C, because it was the selection when the update landed).
-  // Letter continuity is the app's job (refreshedRouteSelection); it does not
-  // need the recipe kept alive to do it.
   const choices = scoredChoices.filter((candidate) => {
-    if (!candidate._profile?.directLens) return true;
-    if (protectedCandidates.has(candidate) && candidate !== preferred) return true;
+    if (!candidate._profile?.directLens || protectedCandidates.has(candidate)) return true;
     if ((candidate.failM || 0) <= LENS_FAIL_FLOOR_M || !cleanQuickest) return true;
     if (cleanQuickest.timeS >= candidate.timeS * LENS_SEAT_RATIO) return true;
     lensGatedOf.set(candidate, cleanQuickest);
@@ -5819,8 +5819,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     recommended = preferredRouteAnchor;
     recommendationBasis = 'preferred-route-override';
   }
-  const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
-    || preferred === safestOverall) ? preferred : null;
   const boundedBothPreferences = (!hasStops || !bothPreferences
     || boundedChoices.includes(bothPreferences) || bothPreferences === safestOverall)
     ? bothPreferences : null;
@@ -5828,7 +5826,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // result. The remaining slots should represent useful approaches to the
   // stops the rider actually chose, not several variations of the same loop.
   const stopBounded = hasStops ? choices.filter((route) => boundedChoices.includes(route)
-    || route === safestOverall || route === boundedPreferred) : choices;
+    || route === safestOverall) : choices;
   // Six lettered slots, up from five: the direct-lens candidate widened the
   // portfolio's real variety, and the extra slot lets it surface without
   // pushing an ordinary choice out. Interior picks fill to two under the cap
@@ -5898,7 +5896,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // BY CONSTRUCTION, and a guaranteed seat would undo the exclusion above.
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
     forwardProgressChoice, sectionFrontier, trailPortfolio,
-    boundedBothPreferences, boundedPreferred, fullyMatching,
+    boundedBothPreferences, fullyMatching,
     ferryCrossBreed, adaptiveCorridor, combinedCorridor, strongPreferredCandidate,
     preferredRouteAnchor].filter(Boolean))]
     .filter((route) => selectionChoices.includes(route));
