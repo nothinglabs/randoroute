@@ -1855,10 +1855,23 @@ body.navigation-active #routeBar { display: none; }
    on the colour. The rest of the text stays white and the pill itself does
    not move. `alternate` with an odd count is what lands the last frame on
    the colour rather than snapping back to it. */
-@keyframes desc-flag-flash-fail { from { color: #fff; } to { color: #ffb3a7; } }
-@keyframes desc-flag-flash-caution { from { color: #fff; } to { color: #ffd79a; } }
-.route-desc-toast.attention .desc-flag-fail { animation: desc-flag-flash-fail .2s ease-in-out 5 alternate; }
-.route-desc-toast.attention .desc-flag-caution { animation: desc-flag-flash-caution .2s ease-in-out 5 alternate; }
+/* Louder (field ask, 2026-09-02): each beat fills the figure solid in its
+   verdict colour with white text, scales it up and glows, then falls back to
+   the resting tint; seven half-beats over 1.5 s, the odd count landing the
+   last frame on the resting look. The figures are inline-blocks with fixed
+   padding so the fill has a shape to paint and the scale never reflows the
+   line. */
+.route-desc-toast .desc-flag { display: inline-block; padding: 0 4px; margin: 0 -1px; border-radius: 5px; }
+@keyframes desc-flag-flash-fail {
+  from { color: #fff; background-color: #e0392b; transform: scale(1.16); text-shadow: 0 0 10px rgba(255, 96, 76, .95); }
+  to { color: #ffb3a7; background-color: transparent; transform: scale(1); text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
+}
+@keyframes desc-flag-flash-caution {
+  from { color: #fff; background-color: #e08a00; transform: scale(1.16); text-shadow: 0 0 10px rgba(255, 170, 60, .95); }
+  to { color: #ffd79a; background-color: transparent; transform: scale(1); text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
+}
+.route-desc-toast.attention .desc-flag-fail { animation: desc-flag-flash-fail .22s ease-in-out 7 alternate; }
+.route-desc-toast.attention .desc-flag-caution { animation: desc-flag-flash-caution .22s ease-in-out 7 alternate; }
 @media (prefers-reduced-motion: reduce) {
   .route-desc-toast.attention .desc-flag-fail, .route-desc-toast.attention .desc-flag-caution { animation: none; }
 }
