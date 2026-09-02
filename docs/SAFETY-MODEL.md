@@ -6,7 +6,7 @@ How a road gets its colour, its verdict, and its routing cost.
 
 **A setting that sounds objective must have an objective consequence.** If a
 control is named like a fact or a permission —
-*Minimum shoulder width to count as safe-ish*, *Route over freeway as last resort (still shows as failing)*
+*Minimum shoulder width to count as safeish*, *Route over freeway as last resort (still shows as failing)*
 — then changing it must change the verdict shown on the map in a defined,
 reproducible way. A control that sounds like it governs safety but only nudges
 routing cost is a lie to the rider.
@@ -457,7 +457,7 @@ A **shoulder** at or above `minShoulder`, or a **bike lane or better**
 (`facility >= 2`). A sharrow is `facility == 1` and satisfies nothing: it is
 paint in a shared travel lane, not space of your own. That is why the speed
 sliders are named "…without shoulder or bike lane" and the width slider
-"Minimum shoulder width to count as safe-ish" — those thresholds only bite a road that has
+"Minimum shoulder width to count as safeish" — those thresholds only bite a road that has
 neither.
 
 **`facility >= 2` must be the threshold in every implementation.** When it was
@@ -474,17 +474,17 @@ Speed, lanes and traffic are three ways of asking one question: **how much of
 this lane is actually available to a rider?** They are therefore a single rung,
 and the settings read as one sentence in the panel:
 
-> **Require bike lane or safe-ish shoulder if any of these:**
+> **Require bike lane or safeish shoulder if any of these:**
 > Speed limit is over — `maxSpeedNoShoulder`
 > Lanes of traffic more than — `lanesNoShoulderOver`
 > Road is busier than — `busyNoShoulder`
 >
-> Minimum shoulder width to count as safe-ish — `minShoulder`
+> Minimum shoulder width to count as safeish — `minShoulder`
 
 The three triggers are **ORed**. Any one of them means the road needs space of
 its own; the road then fails only if it does not have any. `spaceReasons()`
 returns *every* trigger that fired, and the card names all of them — "Fails:
-needs a bike lane or a safe-ish-width shoulder — 45 mph, 4 lanes". Naming only the first
+needs a bike lane or a safeish-width shoulder — 45 mph, 4 lanes". Naming only the first
 would invite a rider to change the wrong setting.
 
 **They were separate rungs and the ordering was a bug.** A `wide-road` rung sat
@@ -1012,7 +1012,7 @@ even the urban/rural split, is still honoured behind both.
 | `maxSpeedNoShoulder` | Speed limit is over | rung 6, trigger 1 | via the verdict |
 | `lanesNoShoulderOver` | Lanes of traffic more than | rung 6, trigger 2 | also `wideRoad*` cost |
 | `busyNoShoulder` | Road is busier than | rung 6, trigger 3 | via the verdict |
-| `minShoulder` | Minimum shoulder width to count as safe-ish | what satisfies rung 6 | via the verdict |
+| `minShoulder` | Minimum shoulder width to count as safeish | what satisfies rung 6 | via the verdict |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0, and gates the ×0.85 sidewalk bailout |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
@@ -1027,7 +1027,7 @@ named as permissions or preferences and change only where you are sent — which
 is what their names promise.
 
 The three rung-6 triggers plus `minShoulder` are presented as one indented group
-under the heading **"Require bike lane or safe-ish shoulder if any of these:"**, because
+under the heading **"Require bike lane or safeish shoulder if any of these:"**, because
 they are one rule read as one sentence. Presenting them as four independent
 sliders was what let the old speed/lane ordering hide.
 
