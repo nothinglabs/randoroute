@@ -49,7 +49,7 @@ The machinery is shipped and tested. Remaining, in order:
 
 ---
 
-### 4. Import and test all states
+### 3. Import and test all states
 Import every U.S. state under the documented state-import process and verify
 each state's data, routing, map rendering, place search, and cross-state
 behavior. Feasibility study 2026-08-24 (PORTING-LESSONS G8,
@@ -64,27 +64,27 @@ California release.
 
 ---
 
-### 5. Data-completeness approach for all states
+### 4. Data-completeness approach for all states
 Define a repeatable way to measure source coverage, freshness, and quality for
 every state against Washington's level. Establish evidence-based acceptance
 criteria and make gaps visible before a state is considered comparable.
 
 ---
 
-### 6. Release / go-to-market plan
+### 5. Release / go-to-market plan
 Define the release sequence, deployment channels, target riders, positioning,
 launch validation, and post-launch support plan.
 
 ---
 
-### 8. Data licensing
+### 6. Data licensing
 Verify OSM and every other data source's licensing and attribution
 requirements.
 
 ---
 
 
-### 17. Tweak the segment details page
+### 7. Tweak the segment details page
 Three asks from the field, 2026-08-30.
 
 - **Information richness.** The per-segment rows lost content over time and now
@@ -100,16 +100,16 @@ Three asks from the field, 2026-08-30.
 
 ---
 
-### 21. Searching for Vancouver returns ferry terminals
+### 8. Searching for Vancouver returns ferry terminals
 Field, 2026-08-30. Typing "Vancouver" as a destination lists a bunch of ferry
-terminals. Carried over from issue 18, whose other two items (the SR 522
+terminals. Carried over from the former issue 18, whose other two items (the SR 522
 corridor, both directions) were fixed in v959-v963; this one was never
 touched. It is a destination-search problem, not a routing or scoring one --
 the place index (`maps/<state>/places.json`) and the search that ranks it.
 
 ---
 
-### 22. Finalize the help and onboarding experience
+### 9. Finalize the help and onboarding experience
 Review the first-run onboarding and the Help screen end to end under the
 Safeish name and decide what a new rider needs to see before their first
 route, and what belongs in Help versus on the map. Not yet scoped.
