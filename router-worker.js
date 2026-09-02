@@ -1499,18 +1499,17 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // options genuinely different instead of one route offered twice. Raised
   // to 1.5 mi (field, 2026-08-31) with the floor below; see the app.js mirror.
   distinctRideMi: 2.0,
-  // 0/1. On: the stricter twin rules from v972 -- hazard terms read
-  // asymmetrically (a twin with more failing road must buy time), and
-  // facility terms cannot keep a pair apart above 90% shared roads. Off
-  // (default, field 2026-09-02): the v971 symmetric rule, which kept a
-  // favourite Interurban route on Seattle -> Mukilteo that the strict rule
-  // folds. The distinctRideMi slider applies either way.
-  reduceRouteDuplication: 0,
+  // 0/1. On (default, rider 2026-09-02): the stricter twin rules from v972
+  // -- hazard terms read asymmetrically (a twin with more failing road must
+  // buy time), and facility terms cannot keep a pair apart above 90% shared
+  // roads. Off: the v971 symmetric rule. The distinctRideMi slider applies
+  // either way.
+  reduceRouteDuplication: 1,
   // The failing-route seat gate (issue 18, v960/v963) as a percentage: a route
   // carrying over 400 m of failing road is offered only if it is this much
-  // faster than the quickest clean route. 15 is the shipped 1.15x; 0 turns
-  // the gate off (field ask, 2026-09-02). MIRRORED in app.js.
-  failSeatSavingPct: 15,
+  // faster than the quickest clean route. 0 (default, rider 2026-09-02) turns
+  // the gate off; 15 was the 1.15x shipped in v960-v974. MIRRORED in app.js.
+  failSeatSavingPct: 0,
   // Scales every outcome threshold in materialTradeoff below: under 1,
   // smaller safety/facility differences keep a near-identical pair
   // separate; above 1 only large ones do. 1 is the shipped behaviour.

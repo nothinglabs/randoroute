@@ -134,9 +134,12 @@ for (const [title, blurb, items] of groups) {
       // checkbox). facilityNeutralStrength is a lens FRACTION whose maximum
       // is its default since v959: 1 removes the facility pull for the extra
       // search entirely, and above 1 the lens would invert the preference,
-      // so the slider is meant to move only one way. Everything else is a
+      // so the slider is meant to move only one way. failSeatSavingPct's 0
+      // is "gate off", the rider's chosen default (2026-09-02); the slider
+      // exists to turn the gate on from there. Everything else is a
       // continuous preference.
-      if (['useMeasuredTraffic', 'reduceRouteDuplication', 'facilityNeutralStrength'].includes(key)) continue;
+      if (['useMeasuredTraffic', 'reduceRouteDuplication', 'facilityNeutralStrength',
+        'failSeatSavingPct'].includes(key)) continue;
       assert.ok(d > item.min && d < item.max,
         `${item.label}: default ${key}=${d} sits at an end of its ${item.min}-${item.max}`
         + ' range, so the slider can only move one way');

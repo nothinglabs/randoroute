@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.974';
+const APP_VERSION = '2026-08-30.975';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -210,18 +210,17 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // routes 93.8% shared, a hair under the old 94% limit. The floor in
   // twinOverlapLimit does the catching at this length; this raises the middle.
   distinctRideMi: 2.0,
-  // 0/1. On: the stricter twin rules from v972 -- hazard terms read
-  // asymmetrically (a twin with more failing road must buy time), and
-  // facility terms cannot keep a pair apart above 90% shared roads. Off
-  // (default, field 2026-09-02): the v971 symmetric rule, which kept a
-  // favourite Interurban route on Seattle -> Mukilteo that the strict rule
-  // folds. The distinctRideMi slider applies either way.
-  reduceRouteDuplication: 0,
+  // 0/1. On (default, rider 2026-09-02): the stricter twin rules from v972
+  // -- hazard terms read asymmetrically (a twin with more failing road must
+  // buy time), and facility terms cannot keep a pair apart above 90% shared
+  // roads. Off: the v971 symmetric rule. The distinctRideMi slider applies
+  // either way.
+  reduceRouteDuplication: 1,
   // The failing-route seat gate (issue 18, v960/v963) as a percentage: a route
   // carrying over 400 m of failing road is offered only if it is this much
-  // faster than the quickest clean route. 15 is the shipped 1.15x; 0 turns
-  // the gate off (field ask, 2026-09-02). MIRRORED in router-worker.js.
-  failSeatSavingPct: 15,
+  // faster than the quickest clean route. 0 (default, rider 2026-09-02) turns
+  // the gate off; 15 was the 1.15x shipped in v960-v974. MIRRORED in router-worker.js.
+  failSeatSavingPct: 0,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
@@ -16762,7 +16761,7 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'twinTradeoffX', label: 'Safety tradeoff to keep a near-twin (x)', min: .3, max: 3, step: .05,
       hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
     { key: 'failSeatSavingPct', label: 'Time a failing route must save to be offered (%)', min: 0, max: 40, step: 1,
-      hint: 'A route with more than 400 m of failing road earns a seat only if it is this much faster than the quickest clean route. 15 is the shipped rule; 0 turns the gate off so every failing route competes on its score alone.' },
+      hint: 'A route with more than 400 m of failing road earns a seat only if it is this much faster than the quickest clean route. 0 (the default) turns the gate off so every failing route competes on its score alone; 15 was the rule in v960-v974.' },
     { key: 'reduceRouteDuplication', label: 'Reduce route duplication', toggle: true, min: 0, max: 1, step: 1,
       hint: 'Stricter folding of near-twins: a twin with more failing road stays only if it saves real time, and two routes sharing over 90% of their roads stay separate only for a safety difference, not for facility mileage. Off keeps every twin the rules above allow.' },
   ], 'Duplicates'],
