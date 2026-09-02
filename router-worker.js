@@ -5671,8 +5671,16 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     .filter((c) => (c.failM || 0) <= CLEAN_FAIL_M)
     .reduce((best, c) => (!best || c.timeS < best.timeS ? c : best), null);
   const lensGatedOf = new Map();
+  // `preferred` is deliberately NOT a shield here. The app sends the rider's
+  // current selection as preferredProfileId on every re-plan, so a lens route
+  // the rider happened to have selected came straight back through the gate
+  // (v960 on the phone: Lake Forest Park -> Fremont still showed the 58 min
+  // lens as Route C, because it was the selection when the update landed).
+  // Letter continuity is the app's job (refreshedRouteSelection); it does not
+  // need the recipe kept alive to do it.
   const choices = scoredChoices.filter((candidate) => {
-    if (!candidate._profile?.directLens || protectedCandidates.has(candidate)) return true;
+    if (!candidate._profile?.directLens) return true;
+    if (protectedCandidates.has(candidate) && candidate !== preferred) return true;
     if ((candidate.failM || 0) <= LENS_FAIL_FLOOR_M || !cleanQuickest) return true;
     if (cleanQuickest.timeS >= candidate.timeS * LENS_SEAT_RATIO) return true;
     lensGatedOf.set(candidate, cleanQuickest);
