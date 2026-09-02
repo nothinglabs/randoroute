@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.970';
+const APP_VERSION = '2026-08-30.971';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10797,6 +10797,16 @@ function drawRoute(coords, ferrySegs, segs) {
       if (map.getLayer(id)) map.moveLayer(id, 'basemap-major-labels');
     }
   }
+  // Warning badges draw in front of every other icon (field ask, 2026-09-02):
+  // topmost in the stack, so nothing added after them -- selection pulses,
+  // the ferry marker, a label -- can paint over one, and the collision
+  // placer, which works from the top of the stack down, places them first
+  // and culls the others around them rather than the reverse. Bottom to top:
+  // hills/traffic/gravel, then the walker (the access instruction wins an
+  // exact overlap), then the fail badge, which is a promise.
+  for (const id of ['route-marker', 'route-dismount-halo', 'route-dismount-marker', 'route-fail-marker']) {
+    if (map.getLayer(id)) map.moveLayer(id);
+  }
   applyDisplayModeAll();
 }
 
@@ -12557,6 +12567,18 @@ function showRouteDescriptionToast(option) {
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.
   host.replaceChildren(body);
+  // A description that reports failing or caution mileage flashes as it
+  // first renders -- the whole text, white to that verdict's colour and
+  // back, three beats in a second, then the flagged figures settle into
+  // their usual colour (field ask, 2026-09-02). Removing and re-adding the
+  // class restarts the animation for every new description.
+  host.classList.remove('attention-fail', 'attention-caution');
+  const attention = body.querySelector('.desc-flag-fail') ? 'fail'
+    : body.querySelector('.desc-flag-caution') ? 'caution' : null;
+  if (attention) {
+    void host.offsetWidth;
+    host.classList.add(`attention-${attention}`);
+  }
   // Just above the route chooser, to the right of the Navigate button and
   // never overlapping it (field ask, 2026-08-27 — down from over the
   // start/destination card, where it hid what the rider was reaching for).
@@ -13180,6 +13202,27 @@ function placeSourceIdentity(stateId, row) {
   return `${stateId}:${String(row[0] || '').trim().toLowerCase()}|${Number(row[1]).toFixed(6)}|${Number(row[2]).toFixed(6)}|${String(row[3] || '')}`;
 }
 
+// OSM maps a ferry terminal berth by berth ("Vancouver (Tsawwassen) Berth 1"
+// … "Berth 5 (Foot Access)"), and the index keeps every distinct name. A
+// rider searching a destination wants the terminal once (issue 8,
+// 2026-09-02): strip the berth suffix and keep the first row per terminal.
+const FERRY_BERTH_SUFFIX = /\s*(?:Berth\s+\d+[A-Z]?|Dock\s+\d+[A-Z]?|\((?:Foot|Vehicle|Car|Walk-on|Passenger)\s+(?:Access|Only)\))\s*/gi;
+function collapseFerryBerths(rows) {
+  const kept = [];
+  const seen = new Map();
+  for (const row of rows) {
+    if (row[3] !== 'ferry') { kept.push(row); continue; }
+    const name = String(row[0]).replace(FERRY_BERTH_SUFFIX, ' ').replace(/\s+/g, ' ').trim() || row[0];
+    const prior = seen.get(name.toLowerCase());
+    if (prior && navDistanceM([prior[1], prior[2]], [row[1], row[2]]) < 1500) continue;
+    const copy = [...row];
+    copy[0] = name;
+    seen.set(name.toLowerCase(), copy);
+    kept.push(copy);
+  }
+  return kept;
+}
+
 function ensurePlaces() {
   if (!placesPromise) {
     placesPromise = (async () => {
@@ -13192,10 +13235,10 @@ function ensurePlaces() {
           if (!response.ok) return null;
           const rows = await response.json();
           if (!Array.isArray(rows)) return null;
-          return { stateId, rows: rows.map((row) => [
+          return { stateId, rows: collapseFerryBerths(rows.map((row) => [
             row[0], row[1], row[2], row[3], row[4], stateId,
             placeSourceIdentity(stateId, row),
-          ]) };
+          ])) };
         } catch (error) { return null; }
       }));
       placesIndex = loaded.flatMap((entry) => entry?.rows || []);
@@ -13942,7 +13985,8 @@ function buildPlacePicker() {
     const starts = [], contains = [];
     for (const p of placesIndex) {
       const row = Array.isArray(p) ? {
-        name: p[0], lon: p[1], lat: p[2], type: p[3], stateId: p[5] || Region.id,
+        name: p[0], lon: p[1], lat: p[2], type: p[3], population: Number(p[4]) || 0,
+        stateId: p[5] || Region.id,
         sourceId: p[6] || placeSourceIdentity(p[5] || Region.id, p), source: 'local',
       } : p;
       const n = row.name.toLowerCase();
@@ -13959,6 +14003,14 @@ function buildPlacePicker() {
     // Nearest first within each match tier, from the same reference the
     // online path biases toward: near Seattle, Carnation WA outranks any
     // Oregon match, whatever order the state indexes loaded in.
+    //
+    // "Nearest" is population-weighted: a city pulls from farther than a
+    // hamlet, so distance is divided by 1 + log10(1 + population). From
+    // Seattle, Vancouver WA (190,915 people, 260 km) then beats Vancouver
+    // Heights (unpopulated suburb row, 250 km) instead of trailing it, while
+    // Wallingford at 5 km still beats Walla Walla. Ferry terminals sort after
+    // every settlement: eight BC berths at 167 km used to fill all eight slots
+    // for "Vancouver" and the city never appeared (issue 8, 2026-09-02).
     const ref = placeSearchReference();
     const distanceTo = new Map();
     const dist = (row) => {
@@ -13969,8 +14021,11 @@ function buildPlacePicker() {
       }
       return d;
     };
-    starts.sort((a, b) => dist(a) - dist(b));
-    contains.sort((a, b) => dist(a) - dist(b));
+    const reach = (row) => dist(row) / (1 + Math.log10(1 + Math.max(0, Number(row.population) || 0)));
+    const ferryLast = (row) => (row.type === 'ferry' ? 1 : 0);
+    const byReach = (a, b) => (ferryLast(a) - ferryLast(b)) || (reach(a) - reach(b));
+    starts.sort(byReach);
+    contains.sort(byReach);
     return uniqueMatches(starts.concat(contains)).slice(0, 8);
   };
 

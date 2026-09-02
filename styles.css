@@ -1849,6 +1849,38 @@ body.navigation-active #routeBar { display: none; }
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 .route-desc-toast.show { opacity: 1; pointer-events: auto; }
+/* Attention flash for a description that carries failing or caution mileage:
+   the text swings white -> verdict colour -> white three times in one second
+   while the pill's ring glows in the same colour and fades. The animation
+   overrides the flagged figures' static colours only while it runs; when it
+   ends they are red or amber again and the rest of the text is white. */
+@keyframes desc-flash-fail {
+  0%, 100% { color: #fff; }
+  50% { color: #ffb3a7; }
+}
+@keyframes desc-flash-caution {
+  0%, 100% { color: #fff; }
+  50% { color: #ffd79a; }
+}
+@keyframes desc-ring-fail {
+  0% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 0 rgba(255, 120, 100, .95); }
+  100% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 14px rgba(255, 120, 100, 0); }
+}
+@keyframes desc-ring-caution {
+  0% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 0 rgba(255, 190, 90, .95); }
+  100% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 14px rgba(255, 190, 90, 0); }
+}
+.route-desc-toast.attention-fail .route-desc-text,
+.route-desc-toast.attention-fail .desc-flag { animation: desc-flash-fail .34s ease-in-out 3; }
+.route-desc-toast.attention-caution .route-desc-text,
+.route-desc-toast.attention-caution .desc-flag { animation: desc-flash-caution .34s ease-in-out 3; }
+.route-desc-toast.attention-fail { animation: desc-ring-fail 1s ease-out 1; }
+.route-desc-toast.attention-caution { animation: desc-ring-caution 1s ease-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  .route-desc-toast.attention-fail, .route-desc-toast.attention-caution,
+  .route-desc-toast.attention-fail .route-desc-text, .route-desc-toast.attention-fail .desc-flag,
+  .route-desc-toast.attention-caution .route-desc-text, .route-desc-toast.attention-caution .desc-flag { animation: none; }
+}
 /* Three lines, capped: the bubble's height is fixed by the clamp rather than
    by whichever description happened to be longest. Back to three at the
    rider's ask (2026-08-28) to see the shape of it. */
