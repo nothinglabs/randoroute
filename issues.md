@@ -107,3 +107,10 @@ corridor, both directions) were fixed in v959-v963; this one was never
 touched. It is a destination-search problem, not a routing or scoring one --
 the place index (`maps/<state>/places.json`) and the search that ranks it.
 
+---
+
+### 22. Finalize the help and onboarding experience
+Review the first-run onboarding and the Help screen end to end under the
+Safeish name and decide what a new rider needs to see before their first
+route, and what belongs in Help versus on the map. Not yet scoped.
+
