@@ -1862,16 +1862,19 @@ body.navigation-active #routeBar { display: none; }
    padding so the fill has a shape to paint and the scale never reflows the
    line. */
 .route-desc-toast .desc-flag { display: inline-block; padding: 0 4px; margin: 0 -1px; border-radius: 5px; }
+/* Dialed to about 70% of the v976 effect at the rider's ask (2026-09-02):
+   scale 1.11 instead of 1.16, a smaller glow, the fill at 85%, five
+   half-beats (1.1 s) instead of seven. */
 @keyframes desc-flag-flash-fail {
-  from { color: #fff; background-color: #e0392b; transform: scale(1.16); text-shadow: 0 0 10px rgba(255, 96, 76, .95); }
+  from { color: #fff; background-color: rgba(224, 57, 43, .85); transform: scale(1.11); text-shadow: 0 0 7px rgba(255, 96, 76, .7); }
   to { color: #ffb3a7; background-color: transparent; transform: scale(1); text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 }
 @keyframes desc-flag-flash-caution {
-  from { color: #fff; background-color: #e08a00; transform: scale(1.16); text-shadow: 0 0 10px rgba(255, 170, 60, .95); }
+  from { color: #fff; background-color: rgba(224, 138, 0, .85); transform: scale(1.11); text-shadow: 0 0 7px rgba(255, 170, 60, .7); }
   to { color: #ffd79a; background-color: transparent; transform: scale(1); text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 }
-.route-desc-toast.attention .desc-flag-fail { animation: desc-flag-flash-fail .22s ease-in-out 7 alternate; }
-.route-desc-toast.attention .desc-flag-caution { animation: desc-flag-flash-caution .22s ease-in-out 7 alternate; }
+.route-desc-toast.attention .desc-flag-fail { animation: desc-flag-flash-fail .22s ease-in-out 5 alternate; }
+.route-desc-toast.attention .desc-flag-caution { animation: desc-flag-flash-caution .22s ease-in-out 5 alternate; }
 @media (prefers-reduced-motion: reduce) {
   .route-desc-toast.attention .desc-flag-fail, .route-desc-toast.attention .desc-flag-caution { animation: none; }
 }

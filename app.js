@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.976';
+const APP_VERSION = '2026-08-30.977';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6690,7 +6690,7 @@ const ONBOARDING_STEPS = [
     img: 'onboarding/tour-road.jpg',
     alt: 'A road card naming the broken rule: heavy traffic with no shoulder recorded',
     title: 'Tap it to see why',
-    copy: 'Tap any road — especially a red one. The card names the exact rule it breaks and the numbers behind it, and Street View lets you eyeball the road before deciding for yourself.',
+    copy: 'Tap any road — especially a red one. The card names the exact rule it breaks and the numbers behind it, and View Street… opens Google Street View or another map so you can eyeball the road before deciding for yourself.',
   },
   {
     img: 'onboarding/tour-navigate.jpg',

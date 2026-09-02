@@ -544,7 +544,7 @@
       <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
-      <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
+      <li><b>Guess shoulder width when undocumented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
       <li><b>Show advanced options and routing weights</b> — reveals the ⚖ Settings tab and its expert route switches. Leave it off unless you want to tune how the router searches.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
@@ -555,7 +555,7 @@
       <li><b>Allow routes with ferries</b> — includes ferry itineraries in route searches.</li>
     </ul></section>
     <section><h3>Routes</h3><ul class="help-list">
-      <li><b>Preferred routes</b> — <b>Settings → Routes</b> lists every signed bicycle route in the loaded state. Mark one <b>Preferred</b> and trip planning follows it even harder than an off-street trail, including where it fails your safety rules — route choice only, so map colors, Route Details, and warnings still show every road as it is. Tapping a route ribbon on the map offers the same checkbox. Your picks are saved per state.</li>
+      <li><b>Preferred routes</b> — <b>Settings → Designated Routes</b> lists every signed bicycle route in the loaded state. Mark one <b>Preferred</b> and trip planning follows it even harder than an off-street trail, including where it fails your safety rules — route choice only, so map colors, Route Details, and warnings still show every road as it is. Tapping a route ribbon on the map offers the same checkbox. Your picks are saved per state.</li>
     </ul></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Setting off</b> — the first prompt of a ride names the compass direction and road to start on, plus the first turn, because your phone cannot know which way you are facing until you move.</li>
@@ -566,6 +566,10 @@
       <li><b>Keep the screen awake while navigating</b> — prevents the display from sleeping during an active ride when the device supports it.</li>
       <li><b>Announce route safety levels</b> — speaks changes in the active segment’s safety category; it does not replace turn instructions.</li>
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
+      <li><b>Hill Taunt</b> — light mockery on steep climbs, on by default. Switch it off in Voice-Nav to keep only the steep-hill warning.</li>
+    </ul></section>
+    <section><h3>Maps</h3><ul class="help-list">
+      <li><b>Settings → Maps</b> lists the state maps on this device. <b>Home</b> is where the app starts; routes can use every installed map and cross up to three neighboring states. Tap a state for its status and download details. A <b>map store</b> is a web address offering downloadable state maps — anyone can host one — and downloaded maps stay on this device for offline use.</li>
     </ul></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Rules are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard safety limits, and <b>Reset all defaults</b> restores them. Turn on <b>Show advanced options and routing weights</b> to reveal the ⚖ Settings tab.</p></section>
     </div>
@@ -605,7 +609,7 @@
 
   <template id="techDetailsTemplate">
     <div class="full-help-body tech-details-body">
-      <p class="help-lead">The map is a custom, locally stored vector map. It does not use Google or CARTO basemap tiles. The installed web app downloads the statewide map for offline use, and the iOS app bundles the same map files.</p>
+      <p class="help-lead">The map is a custom, locally stored vector map. It does not use Google or CARTO basemap tiles. State maps are stored on the device for offline use — the web app downloads them, the iOS app bundles them — and <b>Settings → Maps</b> shows what is installed.</p>
 
       <section>
         <h3>Map technology</h3>
@@ -641,7 +645,7 @@
         <h3>Optional online services</h3>
         <ul>
           <li><a href="https://github.com/komoot/photon" target="_blank" rel="noopener"><b>Photon</b></a>, built from OpenStreetMap data, expands place search with nearby businesses, landmarks, addresses, and other named places. Local place search remains available offline.</li>
-          <li><a href="https://developers.google.com/maps/documentation/embed/embedding-map" target="_blank" rel="noopener"><b>Google Maps Embed API</b></a> provides the optional Street View screen and external Google Maps links. It is not the app’s basemap.</li>
+          <li><b>Google Maps, Google Street View, Apple Maps and OpenStreetMap</b> open as external links from a road card’s <b>View Street…</b> button — the installed app where there is one, the website otherwise. Nothing from those services is embedded in the map and no API key is used.</li>
         </ul>
       </section>
 
@@ -656,15 +660,15 @@
     <div class="full-help-body">
       <p class="help-lead">Toggling layers only changes what is drawn. Routing and street details always use all available data.</p>
       <section><h3>Data sources</h3><ul>
-        <li><b>State &amp; national bike routes</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility or a safe road.</li>
+        <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility or a safe road.</li>
         <li><b>State transportation data</b>: where the loaded state supplies it, street details combine official state-road stress, shoulder and access context, legal speeds, traffic counts, and bike-facility data.</li>
         <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
         <li><b>Ferry routes</b>: bicycle-routable crossings from OpenStreetMap. They are always shown as labeled dashed lines across the water, whether or not one is part of the selected route.</li>
         <li><b>Bikes prohibited</b>: permanent state restriction data, where available, plus explicit OpenStreetMap bicycle prohibitions. These graph segments are excluded from routing.</li>
-        <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
+        <li><b>All roads (OSM, est. speeds)</b>: the connected road and path network, including names, direction, bicycle access, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
       </ul></section>
       <section><h3>Route Icons</h3><p>Opening <b>Map layers</b> from the map’s legend button also opens a guide to active-route colors and markers. Tap any route line or icon to inspect that section. Closing either panel closes both. Opening Map layers by another path does not open the guide.</p></section>
-      <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Routes try to avoid any climbs over 12%, but steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
+      <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Climbing is priced by grade: nearly free below about 4%, rising with steepness and sharply above 12%, so routes avoid steep climbs where a flatter option exists. Steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to six meaningfully different routes. Bike-legal freeway segments are excluded unless last-resort freeway routing is enabled, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context is shown as a descriptive road fact only; it does not change the rider's safety limits. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
       <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Outside a selected route, unpaved cross-slats appear only on bike-infrastructure and trail features that already include confirmed OSM surface data. A selected route may identify additional unpaved road segments. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
     </div>
@@ -673,9 +677,9 @@
   <template id="routeTipsTemplate">
     <div class="full-help-body">
       <section><h3>Choose Route</h3><ul>
-        <li>The app offers up to six routes, ordered shortest to longest as A–F. One is usually searched with a more-direct lens, so a quicker-but-bolder corridor shows up without asking. The app automatically selects the best match for your settings, which may not be A.</li>
+        <li>The app offers up to six routes as A–F. A is the suggested route; the rest follow in order of how well they price under the three routing lenses. One is usually searched with a more-direct lens, so a quicker-but-bolder corridor shows up without asking.</li>
         <li>Adding, moving, or removing a waypoint deals a fresh route lineup. Road blocks keep the current route recipes and letters so you can see what the block changed.</li>
-        <li>Open <b>Routing weights</b>, then use <b>Route options → Allow routes with ferries</b> to include or exclude ferry itineraries. Loading a route from <b>Considered routes</b> can add letters past F.</li>
+        <li>Open <b>Routing weights</b>, then use <b>Route options → Allow routes with ferries</b> to include or exclude ferry itineraries. Loading a route from <b>All routes considered</b> (the ≋ tab in Settings) can add letters past F.</li>
         <li>Tap a letter to show distance, estimated time, elevation, and the route’s road and safety information.</li>
         <li>Tap <b>Details</b> to see in-depth information on the route.</li>
       </ul></section>
