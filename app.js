@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.972';
+const APP_VERSION = '2026-08-30.973';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -210,6 +210,13 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // routes 93.8% shared, a hair under the old 94% limit. The floor in
   // twinOverlapLimit does the catching at this length; this raises the middle.
   distinctRideMi: 2.0,
+  // 0/1. On: the stricter twin rules from v972 -- hazard terms read
+  // asymmetrically (a twin with more failing road must buy time), and
+  // facility terms cannot keep a pair apart above 90% shared roads. Off
+  // (default, field 2026-09-02): the v971 symmetric rule, which kept a
+  // favourite Interurban route on Seattle -> Mukilteo that the strict rule
+  // folds. The distinctRideMi slider applies either way.
+  reduceRouteDuplication: 0,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
@@ -262,6 +269,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // with near-twins; above 2 mi short trips cannot offer alternatives.
   distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
+  reduceRouteDuplication: Object.freeze([0, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -12567,17 +12575,15 @@ function showRouteDescriptionToast(option) {
   // description and the whole pill already dismisses on tap. The text is
   // clamped to two lines in CSS, so the bubble's height cannot grow.
   host.replaceChildren(body);
-  // A description that reports failing or caution mileage flashes as it
-  // first renders -- the whole text, white to that verdict's colour and
-  // back, three beats in a second, then the flagged figures settle into
-  // their usual colour (field ask, 2026-09-02). Removing and re-adding the
-  // class restarts the animation for every new description.
-  host.classList.remove('attention-fail', 'attention-caution');
-  const attention = body.querySelector('.desc-flag-fail') ? 'fail'
-    : body.querySelector('.desc-flag-caution') ? 'caution' : null;
-  if (attention) {
+  // A description that reports failing or caution mileage flashes those
+  // figures as it first renders -- each between white and its verdict
+  // colour for a second, the rest of the text still (field asks,
+  // 2026-09-02). Removing and re-adding the class restarts the animation
+  // for every new description.
+  host.classList.remove('attention');
+  if (body.querySelector('.desc-flag-fail, .desc-flag-caution')) {
     void host.offsetWidth;
-    host.classList.add(`attention-${attention}`);
+    host.classList.add('attention');
   }
   // Just above the route chooser, to the right of the Navigate button and
   // never overlapping it (field ask, 2026-08-27 — down from over the
@@ -16649,6 +16655,8 @@ const WEIGHT_MODES = [
 ];
 const ROUTING_WEIGHT_GROUPS = [
   ['Roads that fail your rules', 'How far out of the way to go to avoid road your Limits already reject, and how much to seek out road that clears them comfortably.', [
+    { key: 'sidewalkBailout', label: 'Sidewalk bailout on a failing road (x)', min: .3, max: 1, step: .05,
+      hint: 'A failing road with a mapped sidewalk stays failing but costs this fraction of one without: of two failing options, prefer the one you can walk out of. 1 turns the discount off. Tagged sidewalks only, never the urban inference.' },
     { base: 'failRoad', label: 'Avoid a failing road', min: 1, max: 60, step: .1,
       hint: 'Multiplies time on road your Limits fail. Higher = longer detours. Never a ban: unavoidable failing stretches still route, flagged.' },
     { base: 'comfyRoad', label: 'Seek out a comfortable road', min: .5, max: 1.2, step: .01, modes: ['Balanced', 'LowStress'],
@@ -16747,6 +16755,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
     { key: 'twinTradeoffX', label: 'Safety tradeoff to keep a near-twin (x)', min: .3, max: 3, step: .05,
       hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
+    { key: 'reduceRouteDuplication', label: 'Reduce route duplication', toggle: true, min: 0, max: 1, step: 1,
+      hint: 'Stricter folding of near-twins: a twin with more failing road stays only if it saves real time, and two routes sharing over 90% of their roads stay separate only for a safety difference, not for facility mileage. Off keeps every twin the rules above allow.' },
   ], 'Duplicates'],
 ];
 
@@ -16829,6 +16839,51 @@ function weightSlider(key, label, min, max, step) {
   return row;
 }
 
+// A two-state weight as a checkbox. It keeps the slider row's contract -- the
+// input carries data-weight and a numeric value that mirrors routingWeights,
+// the row marks itself changed and offers the same revert -- so the coverage
+// and panel tests treat it as one more weight control.
+function weightToggle(key, label) {
+  const row = document.createElement('label');
+  row.className = 'weight-row weight-toggle';
+  const dflt = DEFAULT_ROUTING_WEIGHTS[key];
+  const word = (value) => (value >= 0.5 ? 'On' : 'Off');
+  row.innerHTML = `<span class="weight-row-label">${label}</span>
+    <output></output>
+    <input type="checkbox" value="${routingWeights[key]}" data-weight="${key}">
+    <button type="button" class="weight-revert" title="Back to the default, ${word(dflt)}" aria-label="Reset ${label} to default">↺</button>`;
+  const input = row.querySelector('input');
+  const out = row.querySelector('output');
+  const revert = row.querySelector('.weight-revert');
+  const paint = () => {
+    const value = Number(routingWeights[key]) >= 0.5 ? 1 : 0;
+    input.checked = value === 1;
+    input.value = String(value);
+    out.textContent = value === dflt ? word(value) : `${word(value)} (was ${word(dflt)})`;
+    row.classList.toggle('changed', value !== dflt);
+    revert.classList.toggle('is-hidden', value === dflt);
+    revert.disabled = value === dflt;
+    revert.setAttribute('aria-hidden', value === dflt ? 'true' : 'false');
+  };
+  const commit = () => {
+    paint();
+    suppressRoadInfo(1200);
+    scheduleReroute();
+    syncWeightsTunedBadge();
+  };
+  input.addEventListener('change', () => {
+    routingWeights[key] = input.checked ? 1 : 0;
+    commit();
+  });
+  revert.addEventListener('click', (e) => {
+    e.preventDefault();
+    routingWeights[key] = dflt;
+    commit();
+  });
+  paint();
+  return row;
+}
+
 function buildRoutingWeightsEditor() {
   const host = document.getElementById('routingWeightsEditor');
   host.replaceChildren();
@@ -16858,7 +16913,8 @@ function buildRoutingWeightsEditor() {
         cost.append(hint);
       }
       for (const { key, label } of weightControlsFor(item)) {
-        cost.append(weightSlider(key, label, item.min, item.max, item.step));
+        cost.append(item.toggle ? weightToggle(key, label)
+          : weightSlider(key, label, item.min, item.max, item.step));
       }
       group.append(cost);
     }

@@ -129,9 +129,14 @@ for (const [title, blurb, items] of groups) {
         `${item.label}: default ${key}=${d} is outside the slider range ${item.min}-${item.max}`);
       // A default that IS an endpoint leaves the slider able to move only one
       // way, so the preference the control exists to strengthen cannot be
-      // strengthened. useMeasuredTraffic is the one deliberate two-state
-      // control here; everything else is a continuous preference.
-      if (key === 'useMeasuredTraffic') continue;
+      // strengthened. useMeasuredTraffic and reduceRouteDuplication are the
+      // deliberate two-state controls here (the latter renders as a
+      // checkbox). facilityNeutralStrength is a lens FRACTION whose maximum
+      // is its default since v959: 1 removes the facility pull for the extra
+      // search entirely, and above 1 the lens would invert the preference,
+      // so the slider is meant to move only one way. Everything else is a
+      // continuous preference.
+      if (['useMeasuredTraffic', 'reduceRouteDuplication', 'facilityNeutralStrength'].includes(key)) continue;
       assert.ok(d > item.min && d < item.max,
         `${item.label}: default ${key}=${d} sits at an end of its ${item.min}-${item.max}`
         + ' range, so the slider can only move one way');

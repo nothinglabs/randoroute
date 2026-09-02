@@ -1849,37 +1849,18 @@ body.navigation-active #routeBar { display: none; }
   opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(4px);
   cursor: pointer; text-shadow: 0 1px 2px rgba(10, 22, 30, .55); }
 .route-desc-toast.show { opacity: 1; pointer-events: auto; }
-/* Attention flash for a description that carries failing or caution mileage:
-   the text swings white -> verdict colour -> white three times in one second
-   while the pill's ring glows in the same colour and fades. The animation
-   overrides the flagged figures' static colours only while it runs; when it
-   ends they are red or amber again and the rest of the text is white. */
-@keyframes desc-flash-fail {
-  0%, 100% { color: #fff; }
-  50% { color: #ffb3a7; }
-}
-@keyframes desc-flash-caution {
-  0%, 100% { color: #fff; }
-  50% { color: #ffd79a; }
-}
-@keyframes desc-ring-fail {
-  0% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 0 rgba(255, 120, 100, .95); }
-  100% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 14px rgba(255, 120, 100, 0); }
-}
-@keyframes desc-ring-caution {
-  0% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 0 rgba(255, 190, 90, .95); }
-  100% { box-shadow: 0 4px 14px rgba(20, 35, 45, .28), 0 0 0 14px rgba(255, 190, 90, 0); }
-}
-.route-desc-toast.attention-fail .route-desc-text,
-.route-desc-toast.attention-fail .desc-flag { animation: desc-flash-fail .34s ease-in-out 3; }
-.route-desc-toast.attention-caution .route-desc-text,
-.route-desc-toast.attention-caution .desc-flag { animation: desc-flash-caution .34s ease-in-out 3; }
-.route-desc-toast.attention-fail { animation: desc-ring-fail 1s ease-out 1; }
-.route-desc-toast.attention-caution { animation: desc-ring-caution 1s ease-out 1; }
+/* Attention flash for a description that carries failing or caution mileage
+   (field asks, 2026-09-02): only the flagged figures flash, each between
+   white and its own verdict colour, five half-beats over one second, ending
+   on the colour. The rest of the text stays white and the pill itself does
+   not move. `alternate` with an odd count is what lands the last frame on
+   the colour rather than snapping back to it. */
+@keyframes desc-flag-flash-fail { from { color: #fff; } to { color: #ffb3a7; } }
+@keyframes desc-flag-flash-caution { from { color: #fff; } to { color: #ffd79a; } }
+.route-desc-toast.attention .desc-flag-fail { animation: desc-flag-flash-fail .2s ease-in-out 5 alternate; }
+.route-desc-toast.attention .desc-flag-caution { animation: desc-flag-flash-caution .2s ease-in-out 5 alternate; }
 @media (prefers-reduced-motion: reduce) {
-  .route-desc-toast.attention-fail, .route-desc-toast.attention-caution,
-  .route-desc-toast.attention-fail .route-desc-text, .route-desc-toast.attention-fail .desc-flag,
-  .route-desc-toast.attention-caution .route-desc-text, .route-desc-toast.attention-caution .desc-flag { animation: none; }
+  .route-desc-toast.attention .desc-flag-fail, .route-desc-toast.attention .desc-flag-caution { animation: none; }
 }
 /* Three lines, capped: the bubble's height is fixed by the clamp rather than
    by whichever description happened to be longest. Back to three at the
@@ -1929,6 +1910,10 @@ body.navigation-active #routeBar { display: none; }
 .weight-row.changed output { color: #9a5b00; }
 .weight-row.changed .weight-row-label { color: #26404f; }
 .weight-row input { grid-row: 2; grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
+/* A checkbox weight keeps the label / value / revert row and puts the box on
+   its own line under the label, sized for a thumb rather than stretched to
+   the slider's width. */
+.weight-row.weight-toggle input { grid-column: 1; width: 22px; height: 22px; justify-self: start; accent-color: #0a66c2; cursor: pointer; }
 /* Pinned to row 1, beside the value. The slider spans every column and so
    claims row 2; without an explicit position the revert button auto-places
    onto a THIRD row under the slider, which is where it landed on a phone. */

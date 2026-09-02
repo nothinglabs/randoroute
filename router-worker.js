@@ -1499,6 +1499,13 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // options genuinely different instead of one route offered twice. Raised
   // to 1.5 mi (field, 2026-08-31) with the floor below; see the app.js mirror.
   distinctRideMi: 2.0,
+  // 0/1. On: the stricter twin rules from v972 -- hazard terms read
+  // asymmetrically (a twin with more failing road must buy time), and
+  // facility terms cannot keep a pair apart above 90% shared roads. Off
+  // (default, field 2026-09-02): the v971 symmetric rule, which kept a
+  // favourite Interurban route on Seattle -> Mukilteo that the strict rule
+  // folds. The distinctRideMi slider applies either way.
+  reduceRouteDuplication: 0,
   // Scales every outcome threshold in materialTradeoff below: under 1,
   // smaller safety/facility differences keep a near-identical pair
   // separate; above 1 only large ones do. 1 is the shipped behaviour.
@@ -1536,6 +1543,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   // with near-twins; above 2 mi short trips cannot offer alternatives.
   distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
+  reduceRouteDuplication: Object.freeze([0, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -3724,12 +3732,17 @@ function tradeoffTerms(a, b) {
 // the pair survives is the caller's ranking, which puts the safer, cheaper
 // route first.
 const TWIN_TIME_RATIO = 1.15;
+// The rider's "Reduce route duplication" switch (Advanced weights). Off, the
+// three rules below read as they did in v971: symmetric, no veto, no ceiling.
+function strictTwinRules() {
+  return (Number(activeWeights.reduceRouteDuplication) || 0) >= 0.5;
+}
 function buysTime(worse, better) {
   return worse.timeS * TWIN_TIME_RATIO <= better.timeS;
 }
 function termKeepsPair(term, a, b) {
   if (term.delta < term.need) return false;
-  if (!term.bad) return true;
+  if (!term.bad || !strictTwinRules()) return true;
   const worse = (a[term.key] || 0) > (b[term.key] || 0) ? a : b;
   return buysTime(worse, worse === a ? b : a);
 }
@@ -3740,6 +3753,7 @@ function termKeepsPair(term, a, b) {
 // 2 miles happen to carry -- the 8%-of-distance bar for facility terms is
 // lower than the bar for being two routes at all.
 function hazardVeto(a, b) {
+  if (!strictTwinRules()) return false;
   return tradeoffTerms(a, b).some((term) => term.bad && term.delta >= term.need
     && !termKeepsPair(term, a, b));
 }
@@ -3757,7 +3771,7 @@ function keepingTerm(a, b, overlap) {
   if (hazardVeto(a, b)) return null;
   let best = null;
   for (const term of tradeoffTerms(a, b)) {
-    if (!term.bad && overlap >= GOOD_TERM_MAX_OVERLAP) continue;
+    if (!term.bad && overlap >= GOOD_TERM_MAX_OVERLAP && strictTwinRules()) continue;
     if (!termKeepsPair(term, a, b)) continue;
     if (!best || term.delta / term.need > best.delta / best.need) best = term;
   }
