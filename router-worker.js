@@ -5660,29 +5660,34 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (better) triLensDominatorOf.set(candidate, better);
     return !better;
   });
-  // A direct-lens route pays for its seat with time (issue 18, 2026-09-01).
-  // The lens searches with every multiplier flattened, so it is the one
-  // candidate priced by a search that under-weighs failing road; its whole
-  // justification on the board is that it buys a real saving. Measured on
-  // Lake Forest Park -> Fremont it took Route C at 58 min with 0.45 mi on a
-  // seven-lane arterial, beside a clean 58 min route -- longer, and no
-  // quicker. The margin below keeps the lens routes the rider accepts
-  // (Phinney, 1.20x / 1.16x, nine minutes bought) and drops the ones that buy
-  // nothing (Fremont 1.01x, 1.07x; Ballard -> Kenmore 1.09x for 3.2 failing
-  // miles). Only lens routes carrying failing road pay; a clean lens route
-  // needs no justification, and a board with no clean route to compare
-  // against keeps the lens -- that is the shake-up the lens exists for.
-  const LENS_SEAT_RATIO = 1.15;
-  const LENS_FAIL_FLOOR_M = 400;
+  // A route carrying failing road pays for its seat with time (issue 18,
+  // 2026-09-01). Its only justification beside a clean option is that it buys
+  // a real saving; when it does not, it is a worse route wearing a "Shorter"
+  // badge. Measured on Lake Forest Park -> Fremont the direct lens took Route
+  // C at 58 min with 0.45 mi on a seven-lane arterial beside a clean 58 min
+  // route; on Lake Forest Park -> Phinney two combined-corridor hybrids took
+  // D and E at 53 and 51 min with 0.44 and 0.67 failing miles beside a clean
+  // 54. The margin keeps what the rider accepts (Phinney's lens, 1.20x, nine
+  // minutes bought) and drops what buys nothing (1.01x-1.09x). A route with
+  // under 400 m of failing road never pays -- a single short block is not
+  // what this is for -- and a board with no clean route to compare against
+  // keeps everything: that is the shake-up the direct lens exists for.
+  //
+  // This outranks every seat protection except the rider's explicit preferred
+  // route. The protections guarantee a SHAPE of route a seat (a hybrid, a
+  // frontier crossing); a failing route of that shape that buys nothing is
+  // exactly the route being objected to.
+  const SEAT_RATIO = 1.15;
+  const SEAT_FAIL_FLOOR_M = 400;
   const CLEAN_FAIL_M = 160;
   const cleanQuickest = scoredChoices
     .filter((c) => (c.failM || 0) <= CLEAN_FAIL_M)
     .reduce((best, c) => (!best || c.timeS < best.timeS ? c : best), null);
   const lensGatedOf = new Map();
   const choices = scoredChoices.filter((candidate) => {
-    if (!candidate._profile?.directLens || protectedCandidates.has(candidate)) return true;
-    if ((candidate.failM || 0) <= LENS_FAIL_FLOOR_M || !cleanQuickest) return true;
-    if (cleanQuickest.timeS >= candidate.timeS * LENS_SEAT_RATIO) return true;
+    if (candidate === strongPreferredCandidate) return true;
+    if ((candidate.failM || 0) <= SEAT_FAIL_FLOOR_M || !cleanQuickest) return true;
+    if (cleanQuickest.timeS >= candidate.timeS * SEAT_RATIO) return true;
     lensGatedOf.set(candidate, cleanQuickest);
     return false;
   });
@@ -6138,7 +6143,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     } else if (lensGatedOf.has(candidate)) {
       const clean = lensGatedOf.get(candidate);
       candidate._stage = 'lens-no-gain';
-      candidate._stageWhy = 'A rules-relaxed direct search that buys too little time over a clean option to earn a seat.';
+      candidate._stageWhy = 'Carries failing road and buys too little time over a clean option to earn a seat.';
       candidate._stageData = { mateId: clean._profile.id, cleanS: clean.timeS,
         lensS: candidate.timeS, failM: candidate.failM || 0 };
     } else if (inUseful.has(candidate) && !inChoices.has(candidate)) {

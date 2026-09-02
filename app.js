@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.962';
+const APP_VERSION = '2026-08-30.963';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12144,9 +12144,9 @@ function candidateStageDetail(c, stage, labelOf) {
   if (c.stage === 'lens-no-gain' && mate && d?.cleanS) {
     const saved = Math.round((d.cleanS - d.lensS) / 60);
     const failMi = (d.failM / 1609.344).toFixed(1);
-    return `Built by the more-direct lens with ${failMi} mi of failing road, and `
+    return `Carries ${failMi} mi of failing road and is `
       + (saved > 0 ? `only ${saved} min quicker than ` : `no quicker than `)
-      + `${mate}, which is clean. A lens route earns a seat by saving at least 15%.`;
+      + `${mate}, which is clean. A failing route earns a seat by saving at least 15%.`;
   }
   if (c.stage === 'dominated' && mate) {
     const quicker = d.slowerS >= 60
