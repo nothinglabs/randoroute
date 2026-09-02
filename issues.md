@@ -82,10 +82,6 @@ requirements.
 
 ---
 
-### 9. Finalize app name
-Choose and approve the final public name for the app before release.
-
----
 
 ### 17. Tweak the segment details page
 Three asks from the field, 2026-08-30.
@@ -100,4 +96,3 @@ Three asks from the field, 2026-08-30.
 - **Name the highway.** Segments say the generic word `highway`
   (`route-details.js:740`) where `stateHighwayName` could resolve the actual
   route number.
-
