@@ -18,7 +18,8 @@ real routes and reporting back. Do not simulate rides to close them.
 ### 1. Shoulder safety
 Improve how road shoulders factor into safety verdicts. Not yet scoped —
 waiting on examples from the field (specific roads scored wrong, and in which
-direction). The shoulder model today: per-direction shoulder widths from the
+direction). First example to look at: the route heading into Vancouver, WA
+from the east. The shoulder model today: per-direction shoulder widths from the
 WSDOT inventory, `minShoulder` rule, optional inference
 (`inferShoulderFromEdge`), sidewalk fallback as last resort. See
 `docs/SAFETY-MODEL.md` ("A shoulder can depend on which way you ride" and
