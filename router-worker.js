@@ -1498,7 +1498,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // How much different riding (miles, on the shorter of the two) makes two
   // options genuinely different instead of one route offered twice. Raised
   // to 1.5 mi (field, 2026-08-31) with the floor below; see the app.js mirror.
-  distinctRideMi: 1.5,
+  distinctRideMi: 2.0,
   // Scales every outcome threshold in materialTradeoff below: under 1,
   // smaller safety/facility differences keep a near-identical pair
   // separate; above 1 only large ones do. 1 is the shipped behaviour.
@@ -1534,7 +1534,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   facilityNeutralStrength: Object.freeze([0, 1]),
   // Below ~250 ft everything reads as different and the portfolio fills
   // with near-twins; above 2 mi short trips cannot offer alternatives.
-  distinctRideMi: Object.freeze([0.05, 2]),
+  distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
@@ -3696,24 +3696,75 @@ function tradeoffTerms(a, b) {
     // A short failing stretch can be the most important difference on a long
     // ride. Do not scale this threshold with total route length: doing so once
     // hid hundreds of feet of avoided rule failures as an "equivalent" route.
-    { key: 'failM', label: 'failing road', delta: gap('failM'), need: 60 * x },
-    { key: 'freewayM', label: 'freeway', delta: gap('freewayM'), need: 60 * x },
+    // `bad: true` marks the terms where MORE of it is worse; materialTradeoff
+    // reads them asymmetrically.
+    { key: 'failM', label: 'failing road', delta: gap('failM'), need: 60 * x, bad: true },
+    { key: 'freewayM', label: 'freeway', delta: gap('freewayM'), need: 60 * x, bad: true },
     { key: 'limitedAccessM', label: 'limited-access road',
-      delta: gap('limitedAccessM'), need: Math.max(120 * x, routeScale * 0.5) },
-    { key: 'mtbM', label: 'mountain-bike trail', delta: gap('mtbM'), need: 40 * x },
+      delta: gap('limitedAccessM'), need: Math.max(120 * x, routeScale * 0.5), bad: true },
+    { key: 'mtbM', label: 'mountain-bike trail', delta: gap('mtbM'), need: 40 * x, bad: true },
     { key: 'dismountM', label: 'walking the bike', flag: true,
       delta: (!!a.dismountM !== !!b.dismountM) ? 1 : 0, need: 1 },
     { key: 'facilityM', label: 'bike lane', delta: gap('facilityM'), need: routeScale },
     { key: 'trailM', label: 'trail', delta: gap('trailM'), need: routeScale },
-    { key: 'hazardM', label: 'hazard', delta: gap('hazardM'), need: 50 * x },
+    { key: 'hazardM', label: 'hazard', delta: gap('hazardM'), need: 50 * x, bad: true },
     { key: 'desigM', label: 'signed bike route', delta: gap('desigM'), need: routeScale },
     { key: 'residentialM', label: 'residential street',
       delta: gap('residentialM'), need: routeScale },
   ];
 }
 
-function materialTradeoff(a, b) {
-  return tradeoffTerms(a, b).some((term) => term.delta >= term.need);
+// A near-twin's difference on a `bad` term keeps the pair apart only when the
+// twin carrying MORE of it buys time for it -- the same 15% the seat gate asks
+// of a failing route. The rule was written to protect the SAFER twin ("a short
+// failing stretch can be the most important difference"), and read
+// symmetrically it protected the worse one: Phinney Ridge -> Abbey View Lake
+// (2026-09-02) seated alt-quick beside efficient at 88% shared because its
+// 370 ft of failing road counted as material, for one minute saved. Which of
+// the pair survives is the caller's ranking, which puts the safer, cheaper
+// route first.
+const TWIN_TIME_RATIO = 1.15;
+function buysTime(worse, better) {
+  return worse.timeS * TWIN_TIME_RATIO <= better.timeS;
+}
+function termKeepsPair(term, a, b) {
+  if (term.delta < term.need) return false;
+  if (!term.bad) return true;
+  const worse = (a[term.key] || 0) > (b[term.key] || 0) ? a : b;
+  return buysTime(worse, worse === a ? b : a);
+}
+// A near-twin that carries materially more of a hazard and does not buy time
+// for it is folded whatever else differs: on Phinney Ridge -> Abbey View Lake
+// the alt-quick twin (84% shared, 390 ft more failing road, one minute
+// faster) would otherwise survive on the bike-lane mileage its different
+// 2 miles happen to carry -- the 8%-of-distance bar for facility terms is
+// lower than the bar for being two routes at all.
+function hazardVeto(a, b) {
+  return tradeoffTerms(a, b).some((term) => term.bad && term.delta >= term.need
+    && !termKeepsPair(term, a, b));
+}
+// Above this shared fraction only a hazard difference can keep a pair apart.
+// The facility terms' bar is 8% of the trip, which two routes sharing 93% of
+// their roads clear on the 7% they do not share: Phinney Ridge -> Abbey View
+// Lake seated alt-safer beside alt-balanced at 93.3% "kept by residential
+// street". A safer twin at 93% is still worth a letter; a more-residential
+// one is the same ride.
+const GOOD_TERM_MAX_OVERLAP = 0.90;
+// The term that keeps a pair apart, or null: the veto first, then any term
+// that reaches its bar (the one that clears it by the most, for the More
+// screen's explanation).
+function keepingTerm(a, b, overlap) {
+  if (hazardVeto(a, b)) return null;
+  let best = null;
+  for (const term of tradeoffTerms(a, b)) {
+    if (!term.bad && overlap >= GOOD_TERM_MAX_OVERLAP) continue;
+    if (!termKeepsPair(term, a, b)) continue;
+    if (!best || term.delta / term.need > best.delta / best.need) best = term;
+  }
+  return best;
+}
+function materialTradeoff(a, b, overlap) {
+  return keepingTerm(a, b, overlap) !== null;
 }
 
 // The dedupe verdict on one pair, for the More screen: the two numbers the
@@ -3729,7 +3780,7 @@ function twinVerdict(a, b, overlap) {
   }
   const asPart = (term) => term && { label: term.label, flag: !!term.flag,
     deltaM: Math.round(term.delta), needM: Math.round(term.need) };
-  const reached = best && best.delta >= best.need && overlap < 0.99 ? best : null;
+  const reached = overlap < 0.99 ? keepingTerm(a, b, overlap) : null;
   return { overlap, limit, distinctByRoads: overlap < limit,
     keptBy: overlap < limit ? null : asPart(reached), closest: asPart(best) };
 }
@@ -3756,7 +3807,7 @@ function twinOverlapLimit(a, b) {
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);
   // Very-close paths survive only when their safety/facility outcome changes.
-  return overlap < twinOverlapLimit(a, b) || (overlap < 0.99 && materialTradeoff(a, b));
+  return overlap < twinOverlapLimit(a, b) || (overlap < 0.99 && materialTradeoff(a, b, overlap));
 }
 
 function routeAggression(r) {

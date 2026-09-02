@@ -110,8 +110,15 @@ check('offered candidates are marked offered',
 check('the land cross-breeder contributes a bounded combined corridor',
   state.combined.length >= 1 && state.combined.length <= 6,
   JSON.stringify(state.combined));
-check('a combined corridor reaches the six-letter chooser',
-  state.combined.some((c) => state.offeredIds.includes(c.id)),
+// Whether a hybrid wins a seat is a portfolio outcome, not a contract: since
+// 2026-09-02 a near-twin carrying more failing road folds unless it buys
+// time, and on this trip both seated hybrids were exactly that (98.8% the
+// roads of `quick` with 314 m more failing road for one minute). What the
+// cross-breeder owes is that every hybrid it built is staged with a reason,
+// never silently dropped.
+check('every combined corridor is staged with a reason or offered',
+  state.combined.every((c) => c.stage === 'offered'
+    || (['not-chosen', 'duplicate', 'dominated', 'lens-no-gain', 'too-slow'].includes(c.stage))),
   JSON.stringify({ combined: state.combined, offered: state.offeredIds }));
 check('combined corridors name both parents and explain the real junction splice',
   state.combined.every((c) => c.from?.includes('+')

@@ -83,45 +83,6 @@ requirements.
 
 ---
 
-### 8. Searching for Vancouver returns ferry terminals
-Field, 2026-08-30. Typing "Vancouver" as a destination lists a bunch of ferry
-terminals. Carried over from the former issue 18, whose other two items (the SR 522
-corridor, both directions) were fixed in v959-v963; this one was never
-touched. It is a destination-search problem, not a routing or scoring one --
-the place index (`maps/<state>/places.json`) and the search that ranks it.
-
-### Claude's Analysis
-Reproduced against the shipped Washington index with the ranker's own rule.
-Three causes compound; none is in routing.
-
-- **The index holds ferry terminals outside Washington.** `build_places.py`
-  admits every named `amenity=ferry_terminal` node in the OSM extract with no
-  bounds test. The extract carries nodes referenced by ways that cross the
-  border, so the BC Ferries and Alaska Marine Highway routes drag in
-  Tsawwassen (Delta, BC), Salt Spring Island, Nanaimo and Ketchikan. 12 of the
-  87 `ferry` rows in `maps/washington/places.json` lie outside the state.
-- **Each Tsawwassen berth is its own row.** OSM maps the terminal as eight
-  nodes ("Vancouver (Tsawwassen) Berth 1" … "Berth 5 (Foot Access)"). The
-  builder dedups on (name, kind); the names differ, so all eight survive.
-- **The local ranker is nearest-first with no weight for kind or size.**
-  `localMatches()` in `app.js` puts every prefix match in one tier and sorts
-  it by distance from the map centre. From Seattle the berths are 167 km away
-  and Vancouver, WA (population 190,915) is 260 km, so the eight berths fill
-  all eight result slots and the city never appears. Same from Bellingham.
-  From Portland the list is right: city, Vancouver Heights, Vancouver Mall.
-
-Fix, by leverage:
-
-1. `build_places.py`: keep `ferry` rows only inside the state's bounds, and
-   collapse `Berth N` / `(Foot Access)` suffixes to one terminal row. Re-run
-   for WA and OR (the PBFs are in `data/`), `npm run maps:registry`, trio
-   bump. A data release, about ten minutes. Not done here.
-2. `localMatches()`: rank `city`/`town` rows ahead of hamlets and ferry
-   terminals before distance, so a `ferry` row never outranks a `city` of the
-   same name. App code only.
-
----
-
 ### 9. Finalize the help and onboarding experience
 Review the first-run onboarding and the Help screen end to end under the
 Safeish name and decide what a new rider needs to see before their first

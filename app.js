@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.971';
+const APP_VERSION = '2026-08-30.972';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -209,7 +209,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // to 1.5 mi (field, 2026-08-31): Phinney -> Woodinville still offered two
   // routes 93.8% shared, a hair under the old 94% limit. The floor in
   // twinOverlapLimit does the catching at this length; this raises the middle.
-  distinctRideMi: 1.5,
+  distinctRideMi: 2.0,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
@@ -260,7 +260,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   facilityNeutralStrength: Object.freeze([0, 1]),
   // Below ~250 ft everything reads as different and the portfolio fills
   // with near-twins; above 2 mi short trips cannot offer alternatives.
-  distinctRideMi: Object.freeze([0.05, 2]),
+  distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
@@ -16743,7 +16743,7 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'One extra search with the facility pull reduced this far toward neutral, finding routes that lose only because trail miles are priced shorter. 0 turns it off. Never changes the pricing of routes you see.' },
   ], 'Alternatives'],
   ['Duplicate filtering', 'When two routes share most of the same roads, these controls decide whether both are offered or one is folded away.', [
-    { key: 'distinctRideMi', label: 'Different riding to stay separate (miles)', min: .05, max: 2, step: .05,
+    { key: 'distinctRideMi', label: 'Different riding to stay separate (miles)', min: .05, max: 3, step: .05,
       hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
     { key: 'twinTradeoffX', label: 'Safety tradeoff to keep a near-twin (x)', min: .3, max: 3, step: .05,
       hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
