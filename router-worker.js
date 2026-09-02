@@ -1494,7 +1494,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // discounts toward neutral for its one extra search (log-space exponent
   // 1-s): 0 skips the round entirely, 0.5 halves the pull, 1 removes it for
   // that search. Never touches the pricing of any offered route.
-  facilityNeutralStrength: 0.5,
+  facilityNeutralStrength: 1.0,
   // How much different riding (miles, on the shorter of the two) makes two
   // options genuinely different instead of one route offered twice. Raised
   // to 1.5 mi (field, 2026-08-31) with the floor below; see the app.js mirror.

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.958';
+const APP_VERSION = '2026-08-30.959';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -203,7 +203,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // The facility-neutral diversity round's strength: 0 turns the round off,
   // 0.5 halves the facility pull for its one extra search, 1 removes it for
   // that search. Rationale with the worker's copy.
-  facilityNeutralStrength: 0.5,
+  facilityNeutralStrength: 1.0,
   // How much different riding (miles, on the shorter of the two) makes two
   // options genuinely different instead of one route offered twice. Raised
   // to 1.5 mi (field, 2026-08-31): Phinney -> Woodinville still offered two
