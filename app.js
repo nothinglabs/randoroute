@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.973';
+const APP_VERSION = '2026-08-30.974';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -217,6 +217,11 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   // favourite Interurban route on Seattle -> Mukilteo that the strict rule
   // folds. The distinctRideMi slider applies either way.
   reduceRouteDuplication: 0,
+  // The failing-route seat gate (issue 18, v960/v963) as a percentage: a route
+  // carrying over 400 m of failing road is offered only if it is this much
+  // faster than the quickest clean route. 15 is the shipped 1.15x; 0 turns
+  // the gate off (field ask, 2026-09-02). MIRRORED in router-worker.js.
+  failSeatSavingPct: 15,
   // Scales every outcome threshold in the near-twin keeper (worker's
   // materialTradeoff): below 1, smaller safety/facility differences keep a
   // near-identical pair separate; above 1 only large ones do.
@@ -270,6 +275,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
   reduceRouteDuplication: Object.freeze([0, 1]),
+  failSeatSavingPct: Object.freeze([0, 40]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -16755,6 +16761,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Two options sharing all but this much of the shorter one fold into a single route. Lower = more, closer variants offered.' },
     { key: 'twinTradeoffX', label: 'Safety tradeoff to keep a near-twin (x)', min: .3, max: 3, step: .05,
       hint: 'Nearly identical options both stay when their safety or facility outcome differs enough; this scales "enough". Below 1 keeps more close variants.' },
+    { key: 'failSeatSavingPct', label: 'Time a failing route must save to be offered (%)', min: 0, max: 40, step: 1,
+      hint: 'A route with more than 400 m of failing road earns a seat only if it is this much faster than the quickest clean route. 15 is the shipped rule; 0 turns the gate off so every failing route competes on its score alone.' },
     { key: 'reduceRouteDuplication', label: 'Reduce route duplication', toggle: true, min: 0, max: 1, step: 1,
       hint: 'Stricter folding of near-twins: a twin with more failing road stays only if it saves real time, and two routes sharing over 90% of their roads stay separate only for a safety difference, not for facility mileage. Off keeps every twin the rules above allow.' },
   ], 'Duplicates'],

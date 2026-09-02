@@ -1506,6 +1506,11 @@ const DEFAULT_WEIGHTS = Object.freeze({
   // favourite Interurban route on Seattle -> Mukilteo that the strict rule
   // folds. The distinctRideMi slider applies either way.
   reduceRouteDuplication: 0,
+  // The failing-route seat gate (issue 18, v960/v963) as a percentage: a route
+  // carrying over 400 m of failing road is offered only if it is this much
+  // faster than the quickest clean route. 15 is the shipped 1.15x; 0 turns
+  // the gate off (field ask, 2026-09-02). MIRRORED in app.js.
+  failSeatSavingPct: 15,
   // Scales every outcome threshold in materialTradeoff below: under 1,
   // smaller safety/facility differences keep a near-identical pair
   // separate; above 1 only large ones do. 1 is the shipped behaviour.
@@ -1544,6 +1549,7 @@ const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   distinctRideMi: Object.freeze([0.05, 3]),
   twinTradeoffX: Object.freeze([0.3, 3]),
   reduceRouteDuplication: Object.freeze([0, 1]),
+  failSeatSavingPct: Object.freeze([0, 40]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -5742,7 +5748,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // route. The protections guarantee a SHAPE of route a seat (a hybrid, a
   // frontier crossing); a failing route of that shape that buys nothing is
   // exactly the route being objected to.
-  const SEAT_RATIO = 1.15;
+  // The ratio is the rider's failSeatSavingPct weight (Advanced weights ->
+  // Duplicate filtering; 15 = the shipped 1.15x). 0 turns the gate off.
+  const seatSavingPct = Math.max(0, Number(activeWeights.failSeatSavingPct) || 0);
+  const SEAT_RATIO = 1 + seatSavingPct / 100;
   const SEAT_FAIL_FLOOR_M = 400;
   const CLEAN_FAIL_M = 160;
   const cleanQuickest = scoredChoices
@@ -5751,6 +5760,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const lensGatedOf = new Map();
   const choices = scoredChoices.filter((candidate) => {
     if (candidate === strongPreferredCandidate) return true;
+    if (seatSavingPct <= 0) return true;
     if ((candidate.failM || 0) <= SEAT_FAIL_FLOOR_M || !cleanQuickest) return true;
     if (cleanQuickest.timeS >= candidate.timeS * SEAT_RATIO) return true;
     lensGatedOf.set(candidate, cleanQuickest);
