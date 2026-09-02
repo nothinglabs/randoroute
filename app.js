@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.964';
+const APP_VERSION = '2026-08-30.965';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -14439,7 +14439,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
       // out, which is exactly the credit's exclusion set.
       const bailout = n.sidewalk === 'present' && rules.allowSidewalkFallback
         ? ' A sidewalk is mapped here.' : '';
-      return `Needs a bike lane or a safe-ish-width shoulder: ${why.join(', ')}.`
+      return `Needs a bike lane or a safeish-width shoulder: ${why.join(', ')}.`
         + ` ${shHere}, against your ${rules.minShoulder} ft minimum.${bailout}`;
     }
     case 'shares-lane':
@@ -16896,7 +16896,7 @@ function presetInfoRows(preset) {
     ['Road is busier than', (() => {
       const lvl = SafetyModel.busyLevel(presetRules);
       return lvl.noLimit ? 'Traffic volume is not used.' : lvl.id
-        ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or a safe-ish-width shoulder. Where no count exists the road's class stands in.`
+        ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or a safeish-width shoulder. Where no count exists the road's class stands in.`
         : 'Traffic volume is not used.';
     })()],
     ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
@@ -18081,12 +18081,12 @@ function buildRulesPanel() {
   // space of its own.
   const spaceHeading = document.createElement('p');
   spaceHeading.className = 'rule-group-head';
-  spaceHeading.textContent = 'Require bike lane or safe-ish shoulder if any of these:';
+  spaceHeading.textContent = 'Require bike lane or safeish shoulder if any of these:';
   slidersHost.appendChild(spaceHeading);
   slider('maxSpeedNoShoulder', 'Speed limit is over', 20, 45, 5, ' mph', 'rule-sub');
   lanesSlider();
   busySlider();
-  slider('minShoulder', 'Minimum shoulder width to count as safe-ish', 2, 10, 1, ' ft');
+  slider('minShoulder', 'Minimum shoulder width to count as safeish', 2, 10, 1, ' ft');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).

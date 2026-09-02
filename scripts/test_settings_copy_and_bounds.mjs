@@ -44,8 +44,8 @@ const slider = await page.evaluate(() => {
 });
 check('the shoulder control cannot be set below 2 ft',
   !slider.missing && slider.min === 2 && slider.max === 10, JSON.stringify(slider));
-check('and it is labelled as the safe-ish width',
-  /safe-ish/i.test(slider.label), slider.label);
+check('and it is labelled as the safeish width',
+  /safeish/i.test(slider.label), slider.label);
 
 const speedSlider = await page.evaluate(() => {
   const input = document.getElementById('r-maxSpeedNoShoulder');
@@ -113,7 +113,7 @@ const copy = await page.evaluate(() => ({
   })(),
 }));
 check('the bike-space rule reads as one requirement',
-  copy.settings.includes('Require bike lane or safe-ish shoulder if any of these:'),
+  copy.settings.includes('Require bike lane or safeish shoulder if any of these:'),
   copy.settings.slice(0, 160));
 check('the weights screen carries a modified-state header', copy.weightsNotice);
 check('and no longer claims weights are "never a safety rule"',
