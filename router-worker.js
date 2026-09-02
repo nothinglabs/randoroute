@@ -6579,8 +6579,15 @@ onmessage = (ev) => {
         if (!primary.ok) return { primary, portfolio: null };
         let portfolio = null;
         try {
+          // The same signature the route-options handler builds, so this
+          // portfolio's candidatesKey carries the blocks and weights it was
+          // searched under. Without it the fallback key was points+rules only,
+          // and a More-screen or lens lookup after an off-route re-plan could
+          // be answered from a portfolio built under different road blocks.
+          const signature = JSON.stringify([points, m.rules, !!m.prefDesignated,
+            !!m.prefResidential, m.weights || null, m.blocks || null, 'navigation']);
           portfolio = routeOptions(points, m.rules, !!m.prefDesignated,
-            !!m.prefResidential, m.profileId);
+            !!m.prefResidential, m.profileId, false, null, signature);
         } catch (e) { /* Keep the working recovery route if comparison fails. */ }
         return { primary, portfolio };
       });

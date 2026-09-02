@@ -120,9 +120,8 @@ check('a trip inside an installed non-home map requests a full route portfolio',
 /* ------------------------------------ which route survives a recompute */
 // The frozen-lineup system (pinned recipes, held letters, greyed unroutable
 // slots) is gone by field decision: every search generates, sorts and letters
-// its portfolio normally, and continuity is the SELECTION -- the rider's
-// letter is re-selected in the fresh lineup, falling to the last letter when
-// the new lineup is shorter.
+// its portfolio normally, and continuity is the SELECTION -- the new route
+// closest by geometry to the one the rider was on.
 const regeneration = await page.evaluate(() => {
   const out = {};
   const posted = [];
@@ -146,7 +145,7 @@ const regeneration = await page.evaluate(() => {
   out.afterWaypointRemove = routing.selectRecommendedNext;
 
   // A road block refines the trip; the fresh portfolio still re-letters, and
-  // the rider's place is kept by letter, not by recipe.
+  // the rider's place is kept by geometry, not by recipe or letter.
   routing.selectRecommendedNext = false;
   addRoadBlock({ lng: -122.322, lat: 47.617 });
   out.afterBlock = routing.selectRecommendedNext;
@@ -269,7 +268,7 @@ const descToast = await page.evaluate(() => {
   host.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 4, clientY: 4 }));
   const tap = { beforeTap, afterTap: host.classList.contains('show') };
   routing.allCandidates = [];
-  return { shown, nav, tap, expected: candidateRouteDescriptions([candidate]).get('p-toast') };
+  return { shown, nav, tap, expected: candidateRouteDescriptions([candidate]).get('p-toast')?.text };
 });
 check('choosing a route shows its description pill',
   descToast.shown.visible && descToast.shown.text.length > 10
@@ -308,7 +307,7 @@ const detailsDesc = await page.evaluate(() => {
     fontPx: desc ? parseFloat(getComputedStyle(desc).fontSize) : 0,
     threeLines: desc ? Math.round(parseFloat(getComputedStyle(desc).lineHeight) * 3) : 0,
     headHeight: head ? Math.round(head.getBoundingClientRect().height) : 0,
-    expected: candidateRouteDescriptions([candidate]).get('p-toast') };
+    expected: candidateRouteDescriptions([candidate]).get('p-toast')?.text };
   document.getElementById('routeDetailsDialog')?.close();
   routing.allCandidates = [];
   routing.last = null;

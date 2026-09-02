@@ -1,7 +1,7 @@
 {
   "name": "Safeish",
   "short_name": "Safeish",
-  "description": "Washington roads colored by bicycle level of traffic stress. Visualization only.",
+  "description": "Bike routes that respect your safety rules, with every road colored by how it rates. Washington and Oregon, offline once downloaded.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

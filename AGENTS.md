@@ -48,7 +48,9 @@ The rules that remain:
   like coverage.
 
 The suite needs `shapely`, `osmium` and `Pillow` (`pip install shapely osmium
-Pillow`) for the data tests, and Playwright for the forty-two browser tests.
+Pillow`) for the data tests, and Playwright for the forty-two browser tests
+(`npm install` brings the package; on a Mac without Playwright's own browser
+download, point the harness at Homebrew's: `CHROMIUM_PATH=/opt/homebrew/bin/chromium`).
 
 ### The long poles
 
