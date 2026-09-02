@@ -649,7 +649,6 @@ function buildRouteSteps(segs, directions = []) {
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
       last.crossingM += seg.crossing ? Number(seg.lenM) || 0 : 0;
       if (segLevel === 4) last.failM += seg.lenM;
-      accumulateStepFacts(last, seg);
     } else {
       out.push({
         name,
@@ -674,7 +673,6 @@ function buildRouteSteps(segs, directions = []) {
         hazard: seg.hazard || 0,
         crossingM: seg.crossing ? Number(seg.lenM) || 0 : 0,
         failM: segLevel === 4 ? seg.lenM : 0,
-        ...initialStepFacts(seg),
       });
     }
   }
@@ -706,8 +704,6 @@ function buildRouteSteps(segs, directions = []) {
       previous.hazard = Math.max(previous.hazard || 0, bridge.hazard || 0, next.hazard || 0);
       previous.crossingM += bridge.crossingM + next.crossingM;
       previous.failM += bridge.failM + next.failM;
-      mergeStepFacts(previous, bridge);
-      mergeStepFacts(previous, next);
       out.splice(i, 2);
     } else {
       i++;
@@ -725,132 +721,23 @@ function buildRouteSteps(segs, directions = []) {
   }));
 }
 
-// The per-step road facts the rows report beyond the safety verdict (issue 7,
-// 2026-08-30: the rows "read thin"). Each is the WORST reading over the
-// step's edges, the same rule the road card uses for a two-sided shoulder,
-// so a step never advertises its best hundred metres.
-function initialStepFacts(seg) {
-  const facts = {
-    shMin: -1, shKnownM: 0, estSpeedM: 0, lanes: 0, roadClass: 0, lts: 0,
-    measures: null, unpavedM: 0, surfaceWorst: 0, climbM: 0,
-  };
-  accumulateStepFacts(facts, seg);
-  return facts;
-}
-
-function accumulateStepFacts(step, seg) {
-  const len = Number(seg.lenM) || 0;
-  const sh = Number(seg.sh);
-  if (Number.isFinite(sh) && sh >= 0) {
-    step.shMin = step.shMin < 0 ? sh : Math.min(step.shMin, sh);
-    step.shKnownM += len;
-  }
-  if ((seg.flags || 0) & FLAG_EST_SPEED) step.estSpeedM += len;
-  step.lanes = Math.max(step.lanes || 0, Number(seg.lanes) || 0);
-  step.roadClass = Math.max(step.roadClass || 0, Number(seg.roadClass) || 0);
-  step.lts = Math.max(step.lts || 0, Number(seg.lts) || 0);
-  if ((Number(seg.measures?.adt) || 0) > (Number(step.measures?.adt) || 0)) step.measures = seg.measures;
-  // Unpaved is reported as a LENGTH, not a flag: one gravel connector on an
-  // eight-mile paved trail is not a gravel trail.
-  if (isConfirmedUnpavedSurface(seg.surface)) {
-    step.unpavedM += len;
-    step.surfaceWorst = Math.max(step.surfaceWorst || 0, Number(seg.surface) || 0);
-  }
-  const grade = credibleSegmentGradePct(seg);
-  if (grade > 0) step.climbM += grade / 100 * len;
-}
-
-// Folding an already-aggregated step into another (the block-boundary
-// connector fold above): the facts merge the same way, over the step's own
-// totals rather than a single edge's.
-function mergeStepFacts(into, from) {
-  if (from.shMin >= 0) {
-    into.shMin = into.shMin < 0 ? from.shMin : Math.min(into.shMin, from.shMin);
-    into.shKnownM += from.shKnownM;
-  }
-  into.estSpeedM += from.estSpeedM || 0;
-  into.lanes = Math.max(into.lanes || 0, from.lanes || 0);
-  into.roadClass = Math.max(into.roadClass || 0, from.roadClass || 0);
-  into.lts = Math.max(into.lts || 0, from.lts || 0);
-  if ((Number(from.measures?.adt) || 0) > (Number(into.measures?.adt) || 0)) into.measures = from.measures;
-  into.unpavedM += from.unpavedM || 0;
-  into.surfaceWorst = Math.max(into.surfaceWorst || 0, from.surfaceWorst || 0);
-  into.climbM += from.climbM || 0;
-}
-
-// Traffic in the rider's own scale: the tiers are the safety model's
-// BUSY_LEVELS thresholds, the same numbers "Road is busier than" in Limits
-// uses, so "busy" here and "a busy arterial" there mean one thing.
-function trafficTierLabel(adt) {
-  const thresholds = (window.SafetyModel?.BUSY_LEVELS || [])
-    .map((level) => level.adt).filter((value) => Number.isFinite(value));
-  const names = ['very light', 'light', 'moderate', 'busy'];
-  for (let i = 0; i < thresholds.length && i < names.length; i++) {
-    if (adt <= thresholds[i]) return names[i];
-  }
-  return 'heavy';
-}
-
-function stepShoulderBit(step) {
-  const flags = step.flags || 0;
-  if (flags & (FLAG_INFRA | FLAG_FERRY | FLAG_FREEWAY)) return null;
-  // On a separated lane or a path the shoulder is not where you ride.
-  if (Number(step.facility) >= 4) return null;
-  if (step.shMin >= 0 && step.shKnownM >= (Number(step.lenM) || 0) * 0.5) {
-    return step.shMin === 0 ? 'no shoulder' : `${step.shMin} ft shoulder`;
-  }
-  const rules = activeDetailRules();
-  const facts = routeSegmentFacts({ ...step, sh: step.shMin });
-  if (window.SafetyModel.shoulderWasInferred(facts, rules)) {
-    const verdict = window.SafetyModel.evaluate(facts, rules);
-    if (Number.isFinite(Number(verdict.shoulder))) return `~${verdict.shoulder} ft shoulder (inferred)`;
-  }
-  return null;
-}
-
 function stepMeta(step) {
   const flags = step.flags || 0;
   const bits = [];
-  const isRoad = !(flags & (FLAG_INFRA | FLAG_FERRY));
   if (step.crossingM > 0) bits.push(`${fmtDist(step.crossingM)} intersection crossing`);
   if (isMountainBikeTrail(step)) bits.push('mountain-bike trail');
   if (step.hazard) bits.push('possible limited-visibility uphill curve');
-  if (step.mph) {
-    // A class-default speed says so. The road card marks the same fact
-    // "(estimated from class)"; a posted or agency limit carries no tag.
-    const estimated = !(step.official & 1)
-      && (step.estSpeedM || 0) >= (Number(step.lenM) || 0) * 0.5;
-    bits.push(`${step.mph} mph${estimated ? ' (est.)' : ''}`);
-  }
-  const shoulder = stepShoulderBit(step);
-  if (shoulder) bits.push(shoulder);
-  const adt = Number(step.measures?.adt) || 0;
-  if (isRoad && adt > 0) bits.push(`${trafficTierLabel(adt)} traffic (${adt.toLocaleString()}/day)`);
-  if (isRoad && step.lanes >= 3) bits.push(`${step.lanes} lanes`);
+  if (step.mph) bits.push(`${step.mph} mph`);
   if (flags & FLAG_FREEWAY) bits.push('freeway');
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('limited access');
   else if (FACILITY_NAME[step.facility]) bits.push(FACILITY_NAME[step.facility]);
   else if (flags & FLAG_INFRA) bits.push('bike infrastructure');
   else if (flags & FLAG_DESIGNATED) bits.push('bike route');
   else if (flags & FLAG_FACILITY) bits.push('bike facility');
-  if (isRoad && !(flags & FLAG_FREEWAY) && ROAD_CLASS_NAME[step.roadClass]) {
-    bits.push(ROAD_CLASS_NAME[step.roadClass]);
-  }
   const state = segmentState(step);
   if ((step.official & 2) && state?.facilitySourceName) bits.push(state.facilitySourceName);
   if (step.official & 1) bits.push(`${state?.speedAgency || 'Transportation agency'} legal speed`);
-  // Name the highway when the road's name carries its designation. Most state
-  // routes are stored under their street name and lose the ref at graph
-  // build, so the plain word is still the fallback for a 45+ mph road.
-  const ref = stateHighwayRef(step.name, step.stateId);
-  if (ref) bits.push(`highway ${ref}`);
   else if (stateHighwayName(step.name, step.stateId) || step.mph >= 45) bits.push('highway');
-  if (step.unpavedM > 0) {
-    const all = step.unpavedM >= (Number(step.lenM) || 0) * 0.95;
-    const surface = step.surfaceWorst === 3 ? 'unpaved' : 'gravel';
-    bits.push(all ? surface : `${fmtDist(step.unpavedM)} ${surface}`);
-  }
-  if (step.climbM >= 6) bits.push(`↗ ${fmtFt(step.climbM)} ft climb`);
   if (step.failM > 0) bits.push(`includes ${fmtDist(step.failM)} that fails rules`);
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('caution');
   return bits.join(' · ') || 'follow this road';

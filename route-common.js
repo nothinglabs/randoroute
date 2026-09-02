@@ -11,9 +11,6 @@
  */
 
 /* ---- the worker segment's bitfields, named once ---- */
-// The speed came from the road's class, not a posted or official limit.
-// build_graph.py clears it when an agency legal speed is conflated in.
-const FLAG_EST_SPEED = 1;
 const FLAG_FACILITY = 2;
 const FLAG_FREEWAY = 4;
 const FLAG_INFRA = 8;
@@ -67,39 +64,6 @@ function stateHighwayName(name, stateId = null) {
       new RegExp(`\\b(highway|state route|${refs.join('|')})`, 'i'));
   }
   return _stateHighwayPatterns.get(state.id).test(name || '');
-}
-// The route designation a road NAME carries, normalised to the sign
-// spelling: "State Route 9" -> "SR 9", "Interstate 5" -> "I-5",
-// "US Highway 2" -> "US 2", "Highway 99" stays "Highway 99". Null when the
-// name carries none. The graph stores OSM `name` OR `ref` -- a highway with a
-// street name ("Bothell Way Northeast") lost its ref at build time, so this
-// can only name what the name already says; issue 7 measured that gap.
-function stateHighwayRef(name, stateId = null) {
-  const text = String(name || '');
-  if (!text) return null;
-  const state = routeStateConfig(stateId) || (typeof Region !== 'undefined' ? Region : null);
-  const prefixes = state?.stateRoutePrefixes || ['SR', 'US', 'I'];
-  // The state's own route prefix is the one that is neither Interstate nor US.
-  const statePrefix = prefixes.find((prefix) => !['I', 'US'].includes(prefix)) || 'SR';
-  let match = text.match(/\bInterstate\s+(\d+[A-Z]?)\b/i) || text.match(/\bI[-\s]\s*(\d+[A-Z]?)\b/);
-  if (match) return `I-${match[1].toUpperCase()}`;
-  match = text.match(/\bU\.?S\.?(?:\s+(?:Highway|Route|Hwy\.?))?[-\s]?\s*(\d+[A-Z]?)\b/);
-  if (match) return `US ${match[1].toUpperCase()}`;
-  // "State Route 9", "State Highway 20", and the state's own name in front
-  // of either ("Washington State Route 9", "Oregon Route 224").
-  const stateName = state?.name ? state.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
-  match = text.match(/\b(?:State\s+(?:Route|Highway)|State\s+Rte\.?)\s+(\d+[A-Z]?)\b/i)
-    || (stateName && text.match(new RegExp(`\\b${stateName}\\s+(?:State\\s+)?(?:Route|Highway|Rte\\.?)\\s+(\\d+[A-Z]?)\\b`, 'i')));
-  if (match) return `${statePrefix} ${match[1].toUpperCase()}`;
-  const stateRefs = prefixes.filter((prefix) => !['I', 'US'].includes(prefix))
-    .map((prefix) => prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  if (stateRefs.length) {
-    match = text.match(new RegExp(`\\b(?:${stateRefs.join('|')})[-\\s]\\s*(\\d+[A-Z]?)\\b`));
-    if (match) return `${statePrefix} ${match[1].toUpperCase()}`;
-  }
-  match = text.match(/\b(?:Highway|Hwy\.?)\s+(\d+[A-Z]?)\b/i);
-  if (match) return `Highway ${match[1].toUpperCase()}`;
-  return null;
 }
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 // Above this sustained grade the route card and the details page both raise
