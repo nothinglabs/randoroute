@@ -88,3 +88,14 @@ Review the first-run onboarding and the Help screen end to end under the
 Safeish name and decide what a new rider needs to see before their first
 route, and what belongs in Help versus on the map. Not yet scoped.
 
+---
+
+### 10. Assure route start / stop behaviour works in the real world
+Starting and stopping rides as part of an actual longer trip should be a good
+experience. Routes should reliably pick back up where they were stopped
+(paused). Examine the behaviour of "Current location" as the route start:
+does that wording persist in a way that becomes confusing once the rider has
+moved? Consider an option to save the literal route geometry, for riders who
+want to be sure they are continuing a route they previously verified rather
+than a fresh search that may differ. Field verdict needed.
+
