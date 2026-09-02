@@ -35,7 +35,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // while the Maps screen compared installs against the stale shell catalogue
 // and offered no update at all. A DATA release that regenerates either file
 // is a shell change.
-const VERSION = 'v966';
+const VERSION = 'v967';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -65,10 +65,10 @@ const SHELL = [
   './multi-state-route-coordinator.js',
   './safety-model.js',
   './basemap-style.js',
-  './route-details.js?v=466',
+  './route-details.js?v=467',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=453',
+  './route-details.css?v=454',
   './marker-icons.js',
   './route-common.js',
   './manifest.json',

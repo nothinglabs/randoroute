@@ -1669,6 +1669,13 @@ body.navigation-active #routeBar { display: none; }
 .route-details-dialog[open] { display: flex; flex-direction: column; }
 .route-details-dialog-head { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 14px; height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
 #routeDetailsDialogTitle { flex: none; }
+/* Every other full-screen dialog closes from its head; this one only closed
+   from the report's own Back button at the bottom of the frame (issue 7,
+   2026-08-30). The X is 36px for a thumb and sits in the fixed head, so it
+   stays under the safe-area inset and never depends on the report's
+   scroll position. */
+.route-details-dialog-head .dialog-close { flex: none; margin-left: auto; width: 36px; height: 36px; font-size: 18px; line-height: 1; color: #334a58; }
+.route-details-dialog-head .dialog-close:hover { background: #e2e8ed; }
 .route-details-dialog-desc { flex: 1; min-width: 0; color: #56707e;
   /* 12.4/1.3 puts three lines at 48px inside the 58px head, so the type
      grows without the header band moving (field ask, 2026-08-28). */
