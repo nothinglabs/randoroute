@@ -83,8 +83,8 @@ check('asphalt is routine above the fold while gravel remains noteworthy',
 check('OSM path tags are translated for rider-facing Details',
   asphalt.friendlyType === 'Dedicated bike path'
     && !/bicycle=designated/.test(asphalt.friendlyType), JSON.stringify(asphalt));
-check('the action row is Navigate, Street View and the details flip-down',
-  compact.primaryActions.join('|') === 'Navigate|Street View|Details',
+check('the action row is Navigate, View Street… and the details flip-down',
+  compact.primaryActions.join('|') === 'Navigate|View Street…|Details',
   JSON.stringify(compact.primaryActions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
@@ -138,7 +138,7 @@ const originalDetails = await page.evaluate(() => ({
 check('road Details restores the original source-oriented heading verbatim',
   originalDetails.heading === 'Road (OSM)', JSON.stringify(originalDetails));
 check('road Details keeps every technical row not already shown above',
-  ['Speed limit', 'Shoulder', 'Area', 'Sidewalk (OSM)']
+  ['Speed limit', 'Shoulder', 'Sidewalk (OSM)']
     .every((label) => originalDetails.text.includes(label))
     && !/47\.61500|-122\.33500|Location/.test(originalDetails.text), originalDetails.text);
 // Suppressed above the fold is not the same as discarded: a paved surface is
@@ -241,7 +241,7 @@ const routeSegmentBlock = await page.evaluate(() => {
 check('the road block button appears only for a segment of the active route',
   routeSegmentBlock.button === 'Avoid this road' && routeSegmentBlock.detailsHidden
     && routeSegmentBlock.actionRow.map((item) => item.text).join('|')
-      === 'Navigate|Street View|Details|🚧'
+      === 'Navigate|View Street…|Details|🚧'
     && new Set(routeSegmentBlock.actionRow.map((item) => item.top)).size === 1,
   JSON.stringify(routeSegmentBlock));
 

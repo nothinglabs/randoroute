@@ -899,11 +899,18 @@ input[type="checkbox"] { width: 17px; height: 17px; }
    viewport edge without shifting the scale control above it. */
 #map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib { margin-right: 0; }
 /* -------------------------------------------------------------- overlays */
+/* env() cannot be read from script, but a custom property holding it can:
+   readoutMinTop() uses this to keep the card's close button below the notch. */
+:root { --safe-area-top: env(safe-area-inset-top, 0px); }
 .readout {
   position: absolute; z-index: 20;
   background: rgba(255, 255, 255, 0.8); border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
-  box-sizing: border-box; padding: 8px 43px 7px 10px;
+  /* Symmetric padding: the 43px right gutter that once cleared the close
+     button cost every row below the title a third of the card's width and
+     crammed the action buttons (issue 7, 2026-08-30). The title row alone
+     now clears the button, by height and by its own right padding. */
+  box-sizing: border-box; padding: 8px 10px 7px;
   font: 12px/1.2 system-ui; max-width: 310px;
   max-height: calc(100vh - 100px); overflow-y: auto; display: none;
 }
@@ -924,7 +931,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .readout.show { display: block; }
 .readout.near-tap { right: auto; bottom: auto; }
-.readout .rt-title { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 3px; }
+.readout .rt-title { display: flex; align-items: center; gap: 6px; min-height: 34px; padding-right: 36px; font-weight: 700; margin-bottom: 3px; }
 .readout .rt-swatch { display: inline-block; flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid rgba(0,0,0,.18); border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset; }
 .readout-close { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: none; border-radius: 8px; background: #eef1f4; color: #4b5961; font: 750 17px/1 system-ui; cursor: pointer; }
 .readout-safety-summary {
@@ -971,16 +978,19 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 /* Auto-fit rather than a fixed three: an endpoint card has no Navigate button
    (the point already has its role) and must not leave a gap where it was. */
 .readout-primary-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; margin-top: 6px; }
-.readout-primary-actions.has-road-block { grid-template-columns: repeat(4, minmax(0, 1fr)) 36px; }
+/* Three text actions plus the roadblock square. This once said four, from when
+   Street View had its own button, and the empty fourth column squeezed the
+   three that remained. */
+.readout-primary-actions.has-road-block { grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; }
 /* Labels WRAP rather than clip. Four actions (Navigate / Street View /
    Other Map / Details) do not fit this card on one line at a legible size, and
    a clipped label on the row that reaches Street View and other maps hides the
    choice instead of shrinking it. Two short lines inside the same 34px button
    costs nothing and reads at a glance. */
 .readout-primary-actions > button {
-  min-width: 0; min-height: 34px; padding: 5px 3px; border: 1px solid #b7cbd7;
+  min-width: 0; min-height: 36px; padding: 6px 4px; border: 1px solid #b7cbd7;
   border-radius: 7px; background: #f7fafb; color: #176b99;
-  font: 780 9.5px/1.05 system-ui; cursor: pointer;
+  font: 780 10.5px/1.1 system-ui; cursor: pointer;
 }
 .readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
 .readout-primary-actions > button:hover,

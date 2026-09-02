@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.968';
+const APP_VERSION = '2026-08-30.969';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -14320,6 +14320,49 @@ function roadClassRow(measures, osmClass, fallback) {
   return [['Class', `${FUNCTIONAL_CLASS_NAME[level] || level} (${source})`]];
 }
 
+// Traffic as a rider reads it, above the fold: a tier on the safety model's own
+// BUSY_LEVELS thresholds -- the "Road is busier than" scale in Limits, so
+// "Busy" here and "a busy arterial" there are one number -- with the count when
+// there is one. A road with no count but a functional class gets the class's
+// tier, labelled as such. The count with its source and year stays in Details
+// (measurementRows); this line is the reading, that row is the evidence.
+const TRAFFIC_TIER_NAMES = ['Very light', 'Light', 'Moderate', 'Busy'];
+function trafficTierForAdt(adt) {
+  const thresholds = SafetyModel.BUSY_LEVELS.map((level) => level.adt)
+    .filter((value) => Number.isFinite(value));
+  for (let i = 0; i < thresholds.length && i < TRAFFIC_TIER_NAMES.length; i++) {
+    if (adt <= thresholds[i]) return TRAFFIC_TIER_NAMES[i];
+  }
+  return 'Heavy';
+}
+function trafficLevelText(n) {
+  const measures = n?.measures;
+  const adt = Number(measures?.adt);
+  if (adt > 0) return `${trafficTierForAdt(adt)} — ${adt.toLocaleString()} vehicles/day`;
+  const fc = Number(measures?.fc);
+  if (fc > 0) {
+    // BUSY_LEVELS pairs each count threshold with the functional class that
+    // stands in for it where nothing was counted; walk the same table.
+    const levels = SafetyModel.BUSY_LEVELS.filter((level) => Number.isFinite(level.fc));
+    let tier = 'Heavy';
+    for (let i = 0; i < levels.length && i < TRAFFIC_TIER_NAMES.length; i++) {
+      if (fc >= levels[i].fc) { tier = TRAFFIC_TIER_NAMES[i]; break; }
+    }
+    return `${tier}, by road class (no count)`;
+  }
+  return null;
+}
+
+// The signed route a tapped road belongs to, for the card's "Highway" fact
+// (issue 7, 2026-08-30: name the highway). A tile ref ("SR 522", "US 2",
+// "I 5") is normalised by stateHighwayRef; a ref that is not a numbered route
+// is shown as written; a route segment has no ref in the graph, so its name
+// is the only source there.
+function highwayDesignation({ ref = null, name = null, stateId = null } = {}) {
+  const fromRef = ref ? (stateHighwayRef(ref, stateId) || (/\d/.test(ref) ? ref : null)) : null;
+  return fromRef || stateHighwayRef(name, stateId);
+}
+
 function routeClassNote(p) {
   if (p.infra || p.ferry || p.facility >= 1 || !p.roadClass) return null;
   if (p.roadClass >= 8 && p.roadClass <= 11)
@@ -14415,7 +14458,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
       // fast AND too busy, and being told only one of them invites a rider to
       // change the wrong setting.
       const why = spaceReasons(n).map((reason) => {
-        if (reason === 'speed') return `${n.maxspeed_num} mph`;
+        if (reason === 'speed') return spdTxt;
         if (reason === 'lanes') {
           return `${n.lanes} lanes${n.ctl ? ' (incl. a centre turn lane)' : ''}`;
         }
@@ -14873,6 +14916,28 @@ function resetRoadInfoPosition() {
 // Put a tapped road card around the tap instead of always sending it to the
 // top of the screen. Work in viewport coordinates for clamping, then convert
 // back to the card's offset-parent coordinates for its absolute positioning.
+// The top of the map is not free: the status bar or notch (the safe-area
+// inset) and the route bar or navigation banner sit there. A card clamped to
+// the map's own top edge put its close button under them, where it could not
+// be tapped (issue 7, 2026-08-30). The lowest edge of whatever is anchored in
+// the top band is the real ceiling.
+function readoutMinTop(mapRect, edgeGap) {
+  const safeTop = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--safe-area-top')) || 0;
+  let minTop = mapRect.top + Math.max(0, safeTop) + edgeGap;
+  for (const id of ['routeBar', 'topToolbar', 'navBanner', 'mapLoadingBar']) {
+    const el = document.getElementById(id);
+    if (!el || el.hidden) continue;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    // Only a bar in the top band counts; the navigation banner docks at the
+    // bottom when the rider is not navigating.
+    if (rect.top > mapRect.top + mapRect.height * 0.35) continue;
+    minTop = Math.max(minTop, rect.bottom + edgeGap);
+  }
+  return minTop;
+}
+
 function positionRoadInfoNear(point) {
   const edgeGap = 10;
   const mapRect = map.getContainer().getBoundingClientRect();
@@ -14887,7 +14952,7 @@ function positionRoadInfoNear(point) {
   // lets the final placement account for the actual amount of road data.
   const cardRect = readoutEl.getBoundingClientRect();
   const minLeft = mapRect.left + edgeGap;
-  const minTop = mapRect.top + edgeGap;
+  const minTop = readoutMinTop(mapRect, edgeGap);
   const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
   const maxTop = Math.max(minTop, mapRect.bottom - edgeGap - cardRect.height);
   const tapX = mapRect.left + point.x;
@@ -14932,7 +14997,7 @@ function positionPlaceCardAwayFromPin(point) {
   };
   const minLeft = mapRect.left + edgeGap;
   const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
-  const minTop = mapRect.top + edgeGap;
+  const minTop = readoutMinTop(mapRect, edgeGap);
   const maxTop = Math.max(minTop, mapRect.bottom - edgeGap - cardRect.height);
   const clampLeft = (left) => Math.min(maxLeft, Math.max(minLeft, left));
   const clampTop = (top) => Math.min(maxTop, Math.max(minTop, top));
@@ -15607,6 +15672,9 @@ function renderMapTapCard({
     facts.append(fact);
   };
   addFact('Bike route', bikeRoute, bikeRouteKeys);
+  // The signed highway, when the road is one: "SR 522" beside a street name
+  // that gives no hint of it (issue 7, 2026-08-30).
+  addFact('Highway', readoutRowValue(rows, 'Highway'), ['Highway']);
   addFact('Bike accommodation', accommodation, accommodationKeys,
     { prominent: cautionKinds.includes('odd') });
   // With no bike lane or trail, the shoulder is what decides whether the road
@@ -15633,10 +15701,12 @@ function renderMapTapCard({
   if (cautionKinds.includes('steep')) {
     addFact('Hill', readoutRowValue(rows, 'Grade'), ['Grade'], { prominent: true });
   }
-  if (cautionKinds.includes('traffic')) {
-    addFact('Traffic', readoutRowValue(rows, 'Traffic', 'Traffic stress'),
-      ['Traffic', 'Traffic stress'], { prominent: true });
-  }
+  // Traffic rides above the fold whenever the road has a count, or a class to
+  // infer one from -- the way the hill does when there is one (issue 7,
+  // 2026-08-30). The caution styling stays for the roads the car marker flags.
+  // The count with its source and year remains in Details.
+  addFact('Traffic', readoutRowValue(rows, 'Traffic level'), ['Traffic level'],
+    { prominent: cautionKinds.includes('traffic') });
   if (cautionKinds.includes('curve')) {
     addFact('Curve caution', readoutRowValue(rows, 'Curve caution'), ['Curve caution'],
       { prominent: true });
@@ -15960,7 +16030,6 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     if (p.ferry === 1) {
       rows = [
         ['Name', p.name || 'Ferry crossing'],
-        ['State', segmentRegion.name],
         ['Result', '⛴ Ferry'],
         ['Why', 'Crossing by ferry — road rules don’t apply on the boat.'],
         ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
@@ -15975,24 +16044,24 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ] : common;
       rows = [
         ['Name', p.name || '(unnamed road)'],
-        ['State', segmentRegion.name],
+        ['Highway', highwayDesignation({ name: p.name, stateId: p.stateId })],
         ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
         ['Traffic conflict', facilityGap && lvl === 4
           ? 'Protected bike space briefly ends in a one-way shared-traffic lane here.' : null],
-        ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
+        ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (est. from road class)' : ''}` : null],
         ['Speed source', p.official & 1 ? `${segmentRegion.speedAgency} legal speed` : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft${p.shBack != null && p.shBack >= 0
           && p.shBack !== p.sh
           ? ` your direction (${p.shBack} ft the other way)` : ''}` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${segmentRegion.stressAgency} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+        ['Traffic level', trafficLevelText(n)],
         // One builder, so the route card and the tap card cannot describe the
         // same road with different numbers.
         ...measurementRows(n.measures),
         ...roadClassRow(n.measures, p.roadClass, null),
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
-        ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
         // The facility for the DIRECTION RIDDEN. A lane painted on the other
@@ -16046,6 +16115,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     tappedRoadGradeRequested = requestTappedRoadGrade(lngLat, p.n) != null;
     rows = [
       ['Name', p.n],
+      ['Highway', highwayDesignation({ ref: p.r, name: p.n })],
       ...common,
       // Tapping a road off the route and a segment of the route describe the
       // same street, so they use one vocabulary. Curve caution stays exclusive
@@ -16058,7 +16128,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       // which is why it starts as a placeholder; applyTappedRoadGrade() fills
       // it in, or removes the row when the graph has nothing near the tap.
       ['Grade', tappedRoadGradeRequested ? TAPPED_GRADE_PENDING : null],
-      ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
+      ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (est. from road class)' : ''}` : null],
       // `w` keeps the WORSE direction (it is what the map paints); `w2` is
       // the better one when the inventory recorded the two sides differently.
       // An unlabelled collapse reads as this card contradicting a route card
@@ -16071,10 +16141,9 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+      ['Traffic level', trafficLevelText(n)],
       ...measurementRows(n.measures),
       ...roadClassRow(n.measures, p.rc, p.h ? p.h + (p.r ? ` (${p.r})` : '') : null),
-      // Off the state highway system this is often the only inventory there is.
-      ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
       // Typed from OSM or the official WSDOT registry (fo=1); the registry's
@@ -16109,8 +16178,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
+      ['Traffic level', trafficLevelText(nOwn)],
       ['Shoulder', wsdotShoulderText(anchorPoint, p)],
-      ['Area', nOwn.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', wsdotSidewalkAt(lngLat)],
       ['Bike facility', p.BikeFacilityType],
       ['Designated bike route', p.Designated === 1 ? 'yes' : null],

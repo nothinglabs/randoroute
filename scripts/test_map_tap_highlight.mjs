@@ -360,8 +360,8 @@ check('and no road block on the place the router is routing to',
   endpoint.roadBlock === false, JSON.stringify(endpoint));
 check('and no pin dropped on top of the endpoint marker',
   endpoint.pins === 0, JSON.stringify(endpoint));
-check('Street View and Details survive on an endpoint card',
-  endpoint.actions.some((label) => /Street View/.test(label))
+check('View Street… and Details survive on an endpoint card',
+  endpoint.actions.some((label) => /View Street/.test(label))
     && endpoint.actions.some((label) => /Details/.test(label)),
   JSON.stringify(endpoint.actions));
 

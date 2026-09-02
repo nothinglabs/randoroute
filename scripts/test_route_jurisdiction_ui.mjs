@@ -49,15 +49,13 @@ check('route GeoJSON retains the segment state',
   otherState.activeState === 'washington' && otherState.propertyState === 'oregon',
   JSON.stringify(otherState));
 check('a route card uses the segment state agencies while another state is active',
-  /StateOregon/.test(otherState.text)
-    && /Speed sourceODOT legal speed/.test(otherState.text)
+  /Speed sourceODOT legal speed/.test(otherState.text)
     && /Traffic stressODOT rates it 4 of 4/.test(otherState.text)
     && /Facility sourceODOT Bicycle Facilities/.test(otherState.text), otherState.text);
 
 const activeState = await cardFor('washington');
 check('the same card still attributes active-state facts correctly',
-  /StateWashington/.test(activeState.text)
-    && /Speed sourceWSDOT legal speed/.test(activeState.text)
+  /Speed sourceWSDOT legal speed/.test(activeState.text)
     && /Traffic stressWSDOT rates it 4 of 4/.test(activeState.text)
     && /Facility sourceWSDOT Active Transportation Data/.test(activeState.text), activeState.text);
 check('the jurisdiction card has no JavaScript errors', errors.length === 0, errors.join(' | '));

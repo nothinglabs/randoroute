@@ -151,8 +151,8 @@ check('a ferry tap resolves through its registered wide hit target',
 check('the ferry card names and explains the crossing',
   ferryCard.heading && ferryCard.heading !== 'Point on map' && /Ferry route/.test(ferryCard.summary)
     && /prevent this crossing/.test(ferryCard.summary), JSON.stringify(ferryCard));
-check('a planned route offers Details and Avoid ferry without an Add stop action',
-  ferryCard.actions.map((action) => action.text).join('|') === 'Details|Avoid ferry'
+check('a planned route offers View Street…, Details and Avoid ferry without an Add stop action',
+  ferryCard.actions.map((action) => action.text).join('|') === 'View Street…|Details|Avoid ferry'
     && ferryCard.actions.every((action) => !action.disabled), JSON.stringify(ferryCard.actions));
 
 await page.locator('#readout .readout-details-toggle').click();
