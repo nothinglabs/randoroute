@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.959';
+const APP_VERSION = '2026-08-30.960';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11909,6 +11909,7 @@ const CANDIDATE_STAGES = {
   offered: { label: 'Offered', tone: 'offered' },
   'not-chosen': { label: 'Not chosen', tone: 'near' },
   dominated: { label: 'Dominated', tone: 'cut' },
+  'lens-no-gain': { label: 'No gain', tone: 'cut' },
   duplicate: { label: 'Duplicate', tone: 'cut' },
   'too-slow': { label: 'Too slow', tone: 'cut' },
   considered: { label: 'Considered', tone: 'cut' },
@@ -12100,6 +12101,13 @@ function candidateStageDetail(c, stage, labelOf) {
     const verdict = twinVerdictText(d.twin);
     return `Effectively the same roads as ${mate} — ${pct(d.overlap)} shared`
       + (verdict ? `, ${verdict}.` : '.');
+  }
+  if (c.stage === 'lens-no-gain' && mate && d?.cleanS) {
+    const saved = Math.round((d.cleanS - d.lensS) / 60);
+    const failMi = (d.failM / 1609.344).toFixed(1);
+    return `Built by the more-direct lens with ${failMi} mi of failing road, and `
+      + (saved > 0 ? `only ${saved} min quicker than ` : `no quicker than `)
+      + `${mate}, which is clean. A lens route earns a seat by saving at least 15%.`;
   }
   if (c.stage === 'dominated' && mate) {
     const quicker = d.slowerS >= 60

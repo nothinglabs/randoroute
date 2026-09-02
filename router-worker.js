@@ -5642,7 +5642,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const trimmed = useful.length ? useful : unique;
   for (const r of trimmed) r._triLens = triLensCost(r, rules);
   const triLensDominatorOf = new Map();
-  const choices = trimmed.filter((candidate) => {
+  const scoredChoices = trimmed.filter((candidate) => {
     if (protectedCandidates.has(candidate)) return true;
     const better = trimmed.find((other) => {
       if (other === candidate) return false;
@@ -5651,6 +5651,32 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     });
     if (better) triLensDominatorOf.set(candidate, better);
     return !better;
+  });
+  // A direct-lens route pays for its seat with time (issue 18, 2026-09-01).
+  // The lens searches with every multiplier flattened, so it is the one
+  // candidate priced by a search that under-weighs failing road; its whole
+  // justification on the board is that it buys a real saving. Measured on
+  // Lake Forest Park -> Fremont it took Route C at 58 min with 0.45 mi on a
+  // seven-lane arterial, beside a clean 58 min route -- longer, and no
+  // quicker. The margin below keeps the lens routes the rider accepts
+  // (Phinney, 1.20x / 1.16x, nine minutes bought) and drops the ones that buy
+  // nothing (Fremont 1.01x, 1.07x; Ballard -> Kenmore 1.09x for 3.2 failing
+  // miles). Only lens routes carrying failing road pay; a clean lens route
+  // needs no justification, and a board with no clean route to compare
+  // against keeps the lens -- that is the shake-up the lens exists for.
+  const LENS_SEAT_RATIO = 1.15;
+  const LENS_FAIL_FLOOR_M = 400;
+  const CLEAN_FAIL_M = 160;
+  const cleanQuickest = scoredChoices
+    .filter((c) => (c.failM || 0) <= CLEAN_FAIL_M)
+    .reduce((best, c) => (!best || c.timeS < best.timeS ? c : best), null);
+  const lensGatedOf = new Map();
+  const choices = scoredChoices.filter((candidate) => {
+    if (!candidate._profile?.directLens || protectedCandidates.has(candidate)) return true;
+    if ((candidate.failM || 0) <= LENS_FAIL_FLOOR_M || !cleanQuickest) return true;
+    if (cleanQuickest.timeS >= candidate.timeS * LENS_SEAT_RATIO) return true;
+    lensGatedOf.set(candidate, cleanQuickest);
+    return false;
   });
   progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
@@ -6103,6 +6129,12 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           slowerS: candidate.timeS - dominator.timeS,
           moreSevereM: severeM(candidate) - severeM(dominator) };
       }
+    } else if (lensGatedOf.has(candidate)) {
+      const clean = lensGatedOf.get(candidate);
+      candidate._stage = 'lens-no-gain';
+      candidate._stageWhy = 'A rules-relaxed direct search that buys too little time over a clean option to earn a seat.';
+      candidate._stageData = { mateId: clean._profile.id, cleanS: clean.timeS,
+        lensS: candidate.timeS, failM: candidate.failM || 0 };
     } else if (inUseful.has(candidate) && !inChoices.has(candidate)) {
       const dominator = triLensDominatorOf.get(candidate);
       candidate._stage = 'dominated';
