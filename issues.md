@@ -97,3 +97,13 @@ Three asks from the field, 2026-08-30.
 - **Name the highway.** Segments say the generic word `highway`
   (`route-details.js:740`) where `stateHighwayName` could resolve the actual
   route number.
+
+---
+
+### 21. Searching for Vancouver returns ferry terminals
+Field, 2026-08-30. Typing "Vancouver" as a destination lists a bunch of ferry
+terminals. Carried over from issue 18, whose other two items (the SR 522
+corridor, both directions) were fixed in v959-v963; this one was never
+touched. It is a destination-search problem, not a routing or scoring one --
+the place index (`maps/<state>/places.json`) and the search that ranks it.
+
