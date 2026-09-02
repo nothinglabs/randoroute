@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.969';
+const APP_VERSION = '2026-08-30.970';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15184,8 +15184,11 @@ function readoutTable(rows) {
   return table;
 }
 
+// A road with no OSM name but a route number is named by the number: US 2 near
+// Monroe carries only its ref, and without this the card fell through to the
+// nearest hamlet and read "Roosevelt — Point on map" (field, 2026-09-02).
 function readoutRoutePointName(rows) {
-  for (const key of ['Name', 'Route']) {
+  for (const key of ['Name', 'Highway', 'Route']) {
     const value = rows.find(([rowKey]) => rowKey === key)?.[1];
     const normalized = normalizeEndpointName(value);
     if (normalized && !/^\(?unnamed (?:road|path)\)?$/i.test(normalized)
@@ -15674,7 +15677,10 @@ function renderMapTapCard({
   addFact('Bike route', bikeRoute, bikeRouteKeys);
   // The signed highway, when the road is one: "SR 522" beside a street name
   // that gives no hint of it (issue 7, 2026-08-30).
-  addFact('Highway', readoutRowValue(rows, 'Highway'), ['Highway']);
+  const highway = readoutRowValue(rows, 'Highway');
+  if (highway && String(highway).toLowerCase() !== String(displayTitle).toLowerCase()) {
+    addFact('Highway', highway, ['Highway']);
+  }
   addFact('Bike accommodation', accommodation, accommodationKeys,
     { prominent: cautionKinds.includes('odd') });
   // With no bike lane or trail, the shoulder is what decides whether the road
@@ -16042,9 +16048,17 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
         ['Verdict', 'Blue — Intersection crossing'],
         ['Why', 'Short crossing between passing route segments; treated as crossing the road, not riding along it.'],
       ] : common;
+      // The graph stores a road's name OR its ref, so a route segment over
+      // "Bothell Way Northeast" does not know it is SR 522. The road tile
+      // painted under the same point does; borrow its ref when it is the same
+      // road (same name, or both unnamed), never from a neighbour.
+      const tile = p.infra === 1 ? null : paintedRoadAt(anchorPoint);
+      const sameRoad = tile && String(tile.properties?.n || '').trim().toLowerCase()
+        === String(p.name || '').trim().toLowerCase();
       rows = [
         ['Name', p.name || '(unnamed road)'],
-        ['Highway', highwayDesignation({ name: p.name, stateId: p.stateId })],
+        ['Highway', highwayDesignation({ ref: sameRoad ? tile.properties.r || null : null,
+          name: p.name, stateId: p.stateId })],
         ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
         ['Traffic conflict', facilityGap && lvl === 4
