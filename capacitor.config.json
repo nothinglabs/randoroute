@@ -1,6 +1,6 @@
 {
   "appId": "io.github.nothinglabs.clauding",
-  "appName": "Just Rolling Along",
+  "appName": "Safeish",
   "webDir": "mobile-shell",
   "ios": {
     "contentInset": "never",

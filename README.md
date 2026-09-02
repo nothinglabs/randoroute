@@ -1,4 +1,4 @@
-# Bike Safety Visualizer
+# Safeish
 
 A statewide bicycle-safety map and router. Washington and Oregon ship today;
 states install from a map store and routes may cross between installed

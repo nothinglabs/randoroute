@@ -1,6 +1,6 @@
 {
-  "name": "Just Rolling Along",
-  "short_name": "JRA",
+  "name": "Safeish",
+  "short_name": "Safeish",
   "description": "Washington roads colored by bicycle level of traffic stress. Visualization only.",
   "start_url": "./",
   "scope": "./",

@@ -1,5 +1,5 @@
 /*
- * Just Rolling Along -- bicycle safety and routing
+ * Safeish -- bicycle safety and routing
  *
  * All road, trail, ferry, restriction, and elevation data is baked into local
  * static files. Routing runs on-device in a web worker; optional runtime
@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.963';
+const APP_VERSION = '2026-08-30.964';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6636,7 +6636,7 @@ const ONBOARDING_STEPS = [
   {
     img: 'onboarding/tour-welcome.jpg',
     alt: 'A green route descending through a gulch to the waterfront',
-    title: 'Welcome to Just Rolling Along',
+    title: 'Welcome to Safeish',
     copy: 'Bike routing that takes safety seriously. Every road and trail is scored against rules you control — and the whole map works offline. Here’s the quick tour.',
   },
   {
@@ -13111,7 +13111,7 @@ function buildSavedRoutes() {
     try {
       await navigator.share({
         title: 'Bike route',
-        text: 'Open this bike route in Just Rolling Along.',
+        text: 'Open this bike route in Safeish.',
         url,
       });
       shareStatus.textContent = 'Share link sent.';
@@ -13122,7 +13122,7 @@ function buildSavedRoutes() {
   const importSharedRoute = () => {
     const shared = readSharedRoute(importUrlInput.value);
     if (!shared) {
-      importStatus.textContent = 'That does not look like a valid shared Just Rolling Along route link.';
+      importStatus.textContent = 'That does not look like a valid shared Safeish route link.';
       return;
     }
     loadSharedRouteIntoPlanner(shared);

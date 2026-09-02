@@ -20,7 +20,7 @@
                                 <rect key="frame" x="159" y="260" width="57" height="57"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="46"/>
                             </label>
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Just Rolling Along" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="app-title">
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Safeish" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="app-title">
                                 <rect key="frame" x="86" y="330" width="203" height="29"/>
                                 <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="24"/>
                                 <color key="textColor" red="0.145" green="0.271" blue="0.341" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
