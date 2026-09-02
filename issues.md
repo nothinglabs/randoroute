@@ -83,42 +83,6 @@ requirements.
 
 ---
 
-
-### 7. Tweak the segment details page
-Three asks from the field, 2026-08-30.
-
-- **Information richness.** The per-segment rows lost content over time and now
-  read thin; decide what belongs back. `route-details.js` renders them and has
-  not changed since v894 (`f55b868`, 2026-08-27), which retired the shoulder
-  line.
-- **Easy to close.** `routeDetailsDialog` in `index.html` has no close control
-  at all — its head is a title and a description, then the iframe. Every other
-  full-screen dialog carries a `dialog-close` button.
-- **Name the highway.** Segments say the generic word `highway`
-  (`route-details.js:740`) where `stateHighwayName` could resolve the actual
-  route number.
-
-**Clarification, 2026-09-02.** The target is the road card that pops up when
-a rider taps a segment on the MAP (`renderMapTapCard` and the road-info rows
-in `app.js`), not the Route Details dialog. The file references above point
-at the wrong screen; v967 changed Route Details by mistake and v968 reverted
-it. The full ask list for the map card:
-
-1. The card must never render so high that its ✕ cannot be tapped.
-2. Say "est" wherever a speed limit is inferred rather than posted or
-   official -- every place the card prints a speed, including the summary
-   sentence above the fold.
-3. Remove the "Area" and "State" rows from the sub-details.
-4. Give the text buttons more width; they are crammed.
-5. Above the details fold, show the traffic level the way the hill note is
-   shown, when there is one.
-6. Name the highway: "SR 522", "US 2", "I-5" where the route number can be
-   resolved, instead of the generic word.
-7. Information richness: the card's rows lost content over time; decide what
-   belongs back.
-
----
-
 ### 8. Searching for Vancouver returns ferry terminals
 Field, 2026-08-30. Typing "Vancouver" as a destination lists a bunch of ferry
 terminals. Carried over from the former issue 18, whose other two items (the SR 522
