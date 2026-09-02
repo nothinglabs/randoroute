@@ -156,22 +156,38 @@ const regeneration = await page.evaluate(() => {
   setRoutePoint('end', { lng: -122.29, lat: 47.64 });
   out.afterNewEnd = routing.selectRecommendedNext;
 
-  // Letter continuity, the whole of it: same letter when it exists, last
-  // letter when the lineup shrank, recommendation when explicitly asked.
-  const lineup = (letters) => letters.map((letter, index) => ({
-    optimization: { label: `Route ${letter}`, profileId: `p-${letter}`,
+  // Continuity is by GEOMETRY (2026-09-01): after a re-plan the rider stays
+  // on whichever new route shares the most road with the one they were on,
+  // whatever its letter or recipe. Letter continuity put the rider on a
+  // stranger of the same rank; before that the worker kept the selected
+  // recipe alive with a guaranteed seat, which let a route the seat gate had
+  // rejected straight back onto the board. Recommendation when explicitly
+  // asked, or when there is no previous route to be close to.
+  const line = (lat, from = -122.35, to = -122.25) => Array.from({ length: 40 },
+    (_, i) => [from + ((to - from) * i) / 39, lat]);
+  const lineup = (routes) => routes.map(([letter, coords], index) => ({
+    coords, optimization: { label: `Route ${letter}`, profileId: `p-${letter}`,
       recommended: index === 0 } }));
   // setRoutePoint above set selectRecommendedNext; these probes are about
   // ordinary continuity, so clear it first.
   routing.selectRecommendedNext = false;
-  routing.last = { optimization: { label: 'Route C', profileId: 'old-c' } };
-  out.sameLetter = refreshedRouteSelection(lineup(['A', 'B', 'C', 'D']))
-    ?.optimization.label;
-  routing.last = { optimization: { label: 'Route F', profileId: 'old-f' } };
-  out.closestLetter = refreshedRouteSelection(lineup(['A', 'B', 'C']))
-    ?.optimization.label;
+  // The old route ran along 47.62. The new lineup letters a different route
+  // "C"; the road the rider was on is now "B". Geometry wins over letter.
+  routing.last = { ok: true, coords: line(47.62),
+    optimization: { label: 'Route C', profileId: 'old-c' } };
+  out.sameLetter = refreshedRouteSelection(lineup([
+    ['A', line(47.60)], ['B', line(47.62)], ['C', line(47.64)], ['D', line(47.66)],
+  ]))?.optimization.label;
+  // Nothing matches exactly; the nearest by shared road still wins, even
+  // when the lineup is shorter and the old letter is gone.
+  routing.last = { ok: true, coords: line(47.6201),
+    optimization: { label: 'Route F', profileId: 'old-f' } };
+  out.closestLetter = refreshedRouteSelection(lineup([
+    ['A', line(47.60)], ['B', line(47.62)], ['C', line(47.64)],
+  ]))?.optimization.label;
   routing.selectRecommendedNext = true;
-  routing.last = { optimization: { label: 'Route C', profileId: 'old-c' } };
+  routing.last = { ok: true, coords: line(47.64),
+    optimization: { label: 'Route C', profileId: 'old-c' } };
   out.recommendedWins = refreshedRouteSelection(lineup(['A', 'B', 'C']))
     ?.optimization.label;
   routing.selectRecommendedNext = false;
@@ -189,8 +205,8 @@ check('a road block keeps the rider\'s letter in a freshly lettered portfolio',
   JSON.stringify(regeneration));
 check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
   JSON.stringify(regeneration));
-check('selection continuity is by letter: same, closest, or the recommendation',
-  regeneration.sameLetter === 'Route C' && regeneration.closestLetter === 'Route C'
+check('selection continuity is by geometry: the closest new route, whatever its letter, or the recommendation when asked',
+  regeneration.sameLetter === 'Route B' && regeneration.closestLetter === 'Route B'
     && regeneration.recommendedWins === 'Route A',
   JSON.stringify(regeneration));
 
