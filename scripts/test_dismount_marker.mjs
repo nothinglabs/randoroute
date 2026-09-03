@@ -208,16 +208,27 @@ check('a tap on the drawn route answers for the route, not the street beneath',
     && routeClaim.awayLayer !== 'route-seg-hit',
   JSON.stringify(routeClaim));
 
-const failLayer = await page.evaluate(() => ({
-  hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),
-  allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
-  ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
-}));
+const failLayer = await page.evaluate(() => {
+  const layers = map.getStyle().layers;
+  const failIndex = layers.findIndex((layer) => layer.id === 'route-fail-marker');
+  const symbolsAbove = layers.slice(failIndex + 1).filter((layer) => layer.type === 'symbol')
+    .map((layer) => layer.id);
+  return {
+    hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),
+    allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
+    ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
+    symbolsAbove,
+  };
+});
 check('the designated-route failure icon is registered for active routes',
   failLayer.hasDesignatedImage,
   JSON.stringify(failLayer));
-check('fail icons cannot be removed by symbol collisions',
-  failLayer.allowOverlap === true && failLayer.ignorePlacement === true,
+// Fail badges collide only with each other: no other symbol layer sits above
+// them, so placement (which runs from the top of the stack down) can never let
+// a label or a hill badge hide one -- and where badges pile up at overview
+// zoom, one survives per pile instead of a stack (field, 2026-09-03).
+check('fail icons can be hidden only by another fail icon',
+  failLayer.allowOverlap === false && failLayer.symbolsAbove.length === 0,
   JSON.stringify(failLayer));
 
 const taps = await page.evaluate((radius) => {

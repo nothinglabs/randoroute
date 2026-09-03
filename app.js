@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.978';
+const APP_VERSION = '2026-08-30.979';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9949,6 +9949,10 @@ function buildRouteMarkerData(sdata) {
       const at = pointAt(feats[index], spans[index], target);
       if (!at) continue;
       other.push({ type: 'Feature', properties: { kind, slot: -1,
+        // The run's length is the badge's placement priority: where two fail
+        // badges would overlap at overview zoom, the longer failing stretch
+        // keeps its badge (symbol-sort-key on the layer).
+        runLenM: Math.round(runLenM),
         routeIndex: feats[index].routeIndex },
         geometry: { type: 'Point', coordinates: at } });
     }
@@ -10688,16 +10692,24 @@ function drawRoute(coords, ferrySegs, segs) {
       'symbol-sort-key': ['get', 'sort'],
     },
   });
-  // Fail badges are promises, not decoration: never let collision placement
-  // remove one because a hill, traffic badge, label, or very short geometry is
-  // nearby. The normal marker layer remains decluttered independently.
+  // Fail badges are promises, not decoration: no hill, traffic badge or label
+  // may hide one. That used to be done by opting out of collision placement
+  // altogether, and on a 450-mile corridor the badges then drew as a solid
+  // stack at overview zoom (field, 2026-09-03). Since v971 this layer sits at
+  // the top of the stack, and placement runs from the top down, so the only
+  // symbol that can collide with a fail badge is another fail badge: where
+  // two would overlap, one survives per pile -- the region still shows its
+  // failure -- and the rest return as the rider zooms in. The longer failing
+  // stretch wins the pile (symbol-sort-key: lower places first).
   forgetStyleValues(); map.addLayer({
     id: 'route-fail-marker', type: 'symbol', source: 'route-marker',
     filter: ['in', ['get', 'kind'], ['literal', ['fail', 'fail-designated']]],
     layout: {
       'icon-image': ['concat', 'route-marker-', ['get', 'kind']],
       'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
-      'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-allow-overlap': false, 'icon-ignore-placement': false,
+      'icon-padding': 3,
+      'symbol-sort-key': ['*', -1, ['coalesce', ['get', 'runLenM'], 0]],
     },
   });
   forgetStyleValues(); map.addLayer({
