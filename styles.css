@@ -1561,12 +1561,18 @@ body.navigation-active #routeBar { display: none; }
   .route-calculation-progress {
     grid-column: 1 / 3; height: 5px; margin-top: 10px;
   }
-  #topToolbar { right: 60px; left: 8px; gap: 4px; width: auto; max-width: none; }
+  /* Trip card flush with the safe area and 8px shorter (field ask,
+     2026-09-03: reclaim the map). The 4px strip above it went; the card's
+     own padding is 2px; the utility buttons drop from 42px to 40px, the
+     floor the itinerary test holds every tap target to. Everything anchored
+     below the card (Layers/Settings, the location button, data notices)
+     moves up with it. */
+  #topToolbar { right: 60px; left: 8px; gap: 4px; width: auto; max-width: none; padding-top: env(safe-area-inset-top, 0px); }
   .nav-start { min-width: 100px; min-height: 46px; padding: 0 8px; font-size: 11px; }
-  #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 4px 5px; max-width: none; }
+  #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 2px 5px; max-width: none; }
   #routeBar .route-utility-action { width: 46px; height: 35px; }
   /* Find and Swap name themselves without taking space from the itinerary. */
-  .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; transform: translateY(2.5px); }
+  .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; transform: translateY(1.5px); }
   #routeBar .route-endpoint { height: 40px; gap: 8px; padding: 2px 4px 2px 12px; }
   .route-endpoints::before { top: 25px; bottom: 25px; left: 17px; }
   .route-stop-row { height: 40px; }
@@ -1574,7 +1580,8 @@ body.navigation-active #routeBar { display: none; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 11.25px; }
   .endpoint-label { font-size: 10px; }
-  #routeBar .route-utility-actions > button { width: 46px; }
+  #routeBar .route-utility-actions > button { width: 46px; height: 40px; grid-template-rows: 20px 10px; }
+  .status { top: calc(env(safe-area-inset-top) + 92px); }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   /* Planning occupies 158px once the chooser and summary are present. The
@@ -1616,15 +1623,15 @@ body.navigation-active #routeBar { display: none; }
   }
   /* Keep the pair aligned, but let them sit just below the itinerary actions
      so the two control groups read as separate columns on a phone. */
-  #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
-  #settingsToggle { top: calc(env(safe-area-inset-top) + 58px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
+  #layersToggle { top: calc(env(safe-area-inset-top) + 4px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
+  #settingsToggle { top: calc(env(safe-area-inset-top) + 48px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   .active-route-icon-legend { right: 6px; left: 6px; width: auto; }
   .place-picker { top: -5px; right: auto; left: 0; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   body.navigation-active .nav-banner {
-    top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 10px;
-    width: auto; transform: none;
+    top: calc(env(safe-area-inset-top) + 2px); right: 54px; bottom: auto; left: 10px;
+    width: auto; transform: none; min-height: 66px; padding: 6px 8px 6px 12px;
   }
   body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 112px; right: 10px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
   body:not(.panel-open).navigation-active .update-prompt { bottom: calc(126px + env(safe-area-inset-bottom)); }

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.979';
+const APP_VERSION = '2026-08-30.980';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -18626,10 +18626,12 @@ function syncMobileNavDock() {
 function syncToolbarBottom() {
   const toolbar = document.getElementById('topToolbar');
   if (!toolbar) return;
-  const bottom = Math.ceil(toolbar.getBoundingClientRect().bottom);
-  if (bottom > 0) {
-    document.documentElement.style.setProperty('--toolbar-bottom', `${bottom}px`);
-  }
+  // Publish zero too: while navigating the trip card is display:none and the
+  // toolbar is only its safe-area padding, which is 0 wherever there is no
+  // inset. Skipping that value left the location button hanging from the
+  // card's last planning-mode height (v980, when the card lost its 4px strip).
+  const bottom = Math.max(0, Math.ceil(toolbar.getBoundingClientRect().bottom));
+  document.documentElement.style.setProperty('--toolbar-bottom', `${bottom}px`);
 }
 if (typeof ResizeObserver === 'function') {
   const toolbar = document.getElementById('topToolbar');

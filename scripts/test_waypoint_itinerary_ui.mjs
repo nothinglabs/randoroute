@@ -354,7 +354,7 @@ check('a search result is indicated on the map without silently changing the tri
 // set of buttons. It has no ordinary road rows, but its Details flip-down
 // still offers the complete location Debug view.
 check('the searched point uses the one shared card, with the same actions',
-  searchChoice.primary.join('|') === 'Navigate|Street View|Details'
+  searchChoice.primary.join('|') === 'Navigate|View Street…|Details'
     && searchChoice.contextGone, JSON.stringify(searchChoice));
 check('with a Debug view available under Details, and never covering its pin',
   searchChoice.detailsDisabled === false

@@ -100,10 +100,14 @@ const bottomControls = await page.evaluate(() => {
   return {
     locationX: centerX(document.querySelector('.maplibregl-ctrl-geolocate')),
     attributionX: centerX(document.querySelector('.maplibregl-ctrl-attrib')),
+    inTopLeft: !!document.querySelector('.maplibregl-ctrl-top-left .maplibregl-ctrl-geolocate'),
   };
 });
-check('the location button now occupies the outer-right map corner',
-  bottomControls.locationX > bottomControls.attributionX, JSON.stringify(bottomControls));
+// The location button moved from the bottom-right corner to the top-left
+// column under the trip card; the attribution keeps the bottom-right lane.
+check('the location button sits in the top-left column, clear of the attribution',
+  bottomControls.inTopLeft && bottomControls.locationX < bottomControls.attributionX,
+  JSON.stringify(bottomControls));
 check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 // Desktop has room for both companion panels. Opening the icon guide must not
