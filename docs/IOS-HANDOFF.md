@@ -257,6 +257,14 @@ full instruction sentence, and remaining trip distance. It is driven by
 that speaks while locked), updates only when the headline text changes
 (the 25-foot distance rounding is the throttle), ends with a two-minute
 "You have arrived" card on arrival, and disappears immediately on Stop.
+Since `.981` the bridge also sweeps stray cards: at process launch and on
+every return to the foreground without a ride on, every activity of our type
+is ended at once. Before that a force-quit mid-ride left the card on the lock
+screen for up to eight hours (field report 2026-09-03, "Starting navigation"
+still showing after cancelling). The web layer does its part at boot: if the
+native guide reports it is still tracking, the page reloaded mid-ride, so it
+calls Stop and shows "Navigation stopped" rather than leave an unstoppable
+background ride.
 The glance line and arrow arrive pre-resolved from the web layer with the
 in-app banner's exact thresholds, so locked and unlocked guidance cannot
 disagree.
@@ -288,8 +296,12 @@ Navigate starts and the phone locks; the arrow and headline track turns and
 match what the unlocked banner showed; the Dynamic Island compact view
 shows arrow + distance; off-route flips the card to the warning state;
 arrival shows the checkered flag and the card dismisses itself within two
-minutes; Stop removes it immediately; and Settings → RandoRoute → Live
-Activities off degrades silently (guidance and voice unaffected).
+minutes; Stop removes it immediately; force-quitting the app mid-ride and
+reopening it removes the stale card within a second; a rider off route from
+the first fix sees "Off route" rather than "Starting navigation"; the Dynamic
+Island shows the arrow alone (not "Now") until a turn is due; and Settings →
+RandoRoute → Live Activities off degrades silently (guidance and voice
+unaffected).
 `scripts/test_native_lock_screen_activity.mjs` is only a source-text
 tripwire for all of this.
 

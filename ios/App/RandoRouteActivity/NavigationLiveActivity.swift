@@ -85,9 +85,14 @@ struct NavigationLiveActivity: Widget {
     }
 }
 
+// "Now" only when a maneuver is due ("Now: Left turn"). "Starting
+// navigation", "Off route" and "Continue to your destination" carry no
+// distance and used to read "Now" in the Dynamic Island, which promises a
+// turn that is not there; they show the arrow alone.
 @available(iOS 16.2, *)
 private func compactDistance(_ headline: String) -> String {
-    guard let range = headline.range(of: " in ") else { return "Now" }
+    if headline.hasPrefix("Now") { return "Now" }
+    guard let range = headline.range(of: " in ") else { return "" }
     return String(headline[range.upperBound...])
         .replacingOccurrences(of: " feet", with: " ft")
         .replacingOccurrences(of: " miles", with: " mi")

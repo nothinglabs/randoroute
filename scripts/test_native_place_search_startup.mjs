@@ -92,10 +92,11 @@ let state = await page.evaluate(() => ({
   })(),
   routeBarBackground: getComputedStyle(document.getElementById('routeBar')).backgroundColor,
   weightsAbsentFromMap: !document.getElementById('appWeightsBtn'),
+  // The location control is not in this list: since v909 it sits top-left
+  // under the trip card at a lighter .55 over a backdrop blur, by design.
   mapControlBackgrounds: [
     document.getElementById('layersToggle'),
     document.getElementById('settingsToggle'),
-    document.querySelector('#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'),
   ].map((element) => getComputedStyle(element).backgroundColor),
   helpButtonsCircular: [
     'routeIncompleteTipsBtn', 'routeTipsBtn', 'navTipsBtn',
@@ -357,7 +358,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'Navigate|Street View|Details', JSON.stringify(state));
+    && state.actions.join('|') === 'Navigate|View Street…|Details', JSON.stringify(state));
 await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.980';
+const APP_VERSION = '2026-08-30.981';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1994,6 +1994,17 @@ async function requestInitialMapLocation() {
   if (plugin?.getStatus) {
     try {
       const status = await plugin.getStatus();
+      // This layer has just loaded, so it owns no ride. If the native guide
+      // is still tracking one, the page reloaded mid-ride (an update
+      // installed, or WebKit restarted its content process) and left it with
+      // no Stop button: guidance and the lock-screen card ran on until the
+      // app was force-quit, and the card then outlived the app. End it here
+      // and say so; the route itself is gone with the old page.
+      if (status?.tracking) {
+        plugin.stopTracking?.().catch(() => {});
+        showRouteActionToast('Navigation stopped',
+          { detail: 'The app restarted mid-ride. Plan the route again to continue.', duration: 6000 });
+      }
       if (!status?.servicesEnabled
           || ['prompt', 'denied', 'restricted'].includes(status.authorization)) return false;
     } catch (e) {

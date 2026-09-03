@@ -34,6 +34,17 @@ assert.equal(bridge.match(/syncNavigationActivity\(nearestRouteM: nearest\.route
   'both guidance paths must sync the activity');
 assert.match(bridge, /endNavigationActivity\(arrived: arrived\)/,
   'ride teardown must end the activity');
+// Strays: a card left by a process that died mid-ride is ended at the next
+// launch and whenever the app comes to the foreground without a ride on.
+assert.match(bridge, /Activity<NavigationActivityAttributes>\.activities/,
+  'every card of our type must be swept, not only the one this process holds');
+assert.match(bridge, /override func load\(\) \{[\s\S]*?endNavigationActivity\(arrived: false\)[\s\S]*?\n    \}/,
+  'process launch must sweep stray cards');
+assert.match(bridge, /func appDidBecomeActive\(\) \{[\s\S]*?if !tracking \{ endNavigationActivity\(arrived: false\) \}/,
+  'foreground without a ride must sweep stray cards');
+// The off-route returns must not skip the card update.
+assert.match(bridge, /defer \{ syncNavigationActivity\(nearestRouteM: nearest\.routeM\) \}/,
+  'the per-fix sync must run on every exit path of updateNativeGuidance');
 
 assert.match(read('ios/App/App/Info.plist'), /NSSupportsLiveActivities/);
 

@@ -518,7 +518,7 @@ body:not(.navigation-active) #navCard { display: none; }
 /* One size for both help marks -- the chooser's and the Navigating card's
    (field ask, 2026-08-28): 33px, down from 36, so the nav one stops
    grazing the destination line under it. */
-.route-tips-btn { align-self: center; flex: 0 0 33px !important; width: 33px !important; min-height: 33px !important; max-height: 33px !important; height: 33px !important; border-radius: 50% !important; font-size: 15px !important; }
+.route-tips-btn { align-self: center; flex: 0 0 34px !important; width: 34px !important; min-height: 34px !important; max-height: 34px !important; height: 34px !important; border-radius: 50% !important; font-size: 15px !important; }
 #routeIncompleteTipsBtn {
   /* Portrait safe-area left/right values may be zero even though the physical
      bottom corners still curve inward, so give this corner control a modest
@@ -1572,7 +1572,11 @@ body.navigation-active #routeBar { display: none; }
   #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 2px 5px; max-width: none; }
   #routeBar .route-utility-action { width: 46px; height: 35px; }
   /* Find and Swap name themselves without taking space from the itinerary. */
-  .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; transform: translateY(1.5px); }
+  .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; }
+  /* 40px rows with 1px between them make an 83px column; a 3px gap here
+     gives the two 40px utility buttons the same 83px, so both columns share
+     one centre line instead of needing a fractional nudge. */
+  .route-utility-actions { gap: 3px; }
   #routeBar .route-endpoint { height: 40px; gap: 8px; padding: 2px 4px 2px 12px; }
   .route-endpoints::before { top: 25px; bottom: 25px; left: 17px; }
   .route-stop-row { height: 40px; }

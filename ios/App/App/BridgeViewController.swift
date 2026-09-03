@@ -144,6 +144,12 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
+        // A fresh process owns no ride, so any navigation card the system is
+        // still showing belongs to a process that died before it could end it
+        // (force-quit or jettisoned mid-ride). iOS keeps such a card for up to
+        // eight hours; a rider found one saying "Starting navigation" long
+        // after cancelling (2026-09-03).
+        endNavigationActivity(arrived: false)
     }
 
     deinit {
@@ -462,6 +468,9 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     @objc private func appDidBecomeActive() {
+        // Not riding, yet a card is showing: the end call did not outlive the
+        // process that issued it. Riding: the card is live, leave it alone.
+        if !tracking { endNavigationActivity(arrived: false) }
         guard tracking, let payload = latestLocationPayload else { return }
         notifyListeners("location", data: payload)
     }
@@ -589,23 +598,41 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
     }
 
+    /// Ends this ride's card and every other navigation card the system still
+    /// holds. Only the card this process created gets the two-minute
+    /// "You have arrived" farewell; a stray from a dead process goes at once.
+    /// Safe with nothing of our own running, which is how load() and the
+    /// foreground hook use it to sweep strays.
     private func endNavigationActivity(arrived: Bool) {
-        guard #available(iOS 16.2, *),
-              let activity = navigationActivity as? Activity<NavigationActivityAttributes>
-        else {
+        guard #available(iOS 16.2, *) else {
             navigationActivity = nil
             return
         }
+        let current = navigationActivity as? Activity<NavigationActivityAttributes>
         navigationActivity = nil
         lastActivityHeadline = ""
-        let finalState = NavigationActivityAttributes.ContentState(
-            headline: arrived ? "You have arrived" : "Navigation ended",
-            detail: arrived ? destinationName : "",
-            arrowSymbol: arrived ? "flag.checkered" : "location.slash",
-            meta: "", arrived: arrived)
+        // Snapshot before the Task runs: startNavigationActivity() requests
+        // the next card synchronously right after this call, and a list read
+        // inside the Task would end that new card too. A card already ended
+        // (the two-minute arrival farewell still on screen when the rider
+        // opens the app) is left to dismiss on its own schedule.
+        let activities = Activity<NavigationActivityAttributes>.activities.filter {
+            $0.activityState != .ended && $0.activityState != .dismissed
+        }
+        guard !activities.isEmpty else { return }
+        let arrivedState = NavigationActivityAttributes.ContentState(
+            headline: "You have arrived", detail: destinationName,
+            arrowSymbol: "flag.checkered", meta: "", arrived: true)
+        let endedState = NavigationActivityAttributes.ContentState(
+            headline: "Navigation ended", detail: "",
+            arrowSymbol: "location.slash", meta: "", arrived: false)
         Task {
-            await activity.end(ActivityContent(state: finalState, staleDate: nil),
-                               dismissalPolicy: arrived ? .after(.now + 120) : .immediate)
+            for activity in activities {
+                let farewell = arrived && activity.id == current?.id
+                await activity.end(
+                    ActivityContent(state: farewell ? arrivedState : endedState, staleDate: nil),
+                    dismissalPolicy: farewell ? .after(.now + 120) : .immediate)
+            }
         }
     }
 
@@ -707,6 +734,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         guard route.count >= 2,
               let nearest = nearestRoutePosition(to: location) else { return }
         nearestRouteSegment = nearest.segment
+        // Every exit below, including the off-route returns, leaves the
+        // lock-screen card current. Before this ran only on the on-route
+        // path, so a rider who was off route from the first fix looked at
+        // "Starting navigation" for the whole ride.
+        defer { syncNavigationActivity(nearestRouteM: nearest.routeM) }
 
         let background = UIApplication.shared.applicationState != .active
         let priorLocation = previousLocation
@@ -769,7 +801,6 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRouteCandidateStartedAt = nil
 
         discardPassedInstructions(at: nearest.routeM)
-        syncNavigationActivity(nearestRouteM: nearest.routeM)
         guard !instructions.isEmpty else {
             if background, !arrived,
                let destination = route.last,
