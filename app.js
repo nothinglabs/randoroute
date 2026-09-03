@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.977';
+const APP_VERSION = '2026-08-30.978';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6650,7 +6650,9 @@ const ONBOARDING_STEPS = [
     img: 'onboarding/tour-welcome.jpg',
     alt: 'A green route descending through a gulch to the waterfront',
     title: 'Welcome to Safeish',
-    copy: 'Bike routing that takes safety seriously. Every road and trail is scored against rules you control — and the whole map works offline. Here’s the quick tour.',
+    // Authored markup, rendered as HTML: the two things a new rider must
+    // leave this screen knowing are bold. Every other step uses plain copy.
+    copyHtml: 'Safeish helps find bike routes that work for you — <b>even offline!</b> Every road and trail is judged against rules you can see and change. <b>Safeish can never promise safety</b> — always trust your own judgement. Here’s the quick tour.',
   },
   {
     img: 'onboarding/tour-plan.jpg',
@@ -6733,7 +6735,8 @@ function buildOnboarding() {
     const title = document.createElement('h3');
     title.textContent = step.title;
     const copy = document.createElement('p');
-    copy.textContent = step.copy;
+    if (step.copyHtml) copy.innerHTML = step.copyHtml;
+    else copy.textContent = step.copy;
     section.append(title, copy);
     if (step.legend === 'levels') {
       const host = document.createElement('div');
