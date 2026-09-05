@@ -3925,13 +3925,54 @@ function triLensCost(route, rules) {
   return total;
 }
 
-// Letters run A..F by tri-lens cost (sum of direct + balanced + low-stress
-// edge costs). Route A is the best consensus pick across all three profiles.
+// Final rank (2026-09-05). The whole corpus is ranked twice -- by tri-lens
+// cost (direct + balanced + low-stress edge cost under the rider's rules) and
+// by the time-and-safety cost (the former suggestion score) -- and the two
+// ranks are averaged. Letters and the star follow this score. Ranks are
+// competition ranks (1, 2, 2, 4) over every built candidate, so the More
+// screen can print them and a rider can check them against the list by eye.
+function rankBy(routes, key) {
+  const ordered = [...routes].sort((a, b) => {
+    const ka = key(a), kb = key(b);
+    return ka === kb ? 0 : ka < kb ? -1 : 1;
+  });
+  const ranks = new Map();
+  for (let i = 0; i < ordered.length; i++) {
+    const shared = i > 0 && key(ordered[i - 1]) === key(ordered[i]);
+    ranks.set(ordered[i], shared ? ranks.get(ordered[i - 1]) : i + 1);
+  }
+  return ranks;
+}
+function assignFinalRanks(routes, rules) {
+  for (const r of routes) {
+    r._triLens = triLensCost(r, rules);
+    r._suggestionS = recommendationScore(r);
+  }
+  const triLensRanks = rankBy(routes, (r) => r._triLens);
+  const suggestionRanks = rankBy(routes, (r) => r._suggestionS);
+  for (const r of routes) {
+    const triLensRank = triLensRanks.get(r), suggestionRank = suggestionRanks.get(r);
+    r._finalRank = { score: (triLensRank + suggestionRank) / 2,
+      triLensRank, suggestionRank, of: routes.length };
+  }
+}
+const finalRankScore = (route) => (route._finalRank ? route._finalRank.score : Infinity);
+// Ties: tri-lens cost, then distance, then the safety comparator.
+function compareFinalRank(a, b) {
+  return finalRankScore(a) - finalRankScore(b) || a._triLens - b._triLens
+    || a.distM - b.distM || compareSafety(a, b);
+}
+
+// Letters run A..F by final rank. The recommended route always takes A: it is
+// the final-rank leader unless the fail-share guard or a route the rider marked
+// Preferred moved the star, and the lead position is the durable contract.
 function presentAsLetters(routes, recommended, rules) {
   if (!routes.length) return routes;
-  for (const r of routes) r._triLens = triLensCost(r, rules);
-  const ordered = [...routes].sort((a, b) =>
-    a._triLens - b._triLens || a.distM - b.distM || compareSafety(a, b));
+  const ordered = [...routes].sort(compareFinalRank);
+  if (recommended && ordered.includes(recommended)) {
+    ordered.splice(ordered.indexOf(recommended), 1);
+    ordered.unshift(recommended);
+  }
 
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
@@ -4109,6 +4150,7 @@ function candidateSummary(candidate) {
       if (run > 0) { count++; if (run > longest) longest = run; }
       return { failRunCount: count, failRunLongestM: Math.round(longest) };
     })(),
+    finalRank: candidate._finalRank || null,
     suggestionScore: recommendationScoreBreakdown(candidate),
     safetyEquivalentM: candidate.failM + (candidate.dismountM || 0) * 3,
     preferredRouteM: preferredRouteMeters(candidate),
@@ -5824,43 +5866,19 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
   const preferredRouteAnchor = preferredRoutesActive(rules)
     ? strongPreferredCandidate : null;
+  // Every candidate is built by now; rank the corpus once, for the star, the
+  // letters and the More screen alike.
+  assignFinalRanks(raw, rules);
   let recommended = null;
-  let recommendationBasis = 'lowest-score';
+  let recommendationBasis = 'lowest-final-rank';
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }
-    const delta = recommendationScore(route) - recommendationScore(recommended);
-    if (delta < 0 || (delta === 0 && compareSafety(route, recommended) < 0)) {
-      recommended = route;
-    }
+    if (compareFinalRank(route, recommended) < 0) recommended = route;
   }
-  // The rider's rules outrank a MODEST time saving: when the practical
-  // recommendation still carries failing distance and a fully matching
-  // route (including the strict probe) exists within a wider-but-sane
-  // detour, prefer the matching route -- but the switch itself pays the
-  // price test. As an unconditional veto this rule undid the priced star:
-  // Phinney Ridge -> Mukilteo starred a 40.1 mi / 3h22 zero-fail loop over
-  // a 30.7 mi / 2h33 route whose 1% of failing distance prices at about
-  // eight minutes -- a 49-minute detour taken automatically, inside the
-  // veto's 1.8x window. Zero-fail is now worth at most ten minutes of
-  // score on top of what fail meters already charge; the best matching
-  // candidate is chosen by the same score, not by lexicographic safety.
-  const MATCHING_OVERRIDE_PRICE_S = 600;
-  if (recommended && recommended.failM > 0.5) {
-    const matchingPractical = choices.filter((route) => route.failM <= 0.5
-      && route.legs.length === fastestOverall.legs.length
-      && route.legs.every((leg, index) => {
-        const quickestLeg = fastestOverall.legs[index];
-        return leg.distM <= quickestLeg.distM * 1.8 + 1600
-          && leg.timeS <= quickestLeg.timeS * 1.85 + 600;
-      }));
-    const bestMatching = matchingPractical.reduce((best, route) =>
-      !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
-    if (bestMatching && recommendationScore(bestMatching)
-        <= recommendationScore(recommended) + MATCHING_OVERRIDE_PRICE_S) {
-      recommended = bestMatching;
-      recommendationBasis = 'fully-matching-override';
-    }
-  }
+  // The fully-matching override (a zero-fail route within a wider-but-sane
+  // detour took the star for up to ten minutes of score) is gone as of the
+  // final rank: rule matches already price into both ranks, and a second
+  // thumb on the scale made the star disagree with Route A's number.
   // Last resort: never star a route that fails the rider's rules across a
   // large share of itself while a comparable route beside it barely fails.
   //
@@ -5919,9 +5937,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const selectionChoices = stopBounded;
   const selected = [];
   if (rules.pureScoreSort) {
-    const scored = [...selectionChoices];
-    for (const r of scored) r._triLens = triLensCost(r, rules);
-    scored.sort((a, b) => a._triLens - b._triLens || a.distM - b.distM || compareSafety(a, b));
+    const scored = [...selectionChoices].sort(compareFinalRank);
     for (const candidate of scored) {
       if (selected.length >= MAX_OFFERED) break;
       if (selected.every((other) => edgeOverlap(candidate, other) < 0.96)) {

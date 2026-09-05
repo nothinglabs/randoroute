@@ -273,9 +273,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-stats .lvl-caution b { color: var(--verdict-caution); }
 .all-route-stats .lvl-fail b { color: var(--verdict-fail); }
 .all-route-stats .lvl-fac b { color: #6f7a00; }
-.all-route-score { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 11px; margin-top: 7px; padding: 7px 9px; border-radius: 8px; background: #f2f7fa; color: #506571; font: 600 10.5px/1.35 system-ui; }
-.all-route-score > strong { color: #173d55; font: 820 11.5px/1.25 system-ui; }
-.all-route-score b { color: #2e4b5c; font-weight: 800; }
+.all-route-score, .all-route-rank { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 11px; margin-top: 7px; padding: 7px 9px; border-radius: 8px; background: #f2f7fa; color: #506571; font: 600 10.5px/1.35 system-ui; }
+.all-route-score > strong, .all-route-rank > strong { color: #173d55; font: 820 11.5px/1.25 system-ui; }
+.all-route-score b, .all-route-rank b { color: #2e4b5c; font-weight: 800; }
 .all-route-score .score-credit b { color: #557000; }
 .all-route-score .score-penalty b { color: #8b4b13; }
 .all-route-score .score-fail b { color: var(--verdict-fail); }

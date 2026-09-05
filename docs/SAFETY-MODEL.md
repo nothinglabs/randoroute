@@ -1703,6 +1703,22 @@ each candidate is tagged with the earliest stage it failed to reach:
 Offered routes keep their A–F letters; extras continue G, H, … and fall back to
 numbering past Z.
 
+**Final rank (v984).** Every built candidate is ranked twice over the whole
+corpus: by **tri-lens cost** (the sum of its direct, balanced and low-stress
+edge costs under the rider's rules and weights, v936) and by **time-and-safety
+cost** (travel time plus priced failing road, walking, ordinary road and
+doubling back, minus a trail credit; the former "suggestion score"). Ranks are
+competition ranks (1, 2, 2, 4). The final rank score is the average of the two,
+lower is better; ties break on tri-lens cost, then distance, then the safety
+comparator. The letters A–F follow it, the star goes to the leader among the
+practical choices, and the *Pure score-based sorting* option seats the top six
+by it. Two things still move the star off the leader: the fail-share guard (a
+route failing 15% or more of itself never takes the star beside a comparable
+route that barely fails) and a route the rider marked Preferred. The former
+fully-matching override is gone: rule matches already price into both ranks.
+Each row on the screen prints the score and both component ranks
+("Final rank 2.5 · lens cost #1 · time & safety #4 · of 24 built").
+
 **"without being safer" is the whole clause.** Admission to `reasonable` is a
 disjunction: a candidate enters if it fully matches the rules, if it is a strong
 Preferred-route match, if it is within `2.2× + 10 min` of the quickest — **or if

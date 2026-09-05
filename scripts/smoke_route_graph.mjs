@@ -133,9 +133,10 @@ for (let index = 0; index < scenarios.length; index++) {
     continue;
   }
   console.log(`${scenario.name}: ${result.options.length} option(s), ${result.ms} ms`);
-  // Route letters are ordered by tri-lens consensus cost now (v936), not
-  // distance, and Route A is always the recommended one (v937). The durable
-  // invariant is that lead position: the first option offered is the pick.
+  // Route letters are ordered by final rank (v984: the average of each
+  // route's corpus-wide rank by tri-lens cost and by time-and-safety cost),
+  // and Route A is always the recommended one (v937). The durable invariant
+  // is that lead position: the first option offered is the pick.
   if (result.options.length && !result.options[0].optimization?.recommended) {
     console.error('  ORDER FAIL — the first lettered route is not the recommended one');
     process.exitCode = 1;

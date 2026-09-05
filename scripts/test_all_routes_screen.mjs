@@ -230,6 +230,8 @@ const rows = await pg.evaluate(() => {
     offered: r.classList.contains('is-offered'),
     stats: (r.querySelector('.all-route-stats')?.textContent || '').replace(/\s+/g, ' ').trim(),
     score: (r.querySelector('.all-route-score')?.textContent || '').replace(/\s+/g, ' ').trim(),
+    rank: (r.querySelector('.all-route-rank')?.textContent || '').replace(/\s+/g, ' ').trim(),
+    rankScore: Number((r.querySelector('.all-route-rank strong')?.textContent || '').replace(/[^\d.]/g, '')),
     profileId: r.dataset.profileId,
   }));
 });
@@ -281,8 +283,18 @@ check('rows carry distance and the safety levels',
   rows.every((r) => /mi/.test(r.stats) && /pass/.test(r.stats)
     && /caution/.test(r.stats) && /fail/.test(r.stats)),
   rows[0]?.stats);
-check('every row shows the actual suggestion score and its weighted components',
-  rows.every((r) => /Suggestion score/.test(r.score) && /travel/.test(r.score)
+// Final rank (v984): the average of the row's corpus-wide rank by lens cost and
+// by time-and-safety cost. Letters follow it, with the star always at A.
+check('every row prints its final rank with both component ranks',
+  rows.every((r) => /^Final rank \d+(\.5)? lens cost #\d+ time & safety #\d+ of \d+ built$/.test(r.rank)
+    && Number.isFinite(r.rankScore)),
+  rows[0]?.rank);
+const letteredRows = rows.filter((r) => r.offered);
+check('offered letters after A run in non-decreasing final rank',
+  letteredRows.slice(1).every((r, i) => i === 0 || r.rankScore >= letteredRows[i].rankScore),
+  letteredRows.map((r) => `${r.label}:${r.rankScore}`).join(' '));
+check('every row shows the time-and-safety cost and its weighted components',
+  rows.every((r) => /Time and safety cost/.test(r.score) && /travel/.test(r.score)
     && /fails/.test(r.score) && /walk/.test(r.score)
     && /ordinary roads/.test(r.score) && /trails/.test(r.score)),
   rows[0]?.score);

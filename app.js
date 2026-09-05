@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.983';
+const APP_VERSION = '2026-08-30.984';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12124,9 +12124,15 @@ function scoreMinutes(seconds) {
 
 function recommendationBasisLabel(basis) {
   if (basis === 'preferred-route-override') return 'Starred because you marked this route Preferred.';
-  if (basis === 'fully-matching-override') return 'Starred because it fully matches your rules within the allowed score margin.';
   if (basis === 'fail-share-guard') return 'Starred because the quicker option fails your rules across most of itself.';
-  return 'Starred as the lowest suggestion score among practical routes.';
+  return 'Starred as the best final rank among practical routes.';
+}
+
+// The final rank averages two whole-number ranks, so it is an integer or ends
+// in .5; print it as such rather than as a float.
+function finalRankText(score) {
+  const value = Number(score);
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function formatCandidateHours(seconds) {
@@ -12486,8 +12492,14 @@ function renderAllRoutesList() {
         <span class="lvl-fail"><b>${s.fail}%</b> fail</span>
         <span class="lvl-fac"><b>${s.facility}%</b> trails / lanes</span>
       </div>
+      ${c.finalRank ? `<div class="all-route-rank">
+        <strong>Final rank ${finalRankText(c.finalRank.score)}</strong>
+        <span>lens cost <b>#${c.finalRank.triLensRank}</b></span>
+        <span>time &amp; safety <b>#${c.finalRank.suggestionRank}</b></span>
+        <span>of <b>${c.finalRank.of}</b> built</span>
+      </div>` : ''}
       ${c.suggestionScore ? `<div class="all-route-score">
-        <strong>Suggestion score ${scoreMinutes(c.suggestionScore.totalS)} min</strong>
+        <strong>Time and safety cost ${scoreMinutes(c.suggestionScore.totalS)} min</strong>
         <span>travel <b>${scoreMinutes(c.suggestionScore.travelS)}</b></span>
         <span class="score-fail">fails <b>+${scoreMinutes(c.suggestionScore.failS)}</b></span>
         <span class="score-penalty">walk <b>+${scoreMinutes(c.suggestionScore.dismountS)}</b></span>
