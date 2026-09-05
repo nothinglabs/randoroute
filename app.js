@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.982';
+const APP_VERSION = '2026-08-30.983';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12549,12 +12549,29 @@ function chooseCandidate(c) {
 // under all three modes with one set of rules, so a column can be read down.
 function requestLensScores() {
   const key = routing.candidatesKey;
-  if (!key || !routing.worker || routing.multiStateActive) return;
+  if (!key) return;
+  // The engine that built the portfolio holds its candidates: the home worker
+  // for a single-state trip, the partition session's router otherwise (a
+  // cross-state trip, or a phone routing a trip outside its selected state).
+  // Until v983 the partition case returned here, so those screens carried no
+  // lens prices at all; chooseCandidate() had used the bridge all along.
+  const bridge = routing.multiStateActive ? activeMultiStateRouting.bridge : null;
+  if (!bridge && (!routing.worker || routing.multiStateActive)) return;
   if (routing.lensScores?.key === key) return;
   routing.lensScores = { key, pending: true, byProfile: null };
   routing.lensReqId = (routing.lensReqId || 0) + 1;
-  routing.worker.postMessage({ type: 'score-lenses', id: routing.lensReqId,
-    candidatesKey: key, rules, weights: routingWeights });
+  const request = { type: 'score-lenses', id: routing.lensReqId,
+    candidatesKey: key, rules, weights: routingWeights };
+  if (bridge) {
+    bridge.search({ request, signal: new AbortController().signal })
+      .then((result) => onRouterMessage({ data: result }))
+      .catch(() => {
+        // Let the rows drop the pending line instead of promising a price
+        // that is not coming; the next open of the screen asks again.
+        if (routing.lensScores?.key === key) routing.lensScores = null;
+        if (document.getElementById('allRoutesDialog')?.open) renderAllRoutesList();
+      });
+  } else routing.worker.postMessage(request);
 }
 
 function openAllRoutes() {

@@ -60,6 +60,29 @@ try {
     outcome.homeWorker === false, JSON.stringify(outcome));
   check('the routed distance is a plausible Seattle city trip',
     outcome.distM > 5000 && outcome.distM < 25000, String(outcome.distM));
+
+  // The All routes screen prices every candidate under the three lenses. The
+  // engine that built the portfolio holds the candidates, so on this path the
+  // request must travel the partition bridge; until v983 it was skipped and a
+  // phone routing through partitions saw no prices at all (field, 2026-09-05).
+  await page.evaluate(() => openAllRoutes());
+  const priced = await page.waitForFunction(
+    () => routing.lensScores && !routing.lensScores.pending, null, { timeout: 90000 })
+    .then(() => true).catch(() => false);
+  const lensStrip = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#allRoutesList .all-route-row')];
+    return {
+      rows: rows.length,
+      priced: rows.filter((row) => row.querySelectorAll('.lens-cell').length === 3).length,
+      pending: !!document.querySelector('.all-route-lenses.is-pending'),
+      sample: [...(rows[0]?.querySelectorAll('.lens-cell') ?? [])]
+        .map((cell) => cell.textContent),
+    };
+  });
+  check('the All routes screen prices candidates through the partition bridge',
+    priced && lensStrip.rows >= 1 && lensStrip.priced === lensStrip.rows && !lensStrip.pending
+      && lensStrip.sample.every((cell) => /^\d+\.\d\d×/.test(cell)),
+    JSON.stringify(lensStrip));
   check('no page errors', errors.length === 0, errors.join(' | '));
 } finally {
   await browser.close();
