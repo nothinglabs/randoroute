@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.984';
+const APP_VERSION = '2026-08-30.985';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -14252,10 +14252,11 @@ const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
 // Every reason a road can be amber. Keyed by SafetyModel.CAUTION_CAUSES, and
 // the help section is built from the same table so it cannot go stale.
-// The agency that publishes the traffic-stress rating for this build's data.
+// The agency that publishes the traffic-stress rating for the selected state.
 // The safety model never learns this: it only sees `stressRating` on the
-// published 1-4 Level of Traffic Stress scale. Adding another state means
-// filling that field from their DOT and changing this label. Nothing else.
+// published 1-4 Level of Traffic Stress scale. A road card names the agency
+// of the state the road is IN (explainLevel takes that state); this is only
+// the fallback when a tap cannot be placed in any known state.
 const STRESS_AGENCY = Region.stressAgency;
 
 // Headline form, e.g. "Caution — limited-access highway".
@@ -14514,7 +14515,7 @@ function routeSegmentGrade(gradePct, lenM) {
 // evaluation that produced the level. It switches on the rung that actually
 // fired, so the Verdict line and the Why line cannot describe different rules —
 // which is exactly what they used to do.
-function explainLevel(n, verdict = evaluateRoad(n)) {
+function explainLevel(n, verdict = evaluateRoad(n), state = Region) {
   const spd = n.maxspeed_num;
   const shUnknown = n.shoulder_width == null;
   const sh = verdict.shoulder;
@@ -14534,7 +14535,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   // line did not already say rather than repeating its own words back.
   const cautionNote = verdict.caution && verdict.caution !== 'sidewalk-fallback'
     ? (verdict.caution === 'high-stress'
-        ? ` ${STRESS_AGENCY} rates it ${n.stressRating} of 4 for traffic stress.`
+        ? ` ${state.stressAgency || STRESS_AGENCY} rates it ${n.stressRating} of 4 for traffic stress.`
         : verdict.caution === 'limited-access'
           ? ' Ride the shoulder past on- and off-ramps.'
           : ` Take care: ${CAUTION_CAUSE_NAME[verdict.caution]}.`)
@@ -14552,7 +14553,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   switch (verdict.rule) {
     case 'prohibited':
       return n.wsdotBan
-        ? `Bikes are banned here — a permanent ${Region.restrictionAgency} restriction.`
+        ? `Bikes are banned here — a permanent ${state.restrictionAgency || Region.restrictionAgency} restriction.`
         : 'Bikes are banned here — the road is mapped as closed to cycling.';
     case 'ferry':
       return 'Crossing by ferry — road rules don’t apply on the boat.';
@@ -16146,13 +16147,21 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   const verdict = evaluateRoad(n);
   const facilityGap = src.id === 'routeseg' && p.facilityGap === 1;
   const lvl = facilityGap && verdict.level < 3 ? 3 : verdict.level;
+  // Facts are attributed to the jurisdiction of the road under the tap, never
+  // to whichever state is selected: a route segment carries its state, and a
+  // painted road is placed by the tap itself. With Washington selected, North
+  // Pacific Highway near Creswell read "WSDOT rates it 4 of 4" (field,
+  // 2026-09-06, Eugene -> Cottage Grove).
+  const cardState = (src.id === 'routeseg'
+    ? routeStateConfig(p.stateId)
+    : routeStateConfig(placeStateIdAt(lngLat.lng, lngLat.lat))) || Region;
   const common = [
     ['Verdict', readoutVerdict(n, lvl, verdict)],
-    ['Why', explainLevel(n, verdict)],
+    ['Why', explainLevel(n, verdict, cardState)],
   ];
   let title, rows;
   if (src.id === 'routeseg') {
-    const segmentRegion = routeStateConfig(p.stateId) || Region;
+    const segmentRegion = cardState;
     title = 'Your route — segment';
     if (p.ferry === 1) {
       rows = [
@@ -16225,11 +16234,11 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ['Note', 'A designation is not necessarily a bike facility. The scored road or facility supplies the safety verdict and takes visual precedence.'],
     ];
   } else if (src.id === 'restrict') {
-    title = Region.restrictionLayerName;
+    title = cardState.restrictionLayerName || Region.restrictionLayerName;
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
       ['Verdict', 'Red dashed — Fails your rules'],
-      ['Why', `Permanent bicycle restriction by official ${Region.restrictionAgency} traffic action.`],
+      ['Why', `Permanent bicycle restriction by official ${cardState.restrictionAgency} traffic action.`],
       ['Direction', p.Direction],
       ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
       ['Note', p.Comment],
@@ -16246,7 +16255,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ['Width', p.width != null ? `${p.width} m` : null],
     ];
   } else if (src.id === 'roads') {
-    title = p.d ? `Road (OSM geometry + ${Region.speedAgency} data)` : 'Road (OSM)';
+    title = p.d ? `Road (OSM geometry + ${cardState.speedAgency} data)` : 'Road (OSM)';
     tappedRoadGradeRequested = requestTappedRoadGrade(lngLat, p.n) != null;
     rows = [
       ['Name', p.n],
@@ -16270,12 +16279,12 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       // that shows the direction actually ridden.
       ['Shoulder', p.w != null
         ? `${p.w} ft${p.w2 != null ? `–${p.w2} ft, varies by direction` : ''}`
-          + `${p.wsh ? ` (${Region.stressAgency} inventory)` : ''}`
+          + `${p.wsh ? ` (${cardState.stressAgency} inventory)` : ''}`
         : null],
       // Where a city has signed its arterials at the same limit as its side
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
-      ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+      ['Traffic stress', p.lts ? `${cardState.stressAgency} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
       ['Traffic level', trafficLevelText(n)],
       ...measurementRows(n.measures),
       ...roadClassRow(n.measures, p.rc, p.h ? p.h + (p.r ? ` (${p.r})` : '') : null),
@@ -16288,28 +16297,28 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
           + [p.fbw ? `${p.fbw} ft buffer` : null, p.fsm || null,
             p.fsd ? `${String(p.fsd).toLowerCase()} side(s)` : null]
             .filter(Boolean).map((part) => `, ${part}`).join('')
-          + (p.fo ? ` (${Region.facilitySourceName})` : '')
+          + (p.fo ? ` (${cardState.facilitySourceName})` : '')
         : (p.f ? 'Recorded bike facility' : null)],
       ['Surface (OSM)', routeSurfaceLabel(p.su)],
       ['Route choice', routeClassNote({ roadClass: p.rc, facility: p.ft || (p.f ? 1 : 0) })],
-      ['Road data', p.d ? `${Region.speedAgency} directions combined conservatively for map display` : null],
+      ['Road data', p.d ? `${cardState.speedAgency} directions combined conservatively for map display` : null],
       ['Limited access', p.m || p.l ? 'yes' : null],
-      ['Bikes prohibited', p.b ? (p.d ? `yes (OSM or ${Region.restrictionAgency})` : 'yes (OSM tag)') : null],
+      ['Bikes prohibited', p.b ? (p.d ? `yes (OSM or ${cardState.restrictionAgency})` : 'yes (OSM tag)') : null],
     ];
   } else {
-    title = `Road segment (${Region.stressAgency})`;
+    title = `Road segment (${cardState.stressAgency})`;
     rows = [
       ['Route', p.RouteIdentifier],
       ...common,
       // Every row below describes the AGENCY record, so they read nOwn, not
       // the painted road the verdict above came from.
       ...(unpaintedVerdict && unpaintedVerdict.level !== lvl
-        ? [['Agency record', `${Region.stressAgency} books this stretch as `
+        ? [['Agency record', `${cardState.stressAgency} books this stretch as `
             + `${readoutVerdict(nOwn, unpaintedVerdict.level, unpaintedVerdict)}. `
             + 'The verdict above is the road as drawn and as routed, which is '
             + 'what the map and your route agree on.']]
         : []),
-      [`BLTS (${Region.stressAgency})`, p.LTS_Bicycle],
+      [`BLTS (${cardState.stressAgency})`, p.LTS_Bicycle],
       ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
@@ -16320,7 +16329,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ['Designated bike route', p.Designated === 1 ? 'yes' : null],
       ['Limited access', p.LimitedAccess ? 'yes' : null],
       ['Bikes prohibited',
-        p.Prohibited ? `yes (${Region.restrictionAgency} restriction)` : null],
+        p.Prohibited ? `yes (${cardState.restrictionAgency} restriction)` : null],
     ];
   }
   // If a designated route runs through this spot, include its designation in
@@ -17155,7 +17164,7 @@ function presetInfoRows(preset) {
         ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or a safeish-width shoulder. Where no count exists the road's class stands in.`
         : 'Traffic volume is not used.';
     })()],
-    ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
+    ['Official stress rating', 'A state DOT Level of Traffic Stress of 4 always marks a road'
       + ' as caution. It never fails one.'],
     ['Freeways', presetRules.allowFreeways
       ? 'Always fail your rules. Bike-legal segments may still be routed over as a last resort,'
