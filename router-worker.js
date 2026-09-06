@@ -929,11 +929,11 @@ function matchRouteLines(lines, eligibleEdge = () => true) {
 // The keep pass is restricted to edges the suppressed pass already matched, and
 // matchRouteLines tests eligibility before it touches geometry, so the second
 // call costs a fraction of the first however large the kept catalogue is.
-function receiveSuppressedRoutes(key, lines, keepLines) {
+function receiveSuppressedRoutes(key, lines, keepLines, { quiet = false } = {}) {
   suppressedRoutesKey = String(key || '');
   suppressedRouteEdges = null;
   if (!suppressedRoutesKey || !Array.isArray(lines) || !lines.length || !E) {
-    postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: 0 });
+    if (!quiet) postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: 0 });
     return;
   }
   // The one place that reads bit 64 raw instead of through designatedEdge():
@@ -949,10 +949,10 @@ function receiveSuppressedRoutes(key, lines, keepLines) {
     marked += candidate[ei];
   }
   suppressedRouteEdges = candidate;
-  postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: marked });
+  if (!quiet) postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: marked });
 }
 
-function receivePreferredRoutes(key, lines) {
+function receivePreferredRoutes(key, lines, { quiet = false } = {}) {
   preferredRoutesKey = String(key || '');
   preferredEdges = null;
   if (!preferredRoutesKey || !Array.isArray(lines) || !lines.length || !E) return;
@@ -964,7 +964,22 @@ function receivePreferredRoutes(key, lines) {
   let marked = 0;
   for (let ei = 0; ei < set.length; ei++) marked += set[ei];
   preferredEdges = set;
-  postMessage({ type: 'preferred-routes-applied', key: preferredRoutesKey, edges: marked });
+  if (!quiet) postMessage({ type: 'preferred-routes-applied', key: preferredRoutesKey, edges: marked });
+}
+
+// A request routed through the partition session carries the rider's
+// Preferred and switched-off route geometry inline, because that router
+// never receives the home worker's sync messages (sweep, 2026-09-06). Ingest
+// quietly when the key changed; the home worker's messages stay the primary
+// path, and a graph reload resets the keys so the next request re-matches.
+function ingestRequestRouteSets(m) {
+  const preferred = m.preferredRoutes, suppressed = m.suppressedRoutes;
+  if (preferred && String(preferred.key || '') !== preferredRoutesKey) {
+    receivePreferredRoutes(preferred.key, preferred.lines, { quiet: true });
+  }
+  if (suppressed && String(suppressed.key || '') !== suppressedRoutesKey) {
+    receiveSuppressedRoutes(suppressed.key, suppressed.lines, suppressed.keepLines, { quiet: true });
+  }
 }
 
 function rulesSignature(rules) {
@@ -6413,6 +6428,7 @@ onmessage = (ev) => {
         .catch((e) => postMessage({ type: 'error', message: `graph: ${e && e.message || e}` }));
     } else if (m.type === 'route') {
       beginFrontierRequest();
+      ingestRequestRouteSets(m);
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const mode = m.mode || 'balanced';
@@ -6501,6 +6517,7 @@ onmessage = (ev) => {
       prewarmArcCosts(m.rules, configs, m.id);
     } else if (m.type === 'route-options') {
       beginFrontierRequest();
+      ingestRequestRouteSets(m);
       // A real request outranks background warming; the search itself warms
       // whatever the cancelled sweep had not reached.
       prewarmToken++;

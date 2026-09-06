@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-30.985';
+const APP_VERSION = '2026-08-30.986';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3666,22 +3666,35 @@ let preferredRoutesAckRecompute = false;
 // selection it has when the route request arrives, and a recompute posted
 // first is priced against the OLD selection (field: toggling Preferred
 // recalculated but nothing changed until the route was redone).
+// The Preferred selection as the worker ingests it: its rule key and the
+// route geometry behind it. One builder feeds both engines -- the home
+// worker's sync message below and the partition session's requests, which
+// carry the sets inline because that router never receives the sync
+// messages (sweep, 2026-09-06: Preferred and switched-off routes silently
+// did nothing on any trip routed through partitions).
+async function preferredRoutesPayload() {
+  const names = preferredRouteNames();
+  const key = names.length ? preferredRoutesRuleKey(names) : '';
+  if (!key) return { key: '', lines: [] };
+  const catalog = await ensureStateRouteCatalog();
+  const lines = [];
+  for (const name of names) {
+    const entry = catalog.get(name);
+    if (entry) for (const line of entry.lines) lines.push(line);
+  }
+  return { key, lines };
+}
+
 function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
   if (!routing.worker) return Promise.resolve();
   const names = preferredRouteNames();
-  const key = names.length ? preferredRoutesRuleKey(names) : '';
-  if (!key) {
+  if (!names.length) {
     routing.worker.postMessage({ type: 'preferred-routes', key: '', lines: [] });
     return Promise.resolve();
   }
   preferredRoutesAckRecompute = recomputeOnAck;
-  return ensureStateRouteCatalog().then((catalog) => {
-    const lines = [];
-    for (const name of names) {
-      const entry = catalog.get(name);
-      if (entry) for (const line of entry.lines) lines.push(line);
-    }
-    routing.worker?.postMessage({ type: 'preferred-routes', key, lines });
+  return preferredRoutesPayload().then((payload) => {
+    routing.worker?.postMessage({ type: 'preferred-routes', ...payload });
   }).catch(() => {});
 }
 
@@ -3697,25 +3710,31 @@ function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
 // 12,300 with 1,578 shared. Without the subtraction, switching off a county map
 // would quietly un-designate roads OSM designates too.
 let suppressedRoutesAckRecompute = false;
-function syncSuppressedRoutesToWorker({ recomputeOnAck = false } = {}) {
-  if (!routing.worker) return Promise.resolve();
+async function suppressedRoutesPayload() {
   const ids = suppressedRouteSourceIds();
   const key = ids.slice().sort().join('\u0001');
-  if (!key) {
+  if (!key) return { key: '', lines: [], keepLines: [] };
+  const catalog = await ensureStateRouteCatalog();
+  const lines = [], keepLines = [];
+  for (const entry of catalog.values()) {
+    const sources = entry.sourceIds?.length ? entry.sourceIds : ['osm'];
+    // Switched off only when NO surviving source still claims it. A route
+    // carried by both OSM and a county map stays, whatever the county says.
+    const gone = sources.every((id) => ids.includes(id));
+    for (const line of (entry.lines || [])) (gone ? lines : keepLines).push(line);
+  }
+  return { key, lines, keepLines };
+}
+
+function syncSuppressedRoutesToWorker({ recomputeOnAck = false } = {}) {
+  if (!routing.worker) return Promise.resolve();
+  if (!suppressedRouteSourceIds().length) {
     routing.worker.postMessage({ type: 'suppressed-routes', key: '', lines: [], keepLines: [] });
     return Promise.resolve();
   }
   suppressedRoutesAckRecompute = recomputeOnAck;
-  return ensureStateRouteCatalog().then((catalog) => {
-    const lines = [], keepLines = [];
-    for (const entry of catalog.values()) {
-      const sources = entry.sourceIds?.length ? entry.sourceIds : ['osm'];
-      // Switched off only when NO surviving source still claims it. A route
-      // carried by both OSM and a county map stays, whatever the county says.
-      const gone = sources.every((id) => ids.includes(id));
-      for (const line of (entry.lines || [])) (gone ? lines : keepLines).push(line);
-    }
-    routing.worker?.postMessage({ type: 'suppressed-routes', key, lines, keepLines });
+  return suppressedRoutesPayload().then((payload) => {
+    routing.worker?.postMessage({ type: 'suppressed-routes', ...payload });
   }).catch(() => {});
 }
 
@@ -4995,6 +5014,15 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   const request = multiStateWorkerRequest(turnNav.active ? 'route' : 'route-options',
     requestId, points);
   request.pointStateIds = pointStateIds;
+  // The partition router is its own worker and never received the Preferred
+  // and switched-off route geometry synced to the home worker, so both
+  // settings silently did nothing on a partition-routed trip. The request
+  // carries them; the router ingests a changed key before it searches.
+  [request.preferredRoutes, request.suppressedRoutes] = await Promise.all([
+    preferredRoutesPayload().catch(() => null),
+    suppressedRoutesPayload().catch(() => null),
+  ]);
+  if (requestId !== routing.reqId) return;
   try {
     const runtime = await installedMultiStateRouteSession(pointStateIds);
     if (requestId !== routing.reqId) return;
@@ -14111,7 +14139,7 @@ function buildPlacePicker() {
     const numbers = query.replace(/^[[(\s]+|[\])\s]+$/g, '').split(/[,\s]+/)
       .filter(Boolean).map(Number);
     if (numbers.length === 2 && numbers.every(Number.isFinite)) {
-      render([], `That point is outside ${Region.name}.`, { offerInternet: false });
+      render([], 'That point is outside your installed maps.', { offerInternet: false });
       return;
     }
     const online = navigator.onLine !== false;
